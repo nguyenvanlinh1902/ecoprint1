@@ -1,0 +1,65 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Hàm kiểm tra xác thực
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Hàm kiểm tra người dùng có phải admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Hàm kiểm tra kích thước file
+    function isValidSize(maxSizeMB) {
+      return request.resource.size <= maxSizeMB * 1024 * 1024;
+    }
+    
+    // Hàm kiểm tra định dạng file
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Hàm kiểm tra định dạng file CSV
+    function isCsv() {
+      return request.resource.contentType.matches('text/csv') ||
+             request.resource.contentType.matches('application/vnd.ms-excel');
+    }
+    
+    // Hàm kiểm tra định dạng file Excel
+    function isExcel() {
+      return request.resource.contentType.matches('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+             request.resource.contentType.matches('application/vnd.ms-excel');
+    }
+    
+    // Thư mục lưu ảnh sản phẩm
+    match /products/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isImage() && isValidSize(5);
+      allow delete: if isAdmin();
+    }
+    
+    // Thư mục lưu ảnh người dùng
+    match /users/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if (request.auth.uid == userId || isAdmin()) && isImage() && isValidSize(2);
+      allow delete: if request.auth.uid == userId || isAdmin();
+    }
+    
+    // Thư mục lưu file import
+    match /imports/{userId}/{fileName} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if request.auth.uid == userId && (isCsv() || isExcel()) && isValidSize(10);
+      allow delete: if request.auth.uid == userId || isAdmin();
+    }
+    
+    // Thư mục lưu file khác
+    match /other/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && isValidSize(20);
+      allow delete: if isAdmin();
+    }
+  }
+} 

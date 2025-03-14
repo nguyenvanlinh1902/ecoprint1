@@ -1,0 +1,25 @@
+{
+  "name": "b2b-platform",
+  "version": "1.0.0",
+  "description": "B2B E-commerce Platform",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:assets": "npm run dev --workspace=packages/assets",
+    "dev:functions": "npm run dev --workspace=packages/functions",
+    "dev": "concurrently \"npm run dev:assets\" \"npm run dev:functions\"",
+    "build:assets": "npm run build --workspace=packages/assets",
+    "build:functions": "npm run build --workspace=packages/functions",
+    "build": "npm run build:assets && npm run build:functions",
+    "deploy": "firebase deploy",
+    "deploy:hosting": "firebase deploy --only hosting",
+    "deploy:functions": "firebase deploy --only functions",
+    "lint": "npm run lint --workspaces"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.1",
+    "firebase-tools": "^12.0.1"
+  }
+} 

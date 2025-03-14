@@ -1,0 +1,303 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Typography, Box, Grid, Paper, Card, CardContent, Divider,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Button, CircularProgress, List, ListItem, ListItemText, ListItemIcon
+} from '@mui/material';
+import {
+  ArrowUpward as IncreaseIcon,
+  ArrowDownward as DecreaseIcon,
+  PeopleAlt as UsersIcon,
+  Inventory as ProductsIcon,
+  ShoppingCart as OrdersIcon,
+  AccountBalance as RevenueIcon,
+  FiberNew as NewIcon
+} from '@mui/icons-material';
+import { Link } from 'react-router-dom';
+import api from '../../services/api';
+import StatusBadge from '../../components/StatusBadge';
+import { formatCurrency, formatDate } from '../../helpers/formatters';
+
+const DashboardPage = () => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [dashboardData, setDashboardData] = useState({
+    stats: {
+      totalUsers: 0,
+      activeUsers: 0,
+      totalProducts: 0,
+      totalOrders: 0,
+      pendingOrders: 0,
+      totalRevenue: 0,
+      revenueChange: 0,
+      newUsers: 0,
+      newOrders: 0
+    },
+    recentOrders: [],
+    recentUsers: [],
+    pendingApprovals: 0
+  });
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get('/api/admin/dashboard');
+        setDashboardData(response.data.data);
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        setError('Failed to load dashboard data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Typography color="error" variant="h6">
+        {error}
+      </Typography>
+    );
+  }
+
+  const { stats, recentOrders, recentUsers, pendingApprovals } = dashboardData;
+
+  return (
+    <Box>
+      <Typography variant="h4" sx={{ mb: 3 }}>
+        Admin Dashboard
+      </Typography>
+
+      {/* Stats Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Total Users
+              </Typography>
+              <Typography variant="h4">
+                {stats.totalUsers}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
+                  <IncreaseIcon fontSize="small" />
+                  {stats.newUsers} new
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Products
+              </Typography>
+              <Typography variant="h4">
+                {stats.totalProducts}
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                <Button 
+                  component={Link} 
+                  to="/admin/products" 
+                  size="small"
+                >
+                  View All
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Orders
+              </Typography>
+              <Typography variant="h4">
+                {stats.totalOrders}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
+                <Typography variant="body2" color={stats.newOrders > 0 ? 'success.main' : 'text.secondary'} sx={{ display: 'flex', alignItems: 'center' }}>
+                  <NewIcon fontSize="small" sx={{ mr: 0.5 }} />
+                  {stats.newOrders} new
+                </Typography>
+                <Typography variant="body2" color="warning.main">
+                  {stats.pendingOrders} pending
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Revenue
+              </Typography>
+              <Typography variant="h4">
+                {formatCurrency(stats.totalRevenue)}
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                {stats.revenueChange >= 0 ? (
+                  <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <IncreaseIcon fontSize="small" />
+                    {stats.revenueChange}% vs last month
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" color="error.main" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <DecreaseIcon fontSize="small" />
+                    {Math.abs(stats.revenueChange)}% vs last month
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Main Content */}
+      <Grid container spacing={3}>
+        {/* Recent Orders */}
+        <Grid item xs={12} md={7}>
+          <Paper sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h6">
+                Recent Orders
+              </Typography>
+              <Button 
+                component={Link} 
+                to="/admin/orders" 
+                size="small"
+              >
+                View All
+              </Button>
+            </Box>
+            
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Order ID</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Date</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {recentOrders.map((order) => (
+                    <TableRow key={order.id} hover>
+                      <TableCell>
+                        <Link to={`/admin/orders/${order.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+                          <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
+                            {order.id.substring(0, 8)}...
+                          </Typography>
+                        </Link>
+                      </TableCell>
+                      <TableCell>{order.user?.companyName || 'N/A'}</TableCell>
+                      <TableCell align="right">{formatCurrency(order.totalPrice)}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={order.status} />
+                      </TableCell>
+                      <TableCell>{formatDate(order.createdAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </Grid>
+
+        {/* Recent Users & Actions Needed */}
+        <Grid item xs={12} md={5}>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Recent Users
+            </Typography>
+            
+            <List dense>
+              {recentUsers.map((user) => (
+                <React.Fragment key={user.id}>
+                  <ListItem>
+                    <ListItemIcon>
+                      <UsersIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={user.companyName}
+                      secondary={`${user.email} • Joined ${formatDate(user.createdAt)}`}
+                    />
+                    <Button 
+                      component={Link} 
+                      to={`/admin/users/${user.id}`} 
+                      size="small"
+                    >
+                      View
+                    </Button>
+                  </ListItem>
+                  <Divider variant="inset" component="li" />
+                </React.Fragment>
+              ))}
+            </List>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+              <Button 
+                component={Link} 
+                to="/admin/users" 
+                size="small"
+              >
+                View All Users
+              </Button>
+            </Box>
+          </Paper>
+
+          {pendingApprovals > 0 && (
+            <Paper sx={{ p: 3, bgcolor: 'warning.light' }}>
+              <Typography variant="h6" gutterBottom>
+                Action Required
+              </Typography>
+              
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <UsersIcon />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={`${pendingApprovals} user${pendingApprovals > 1 ? 's' : ''} pending approval`}
+                    secondary="New registration requests require your review"
+                  />
+                  <Button 
+                    component={Link} 
+                    to="/admin/users?status=pending" 
+                    size="small"
+                    variant="contained"
+                    color="warning"
+                  >
+                    Review
+                  </Button>
+                </ListItem>
+              </List>
+            </Paper>
+          )}
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+export default DashboardPage; 
