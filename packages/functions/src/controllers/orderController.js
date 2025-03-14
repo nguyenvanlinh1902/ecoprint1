@@ -1,11 +1,11 @@
-const orderService = require('../services/orderService');
-const { CustomError } = require('../exceptions/customError');
-const { storage } = require('../config/firebaseConfig');
+import * as orderService from '../services/orderService.js';
+import { CustomError } from '../exceptions/customError.js';
+import { storage } from '../config/firebaseConfig.js';
 
 /**
  * Tạo đơn hàng mới
  */
-const createOrder = async (ctx) => {
+export const createOrder = async (ctx) => {
   const { user } = ctx.state;
   const orderData = ctx.request.body;
   
@@ -40,7 +40,7 @@ const createOrder = async (ctx) => {
 /**
  * Import nhiều đơn hàng từ file
  */
-const importOrders = async (ctx) => {
+export const importOrders = async (ctx) => {
   const { user } = ctx.state;
   
   if (!ctx.request.files || !ctx.request.files.importFile) {
@@ -65,7 +65,7 @@ const importOrders = async (ctx) => {
 /**
  * Lấy danh sách đơn hàng từ một đợt import
  */
-const getBatchImportOrders = async (ctx) => {
+export const getBatchImportOrders = async (ctx) => {
   const { user } = ctx.state;
   const { batchId } = ctx.params;
   
@@ -80,7 +80,7 @@ const getBatchImportOrders = async (ctx) => {
 /**
  * Xác nhận các đơn hàng từ một đợt import
  */
-const confirmBatchImport = async (ctx) => {
+export const confirmBatchImport = async (ctx) => {
   const { user } = ctx.state;
   const { batchId } = ctx.params;
   
@@ -96,7 +96,7 @@ const confirmBatchImport = async (ctx) => {
 /**
  * Lấy danh sách đơn hàng của người dùng hiện tại hoặc tất cả (admin)
  */
-const getOrders = async (ctx) => {
+export const getOrders = async (ctx) => {
   const { user } = ctx.state;
   const { status, page = 1, limit = 10 } = ctx.query;
   
@@ -116,7 +116,7 @@ const getOrders = async (ctx) => {
 /**
  * Lấy chi tiết đơn hàng
  */
-const getOrderDetails = async (ctx) => {
+export const getOrderDetails = async (ctx) => {
   const { user } = ctx.state;
   const { orderId } = ctx.params;
   
@@ -138,7 +138,7 @@ const getOrderDetails = async (ctx) => {
 /**
  * Cập nhật trạng thái đơn hàng (Admin only)
  */
-const updateOrderStatus = async (ctx) => {
+export const updateOrderStatus = async (ctx) => {
   const { orderId } = ctx.params;
   const { status } = ctx.request.body;
   
@@ -153,14 +153,4 @@ const updateOrderStatus = async (ctx) => {
     message: 'Cập nhật trạng thái đơn hàng thành công',
     data: updatedOrder
   };
-};
-
-module.exports = {
-  createOrder,
-  importOrders,
-  getBatchImportOrders,
-  confirmBatchImport,
-  getOrders,
-  getOrderDetails,
-  updateOrderStatus
 }; 

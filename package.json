@@ -21,5 +21,6 @@
   "devDependencies": {
     "concurrently": "^8.0.1",
     "firebase-tools": "^12.0.1"
-  }
+  },
+  "type": "module"
 } 

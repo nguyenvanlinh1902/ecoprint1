@@ -1,10 +1,10 @@
-const transactionService = require('../services/transactionService');
-const { CustomError } = require('../exceptions/customError');
+import * as transactionService from '../services/transactionService.js';
+import { CustomError } from '../exceptions/customError.js';
 
 /**
  * Tạo yêu cầu nạp tiền
  */
-const createDeposit = async (ctx) => {
+export const createDeposit = async (ctx) => {
   const { user } = ctx.state;
   const { amount, note } = ctx.request.body;
   
@@ -41,7 +41,7 @@ const createDeposit = async (ctx) => {
 /**
  * Thanh toán đơn hàng
  */
-const payOrder = async (ctx) => {
+export const payOrder = async (ctx) => {
   const { user } = ctx.state;
   const { orderId } = ctx.params;
   
@@ -57,7 +57,7 @@ const payOrder = async (ctx) => {
 /**
  * Thanh toán nhiều đơn hàng từ batch import
  */
-const payBatchOrders = async (ctx) => {
+export const payBatchOrders = async (ctx) => {
   const { user } = ctx.state;
   const { batchId } = ctx.params;
   
@@ -73,7 +73,7 @@ const payBatchOrders = async (ctx) => {
 /**
  * Lấy lịch sử giao dịch của người dùng
  */
-const getUserTransactions = async (ctx) => {
+export const getUserTransactions = async (ctx) => {
   const { user } = ctx.state;
   const { type, status, page = 1, limit = 10 } = ctx.query;
   
@@ -94,7 +94,7 @@ const getUserTransactions = async (ctx) => {
 /**
  * Lấy tất cả giao dịch (Admin only)
  */
-const getAllTransactions = async (ctx) => {
+export const getAllTransactions = async (ctx) => {
   const { type, status, page = 1, limit = 10 } = ctx.query;
   
   const transactions = await transactionService.getAllTransactions(
@@ -113,7 +113,7 @@ const getAllTransactions = async (ctx) => {
 /**
  * Xác nhận/từ chối giao dịch (Admin only)
  */
-const updateTransactionStatus = async (ctx) => {
+export const updateTransactionStatus = async (ctx) => {
   const { transactionId } = ctx.params;
   const { status, note } = ctx.request.body;
   
@@ -132,13 +132,4 @@ const updateTransactionStatus = async (ctx) => {
     message: `Transaction ${status}`,
     data: updatedTransaction
   };
-};
-
-module.exports = {
-  createDeposit,
-  payOrder,
-  payBatchOrders,
-  getUserTransactions,
-  getAllTransactions,
-  updateTransactionStatus
 }; 

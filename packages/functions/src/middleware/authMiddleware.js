@@ -1,10 +1,10 @@
-const { admin } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
+import { admin } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
 
 /**
  * Middleware xác thực token từ Authorization header
  */
-const authenticate = async (ctx, next) => {
+export const authenticate = async (ctx, next) => {
   try {
     const authHeader = ctx.request.headers.authorization;
     
@@ -48,14 +48,9 @@ const authenticate = async (ctx, next) => {
 /**
  * Middleware kiểm tra quyền admin
  */
-const requireAdmin = async (ctx, next) => {
+export const requireAdmin = async (ctx, next) => {
   if (!ctx.state.user || ctx.state.user.role !== 'admin') {
     throw new CustomError('Không có quyền truy cập', 403);
   }
   await next();
-};
-
-module.exports = {
-  authenticate,
-  requireAdmin
 }; 

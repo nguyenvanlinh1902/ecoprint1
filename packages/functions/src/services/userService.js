@@ -1,10 +1,10 @@
-const { admin, firestore } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
+import { admin } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
 
 /**
  * Tạo người dùng mới trong Firebase Auth và Firestore
  */
-const createUser = async (userData) => {
+export const createUser = async (userData) => {
   try {
     // Tạo user trong Firebase Auth
     const userRecord = await admin.auth().createUser({
@@ -26,7 +26,7 @@ const createUser = async (userData) => {
     };
 
     // Lưu vào Firestore
-    await firestore.collection('users').doc(userRecord.uid).set(firestoreData);
+    await admin.firestore().collection('users').doc(userRecord.uid).set(firestoreData);
 
     return {
       uid: userRecord.uid,
@@ -41,12 +41,12 @@ const createUser = async (userData) => {
 /**
  * Cập nhật thông tin người dùng
  */
-const updateUserProfile = async (userId, updateData) => {
+export const updateUserProfile = async (userId, updateData) => {
   try {
     // Cập nhật timestamp
     updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     
-    await firestore.collection('users').doc(userId).update(updateData);
+    await admin.firestore().collection('users').doc(userId).update(updateData);
     
     return true;
   } catch (error) {
@@ -58,9 +58,9 @@ const updateUserProfile = async (userId, updateData) => {
 /**
  * Lấy thông tin người dùng theo ID
  */
-const getUserById = async (userId) => {
+export const getUserById = async (userId) => {
   try {
-    const userDoc = await firestore.collection('users').doc(userId).get();
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
       return null;
@@ -79,9 +79,9 @@ const getUserById = async (userId) => {
 /**
  * Lấy danh sách tất cả người dùng
  */
-const getAllUsers = async () => {
+export const getAllUsers = async () => {
   try {
-    const usersSnapshot = await firestore.collection('users').get();
+    const usersSnapshot = await admin.firestore().collection('users').get();
     const users = [];
     
     usersSnapshot.forEach(doc => {
@@ -105,16 +105,16 @@ const getAllUsers = async () => {
 /**
  * Cập nhật trạng thái người dùng (admin only)
  */
-const updateUserStatus = async (userId, status) => {
+export const updateUserStatus = async (userId, status) => {
   try {
     // Kiểm tra xem người dùng có tồn tại không
-    const userDoc = await firestore.collection('users').doc(userId).get();
+    const userDoc = await admin.firestore().collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
       throw new CustomError('Không tìm thấy người dùng', 404);
     }
     
-    await firestore.collection('users').doc(userId).update({
+    await admin.firestore().collection('users').doc(userId).update({
       status,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -136,7 +136,7 @@ const updateUserStatus = async (userId, status) => {
   }
 };
 
-module.exports = {
+export default {
   createUser,
   updateUserProfile,
   getUserById,

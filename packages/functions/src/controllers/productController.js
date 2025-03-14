@@ -1,10 +1,10 @@
-const productService = require('../services/productService');
-const { CustomError } = require('../exceptions/customError');
+import * as productService from '../services/productService.js';
+import { CustomError } from '../exceptions/customError.js';
 
 /**
  * Tạo sản phẩm mới (Admin only)
  */
-const createProduct = async (ctx) => {
+export const createProduct = async (ctx) => {
   const productData = ctx.request.body;
   
   // Validate dữ liệu đầu vào
@@ -25,7 +25,7 @@ const createProduct = async (ctx) => {
 /**
  * Cập nhật thông tin sản phẩm (Admin only)
  */
-const updateProduct = async (ctx) => {
+export const updateProduct = async (ctx) => {
   const { productId } = ctx.params;
   const updateData = ctx.request.body;
   
@@ -41,7 +41,7 @@ const updateProduct = async (ctx) => {
 /**
  * Lấy thông tin chi tiết sản phẩm
  */
-const getProduct = async (ctx) => {
+export const getProduct = async (ctx) => {
   const { productId } = ctx.params;
   
   const product = await productService.getProductById(productId);
@@ -59,7 +59,7 @@ const getProduct = async (ctx) => {
 /**
  * Lấy danh sách tất cả sản phẩm
  */
-const getAllProducts = async (ctx) => {
+export const getAllProducts = async (ctx) => {
   const { active } = ctx.query;
   
   let products;
@@ -80,7 +80,7 @@ const getAllProducts = async (ctx) => {
 /**
  * Xóa sản phẩm (Admin only)
  */
-const deleteProduct = async (ctx) => {
+export const deleteProduct = async (ctx) => {
   const { productId } = ctx.params;
   
   await productService.deleteProduct(productId);
@@ -89,12 +89,4 @@ const deleteProduct = async (ctx) => {
     success: true,
     message: 'Xóa sản phẩm thành công'
   };
-};
-
-module.exports = {
-  createProduct,
-  updateProduct,
-  getProduct,
-  getAllProducts,
-  deleteProduct
 }; 

@@ -2,11 +2,6 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import MainLayout from '../layouts/MainLayout';
 import AdminLayout from '../layouts/AdminLayout';
-import AuthLayout from '../layouts/AuthLayout';
-import LoginPage from '../pages/auth/LoginPage';
-import RegisterPage from '../pages/auth/RegisterPage';
-import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 import DashboardPage from '../pages/DashboardPage';
 import ProductsPage from '../pages/ProductsPage';
 import ProductDetailPage from '../pages/ProductDetailPage';
@@ -35,9 +30,9 @@ import NotFoundPage from '../pages/NotFoundPage';
 import MaintenancePage from '../pages/MaintenancePage';
 
 // Guards
-import AuthGuard from '../guards/AuthGuard';
-import GuestGuard from '../guards/GuestGuard';
-import RoleGuard from '../guards/RoleGuard';
+import LoginPage from "@/pages/LoginPage";
+import RegisterPage from "@/pages/RegisterPage";
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage";
 
 // Route configuration
 const routes = [

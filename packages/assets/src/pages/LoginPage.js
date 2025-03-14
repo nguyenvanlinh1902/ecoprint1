@@ -1,122 +1,96 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Container, Paper, TextField, Button, Typography, Box, Grid, Alert, CircularProgress } from '@mui/material';
-import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 
-const LoginPage = () => {
+function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const navigate = useNavigate();
-  const { login } = useAuth();
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    
-    // Validate inputs
-    if (!email || !password) {
-      setErrorMessage('Please enter both email and password');
-      return;
-    }
-    
-    setLoading(true);
-    setErrorMessage('');
-    
-    try {
-      // Attempt login
-      await login(email, password);
-      
-      // Redirect to dashboard on success
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Login failed:', error);
-      setErrorMessage(error.message || 'Failed to login. Please check your credentials.');
-    } finally {
-      setLoading(false);
-    }
+    console.log('Login attempt with:', { email, password });
+    // Xử lý logic đăng nhập tại đây
+  };
+
+  const formStyle = {
+    width: '100%'
+  };
+
+  const formGroupStyle = {
+    marginBottom: '15px'
+  };
+
+  const labelStyle = {
+    display: 'block',
+    marginBottom: '5px',
+    fontWeight: '500'
+  };
+
+  const inputStyle = {
+    width: '100%',
+    padding: '10px',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '16px'
+  };
+
+  const buttonStyle = {
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#008060',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    fontSize: '16px',
+    cursor: 'pointer',
+    marginTop: '10px'
+  };
+
+  const linkContainerStyle = {
+    textAlign: 'center',
+    marginTop: '20px'
+  };
+
+  const linkStyle = {
+    color: '#008060',
+    textDecoration: 'none',
+    display: 'block',
+    margin: '5px 0'
   };
 
   return (
-    <Container component="main" maxWidth="xs">
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh'
-        }}
-      >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
-          <Typography component="h1" variant="h5" align="center" gutterBottom>
-            Sign In
-          </Typography>
-          
-          {errorMessage && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {errorMessage}
-            </Alert>
-          )}
-          
-          <Box component="form" onSubmit={handleSubmit} noValidate>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type="password"
-              id="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? <CircularProgress size={24} /> : 'Sign In'}
-            </Button>
-            
-            <Grid container>
-              <Grid item xs>
-                <Link to="/forgot-password" style={{ textDecoration: 'none' }}>
-                  <Typography variant="body2" color="primary">
-                    Forgot password?
-                  </Typography>
-                </Link>
-              </Grid>
-              <Grid item>
-                <Link to="/register" style={{ textDecoration: 'none' }}>
-                  <Typography variant="body2" color="primary">
-                    {"Don't have an account? Sign Up"}
-                  </Typography>
-                </Link>
-              </Grid>
-            </Grid>
-          </Box>
-        </Paper>
-      </Box>
-    </Container>
+    <form style={formStyle} onSubmit={handleSubmit}>
+      <div style={formGroupStyle}>
+        <label style={labelStyle} htmlFor="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          style={inputStyle}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+
+      <div style={formGroupStyle}>
+        <label style={labelStyle} htmlFor="password">Mật khẩu</label>
+        <input
+          id="password"
+          type="password"
+          style={inputStyle}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+
+      <button type="submit" style={buttonStyle}>Đăng nhập</button>
+
+      <div style={linkContainerStyle}>
+        <Link to="/forgot-password" style={linkStyle}>Quên mật khẩu?</Link>
+        <Link to="/register" style={linkStyle}>Chưa có tài khoản? Đăng ký ngay</Link>
+      </div>
+    </form>
   );
-};
+}
 
 export default LoginPage; 

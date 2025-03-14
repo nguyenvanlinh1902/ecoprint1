@@ -83,4 +83,4 @@ const firestoreSchema = {
   }
 };
 
-module.exports = firestoreSchema; 
+export default firestoreSchema; 

@@ -1,13 +1,13 @@
-const { admin, firestore, storage } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
+import { admin } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 /**
  * Upload ảnh chứng minh thanh toán
  */
-const uploadPaymentProof = async (file, userId) => {
+export const uploadPaymentProof = async (file, userId) => {
   try {
     const tempFilePath = path.join(os.tmpdir(), file.name);
     
@@ -15,7 +15,7 @@ const uploadPaymentProof = async (file, userId) => {
     await fs.promises.writeFile(tempFilePath, file.data);
     
     // Upload lên Firebase Storage
-    const bucket = storage.bucket();
+    const bucket = admin.storage().bucket();
     const destination = `payment-proofs/${userId}/${Date.now()}-${file.name}`;
     
     await bucket.upload(tempFilePath, {
@@ -45,8 +45,9 @@ const uploadPaymentProof = async (file, userId) => {
 /**
  * Tạo giao dịch mới
  */
-const createTransaction = async (transactionData) => {
+export const createTransaction = async (transactionData) => {
   try {
+    const db = admin.firestore();
     // Chuẩn bị dữ liệu giao dịch
     const newTransaction = {
       userId: transactionData.userId,
@@ -61,7 +62,7 @@ const createTransaction = async (transactionData) => {
     };
     
     // Lưu vào Firestore
-    const docRef = await firestore.collection('transactions').add(newTransaction);
+    const docRef = await db.collection('transactions').add(newTransaction);
     
     return {
       id: docRef.id,
@@ -76,8 +77,8 @@ const createTransaction = async (transactionData) => {
 /**
  * Thanh toán đơn hàng
  */
-const payForOrder = async (userId, orderId) => {
-  const db = firestore;
+export const payForOrder = async (userId, orderId) => {
+  const db = admin.firestore();
   
   try {
     return await db.runTransaction(async (transaction) => {
@@ -167,8 +168,8 @@ const payForOrder = async (userId, orderId) => {
 /**
  * Thanh toán các đơn hàng từ batch import
  */
-const payForBatchOrders = async (userId, batchId) => {
-  const db = firestore;
+export const payForBatchOrders = async (userId, batchId) => {
+  const db = admin.firestore();
   
   try {
     return await db.runTransaction(async (transaction) => {
@@ -281,10 +282,10 @@ const payForBatchOrders = async (userId, batchId) => {
 /**
  * Lấy lịch sử giao dịch của người dùng
  */
-const getUserTransactions = async (userId, type, status, page = 1, limit = 10) => {
+export const getUserTransactions = async (userId, type, status, page = 1, limit = 10) => {
   try {
     // Tạo query
-    let query = firestore.collection('transactions').where('userId', '==', userId);
+    let query = admin.firestore().collection('transactions').where('userId', '==', userId);
     
     if (type) {
       query = query.where('type', '==', type);
@@ -310,7 +311,7 @@ const getUserTransactions = async (userId, type, status, page = 1, limit = 10) =
     });
     
     // Đếm tổng số giao dịch (không có phân trang)
-    let countQuery = firestore.collection('transactions').where('userId', '==', userId);
+    let countQuery = admin.firestore().collection('transactions').where('userId', '==', userId);
     
     if (type) {
       countQuery = countQuery.where('type', '==', type);
@@ -341,10 +342,10 @@ const getUserTransactions = async (userId, type, status, page = 1, limit = 10) =
 /**
  * Lấy tất cả giao dịch (Admin only)
  */
-const getAllTransactions = async (type, status, page = 1, limit = 10) => {
+export const getAllTransactions = async (type, status, page = 1, limit = 10) => {
   try {
     // Tạo query
-    let query = firestore.collection('transactions');
+    let query = admin.firestore().collection('transactions');
     
     if (type) {
       query = query.where('type', '==', type);
@@ -376,7 +377,7 @@ const getAllTransactions = async (type, status, page = 1, limit = 10) => {
       transactions.push(transaction);
       
       // Lấy thông tin người dùng
-      const userPromise = firestore.collection('users').doc(transactionData.userId).get()
+      const userPromise = admin.firestore().collection('users').doc(transactionData.userId).get()
         .then(userDoc => {
           if (userDoc.exists) {
             const userData = userDoc.data();
@@ -394,7 +395,7 @@ const getAllTransactions = async (type, status, page = 1, limit = 10) => {
     await Promise.all(userPromises);
     
     // Đếm tổng số giao dịch (không có phân trang)
-    let countQuery = firestore.collection('transactions');
+    let countQuery = admin.firestore().collection('transactions');
     
     if (type) {
       countQuery = countQuery.where('type', '==', type);
@@ -425,8 +426,8 @@ const getAllTransactions = async (type, status, page = 1, limit = 10) => {
 /**
  * Cập nhật trạng thái giao dịch (Admin only)
  */
-const updateTransactionStatus = async (transactionId, status, note = '') => {
-  const db = firestore;
+export const updateTransactionStatus = async (transactionId, status, note = '') => {
+  const db = admin.firestore();
   
   try {
     return await db.runTransaction(async (transaction) => {
@@ -494,14 +495,4 @@ const updateTransactionStatus = async (transactionId, status, note = '') => {
     }
     throw new CustomError('Error when updating transaction status', 500);
   }
-};
-
-module.exports = {
-  uploadPaymentProof,
-  createTransaction,
-  payForOrder,
-  payForBatchOrders,
-  getUserTransactions,
-  getAllTransactions,
-  updateTransactionStatus
 }; 

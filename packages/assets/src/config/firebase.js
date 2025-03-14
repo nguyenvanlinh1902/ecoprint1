@@ -15,11 +15,11 @@ const storage = getStorage(app);
 const functions = getFunctions(app);
 
 // Kết nối với emulator nếu đang ở môi trường development
-if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_USE_EMULATORS === 'true') {
+if (process.env.NODE_ENV === 'development') {
   connectAuthEmulator(auth, 'http://localhost:9099');
-  connectFirestoreEmulator(db, 'localhost', 8080);
-  connectStorageEmulator(storage, 'localhost', 9199);
-  connectFunctionsEmulator(functions, 'localhost', 5001);
+  connectFirestoreEmulator(db, 'localhost', 8090);
+  connectStorageEmulator(storage, 'localhost', 9209);
+  connectFunctionsEmulator(functions, 'localhost', 5011);
   
   console.log('Using Firebase Emulators');
 }

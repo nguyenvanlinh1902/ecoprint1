@@ -1,15 +1,15 @@
-const { admin, firestore, storage } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
-const productService = require('./productService');
-const path = require('path');
-const csv = require('csv-parser');
-const fs = require('fs');
-const os = require('os');
+import { admin, db, storage } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
+import productService from './productService.js';
+import path from 'path';
+import csv from 'csv-parser';
+import fs from 'fs';
+import os from 'os';
 
 /**
  * Tạo đơn hàng mới
  */
-const createOrder = async (userId, orderData) => {
+export const createOrder = async (userId, orderData) => {
   try {
     // Lấy thông tin sản phẩm
     const product = await productService.getProductById(orderData.productId);
@@ -40,7 +40,7 @@ const createOrder = async (userId, orderData) => {
     };
     
     // Lưu vào Firestore
-    const docRef = await firestore.collection('orders').add(newOrder);
+    const docRef = await db.collection('orders').add(newOrder);
     
     return {
       id: docRef.id,
@@ -62,7 +62,7 @@ const createOrder = async (userId, orderData) => {
 /**
  * Upload file thiết kế
  */
-const uploadDesignFile = async (file, userId) => {
+export const uploadDesignFile = async (file, userId) => {
   try {
     const tempFilePath = path.join(os.tmpdir(), file.name);
     
@@ -100,7 +100,7 @@ const uploadDesignFile = async (file, userId) => {
 /**
  * Upload file import
  */
-const uploadImportFile = async (file, userId) => {
+export const uploadImportFile = async (file, userId) => {
   try {
     const tempFilePath = path.join(os.tmpdir(), file.name);
     
@@ -138,10 +138,10 @@ const uploadImportFile = async (file, userId) => {
 /**
  * Xử lý file import
  */
-const processImportFile = async (fileUrl, userId) => {
+export const processImportFile = async (fileUrl, userId) => {
   try {
     // Tạo batch import record
-    const batchImportRef = await firestore.collection('batchImports').add({
+    const batchImportRef = await db.collection('batchImports').add({
       userId,
       fileName: path.basename(fileUrl),
       status: 'draft',
@@ -214,7 +214,7 @@ const processImportFile = async (fileUrl, userId) => {
             };
             
             // Lưu vào Firestore
-            const docRef = await firestore.collection('orders').add(newOrder);
+            const docRef = await db.collection('orders').add(newOrder);
             
             const orderWithId = {
               id: docRef.id,
@@ -234,7 +234,7 @@ const processImportFile = async (fileUrl, userId) => {
         .on('end', async () => {
           try {
             // Cập nhật thông tin batch import
-            await firestore.collection('batchImports').doc(batchId).update({
+            await db.collection('batchImports').doc(batchId).update({
               orderCount: orders.length,
               totalPrice: totalPrice,
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -268,11 +268,11 @@ const processImportFile = async (fileUrl, userId) => {
 /**
  * Lấy danh sách đơn hàng theo batch ID
  */
-const getOrdersByBatchId = async (batchId, userId, isAdmin = false) => {
+export const getOrdersByBatchId = async (batchId, userId, isAdmin = false) => {
   try {
     // Kiểm tra quyền truy cập
     if (!isAdmin) {
-      const batchDoc = await firestore.collection('batchImports').doc(batchId).get();
+      const batchDoc = await db.collection('batchImports').doc(batchId).get();
       
       if (!batchDoc.exists || batchDoc.data().userId !== userId) {
         throw new CustomError('Access denied', 403);
@@ -280,7 +280,7 @@ const getOrdersByBatchId = async (batchId, userId, isAdmin = false) => {
     }
     
     // Lấy danh sách đơn hàng
-    let query = firestore.collection('orders').where('batchImportId', '==', batchId);
+    let query = db.collection('orders').where('batchImportId', '==', batchId);
     
     if (!isAdmin) {
       query = query.where('userId', '==', userId);
@@ -332,10 +332,10 @@ const getOrdersByBatchId = async (batchId, userId, isAdmin = false) => {
 /**
  * Xác nhận các đơn hàng từ một đợt import
  */
-const confirmBatchImport = async (batchId, userId) => {
+export const confirmBatchImport = async (batchId, userId) => {
   try {
     // Kiểm tra batch import
-    const batchDoc = await firestore.collection('batchImports').doc(batchId).get();
+    const batchDoc = await db.collection('batchImports').doc(batchId).get();
     
     if (!batchDoc.exists) {
       throw new CustomError('Batch import not found', 404);
@@ -352,7 +352,7 @@ const confirmBatchImport = async (batchId, userId) => {
     }
     
     // Cập nhật trạng thái batch
-    await firestore.collection('batchImports').doc(batchId).update({
+    await db.collection('batchImports').doc(batchId).update({
       status: 'confirmed',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -375,10 +375,10 @@ const confirmBatchImport = async (batchId, userId) => {
 /**
  * Lấy danh sách đơn hàng của người dùng
  */
-const getUserOrders = async (userId, status, page = 1, limit = 10) => {
+export const getUserOrders = async (userId, status, page = 1, limit = 10) => {
   try {
     // Tạo query
-    let query = firestore.collection('orders').where('userId', '==', userId);
+    let query = db.collection('orders').where('userId', '==', userId);
     
     if (status) {
       query = query.where('status', '==', status);
@@ -423,7 +423,7 @@ const getUserOrders = async (userId, status, page = 1, limit = 10) => {
     await Promise.all(productPromises);
     
     // Đếm tổng số đơn hàng (không có phân trang)
-    let countQuery = firestore.collection('orders').where('userId', '==', userId);
+    let countQuery = db.collection('orders').where('userId', '==', userId);
     
     if (status) {
       countQuery = countQuery.where('status', '==', status);
@@ -450,10 +450,10 @@ const getUserOrders = async (userId, status, page = 1, limit = 10) => {
 /**
  * Lấy tất cả đơn hàng (Admin only)
  */
-const getAllOrders = async (status, page = 1, limit = 10) => {
+export const getAllOrders = async (status, page = 1, limit = 10) => {
   try {
     // Tạo query
-    let query = firestore.collection('orders');
+    let query = db.collection('orders');
     
     if (status) {
       query = query.where('status', '==', status);
@@ -491,7 +491,7 @@ const getAllOrders = async (status, page = 1, limit = 10) => {
           }
         });
       
-      const userPromise = firestore.collection('users').doc(orderData.userId).get()
+      const userPromise = db.collection('users').doc(orderData.userId).get()
         .then(userDoc => {
           if (userDoc.exists) {
             const userData = userDoc.data();
@@ -509,7 +509,7 @@ const getAllOrders = async (status, page = 1, limit = 10) => {
     await Promise.all(promises);
     
     // Đếm tổng số đơn hàng (không có phân trang)
-    let countQuery = firestore.collection('orders');
+    let countQuery = db.collection('orders');
     
     if (status) {
       countQuery = countQuery.where('status', '==', status);
@@ -536,9 +536,9 @@ const getAllOrders = async (status, page = 1, limit = 10) => {
 /**
  * Lấy chi tiết đơn hàng
  */
-const getOrderById = async (orderId, userId = null) => {
+export const getOrderById = async (orderId, userId = null) => {
   try {
-    const orderDoc = await firestore.collection('orders').doc(orderId).get();
+    const orderDoc = await db.collection('orders').doc(orderId).get();
     
     if (!orderDoc.exists) {
       return null;
@@ -577,23 +577,23 @@ const getOrderById = async (orderId, userId = null) => {
 /**
  * Cập nhật trạng thái đơn hàng (Admin only)
  */
-const updateOrderStatus = async (orderId, status) => {
+export const updateOrderStatus = async (orderId, status) => {
   try {
     // Kiểm tra đơn hàng có tồn tại không
-    const orderDoc = await firestore.collection('orders').doc(orderId).get();
+    const orderDoc = await db.collection('orders').doc(orderId).get();
     
     if (!orderDoc.exists) {
       throw new CustomError('Order not found', 404);
     }
     
     // Cập nhật trạng thái
-    await firestore.collection('orders').doc(orderId).update({
+    await db.collection('orders').doc(orderId).update({
       status,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
     
     // Lấy thông tin đơn hàng sau khi cập nhật
-    const updatedDoc = await firestore.collection('orders').doc(orderId).get();
+    const updatedDoc = await db.collection('orders').doc(orderId).get();
     
     // Gửi email thông báo cho người dùng (mock)
     console.log(`Notification email sent to user about order ${orderId} status update to ${status}`);
@@ -614,7 +614,7 @@ const updateOrderStatus = async (orderId, status) => {
 /**
  * Tính toán giá đơn hàng
  */
-const calculateOrderPrice = (product, orderData) => {
+export const calculateOrderPrice = (product, orderData) => {
   // Giá cơ bản của sản phẩm
   const basePrice = product.basePrice;
   
@@ -660,18 +660,4 @@ const calculateOrderPrice = (product, orderData) => {
     shippingFee,
     totalPrice
   };
-};
-
-module.exports = {
-  createOrder,
-  uploadDesignFile,
-  uploadImportFile,
-  processImportFile,
-  getOrdersByBatchId,
-  confirmBatchImport,
-  getUserOrders,
-  getAllOrders,
-  getOrderById,
-  updateOrderStatus,
-  calculateOrderPrice
 }; 

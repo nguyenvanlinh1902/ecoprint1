@@ -1,9 +1,9 @@
-const Router = require('@koa/router');
-const userController = require('../controllers/userController');
-const productController = require('../controllers/productController');
-const orderController = require('../controllers/orderController');
-const transactionController = require('../controllers/transactionController');
-const { authenticate, requireAdmin } = require('../middleware/authMiddleware');
+import Router from '@koa/router';
+import * as userController from '../controllers/userController.js';
+import * as productController from '../controllers/productController.js';
+import * as orderController from '../controllers/orderController.js';
+import * as transactionController from '../controllers/transactionController.js';
+import { authenticate, requireAdmin } from '../middleware/authMiddleware.js';
 
 const router = new Router({ prefix: '/api' });
 
@@ -40,4 +40,4 @@ router.get('/transactions', authenticate, transactionController.getUserTransacti
 router.get('/admin/transactions', authenticate, requireAdmin, transactionController.getAllTransactions);
 router.patch('/transactions/:transactionId/status', authenticate, requireAdmin, transactionController.updateTransactionStatus);
 
-module.exports = router; 
+export default router; 

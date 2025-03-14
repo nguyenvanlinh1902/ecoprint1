@@ -1,4 +1,4 @@
-class CustomError extends Error {
+export class CustomError extends Error {
   constructor(message, statusCode = 500, errorCode = null) {
     super(message);
     this.statusCode = statusCode;
@@ -8,7 +8,7 @@ class CustomError extends Error {
   }
 }
 
-const errorHandler = async (ctx, next) => {
+export const errorHandler = async (ctx, next) => {
   try {
     await next();
   } catch (err) {
@@ -33,9 +33,4 @@ const errorHandler = async (ctx, next) => {
       };
     }
   }
-};
-
-module.exports = {
-  CustomError,
-  errorHandler
 }; 

@@ -1,5 +1,5 @@
-const admin = require('firebase-admin');
-const functions = require('firebase-functions');
+import admin from 'firebase-admin';
+import * as functions from 'firebase-functions';
 
 // Khởi tạo Firebase Admin
 if (!admin.apps.length) {
@@ -16,7 +16,7 @@ const cacheConfig = {
 };
 
 // Exports để sử dụng trong các module khác
-module.exports = {
+export {
   admin,
   db,
   auth,

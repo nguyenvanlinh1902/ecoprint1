@@ -48,6 +48,7 @@
     "jsdom": "^22.0.0",
     "sass": "^1.62.1",
     "vite": "^4.3.5",
+    "vite-plugin-node-polyfills": "^0.23.0",
     "vitest": "^0.31.0"
   }
-} 
+}

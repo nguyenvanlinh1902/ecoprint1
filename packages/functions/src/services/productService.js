@@ -1,11 +1,12 @@
-const { admin, firestore } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
+import { admin } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
 
 /**
  * Tạo sản phẩm mới
  */
-const createProduct = async (productData) => {
+export const createProduct = async (productData) => {
   try {
+    const db = admin.firestore();
     // Chuẩn bị dữ liệu sản phẩm
     const newProduct = {
       name: productData.name,
@@ -21,7 +22,7 @@ const createProduct = async (productData) => {
     };
     
     // Lưu vào Firestore
-    const docRef = await firestore.collection('products').add(newProduct);
+    const docRef = await db.collection('products').add(newProduct);
     
     return {
       id: docRef.id,
@@ -36,10 +37,11 @@ const createProduct = async (productData) => {
 /**
  * Cập nhật thông tin sản phẩm
  */
-const updateProduct = async (productId, updateData) => {
+export const updateProduct = async (productId, updateData) => {
   try {
+    const db = admin.firestore();
     // Kiểm tra sản phẩm có tồn tại không
-    const productDoc = await firestore.collection('products').doc(productId).get();
+    const productDoc = await db.collection('products').doc(productId).get();
     
     if (!productDoc.exists) {
       throw new CustomError('Không tìm thấy sản phẩm', 404);
@@ -48,10 +50,10 @@ const updateProduct = async (productId, updateData) => {
     // Cập nhật timestamp
     updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     
-    await firestore.collection('products').doc(productId).update(updateData);
+    await db.collection('products').doc(productId).update(updateData);
     
     // Lấy dữ liệu sản phẩm sau khi cập nhật
-    const updatedDoc = await firestore.collection('products').doc(productId).get();
+    const updatedDoc = await db.collection('products').doc(productId).get();
     
     return {
       id: updatedDoc.id,
@@ -69,9 +71,10 @@ const updateProduct = async (productId, updateData) => {
 /**
  * Lấy thông tin sản phẩm theo ID
  */
-const getProductById = async (productId) => {
+export const getProductById = async (productId) => {
   try {
-    const productDoc = await firestore.collection('products').doc(productId).get();
+    const db = admin.firestore();
+    const productDoc = await db.collection('products').doc(productId).get();
     
     if (!productDoc.exists) {
       return null;
@@ -90,9 +93,10 @@ const getProductById = async (productId) => {
 /**
  * Lấy danh sách tất cả sản phẩm
  */
-const getAllProducts = async () => {
+export const getAllProducts = async () => {
   try {
-    const productsSnapshot = await firestore.collection('products').get();
+    const db = admin.firestore();
+    const productsSnapshot = await db.collection('products').get();
     const products = [];
     
     productsSnapshot.forEach(doc => {
@@ -112,9 +116,10 @@ const getAllProducts = async () => {
 /**
  * Lấy danh sách sản phẩm theo trạng thái (active/inactive)
  */
-const getProductsByStatus = async (isActive) => {
+export const getProductsByStatus = async (isActive) => {
   try {
-    const productsSnapshot = await firestore.collection('products')
+    const db = admin.firestore();
+    const productsSnapshot = await db.collection('products')
       .where('active', '==', isActive)
       .get();
     
@@ -137,24 +142,25 @@ const getProductsByStatus = async (isActive) => {
 /**
  * Xóa sản phẩm
  */
-const deleteProduct = async (productId) => {
+export const deleteProduct = async (productId) => {
   try {
+    const db = admin.firestore();
     // Kiểm tra sản phẩm có tồn tại không
-    const productDoc = await firestore.collection('products').doc(productId).get();
+    const productDoc = await db.collection('products').doc(productId).get();
     
     if (!productDoc.exists) {
       throw new CustomError('Không tìm thấy sản phẩm', 404);
     }
     
     // Kiểm tra xem sản phẩm đã được sử dụng trong đơn hàng chưa
-    const ordersSnapshot = await firestore.collection('orders')
+    const ordersSnapshot = await db.collection('orders')
       .where('productId', '==', productId)
       .limit(1)
       .get();
     
     if (!ordersSnapshot.empty) {
       // Thay vì xóa, chỉ đánh dấu sản phẩm là không hoạt động
-      await firestore.collection('products').doc(productId).update({
+      await db.collection('products').doc(productId).update({
         active: false,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -166,7 +172,7 @@ const deleteProduct = async (productId) => {
     }
     
     // Xóa sản phẩm nếu chưa được sử dụng
-    await firestore.collection('products').doc(productId).delete();
+    await db.collection('products').doc(productId).delete();
     
     return {
       deleted: true,
@@ -181,7 +187,7 @@ const deleteProduct = async (productId) => {
   }
 };
 
-module.exports = {
+export default {
   createProduct,
   updateProduct,
   getProductById,

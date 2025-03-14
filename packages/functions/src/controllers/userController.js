@@ -1,11 +1,11 @@
-const { firestore } = require('../config/firebaseConfig');
-const { CustomError } = require('../exceptions/customError');
-const userService = require('../services/userService');
+import { admin } from '../config/firebaseConfig.js';
+import { CustomError } from '../exceptions/customError.js';
+import * as userService from '../services/userService.js';
 
 /**
  * Đăng ký tài khoản B2B
  */
-const register = async (ctx) => {
+export const register = async (ctx) => {
   const userData = ctx.request.body;
 
   // Validate dữ liệu đầu vào
@@ -38,7 +38,7 @@ const register = async (ctx) => {
 /**
  * Cập nhật thông tin người dùng
  */
-const updateProfile = async (ctx) => {
+export const updateProfile = async (ctx) => {
   const { uid } = ctx.state.user;
   const updateData = ctx.request.body;
   
@@ -66,7 +66,7 @@ const updateProfile = async (ctx) => {
 /**
  * Lấy thông tin người dùng hiện tại
  */
-const getCurrentUser = async (ctx) => {
+export const getCurrentUser = async (ctx) => {
   const { uid } = ctx.state.user;
   
   const user = await userService.getUserById(uid);
@@ -87,7 +87,7 @@ const getCurrentUser = async (ctx) => {
 /**
  * Lấy danh sách người dùng (admin only)
  */
-const getAllUsers = async (ctx) => {
+export const getAllUsers = async (ctx) => {
   const users = await userService.getAllUsers();
   
   ctx.body = {
@@ -99,7 +99,7 @@ const getAllUsers = async (ctx) => {
 /**
  * Cập nhật trạng thái người dùng (admin only)
  */
-const updateUserStatus = async (ctx) => {
+export const updateUserStatus = async (ctx) => {
   const { userId } = ctx.params;
   const { status } = ctx.request.body;
   
@@ -113,12 +113,4 @@ const updateUserStatus = async (ctx) => {
     success: true,
     message: 'Cập nhật trạng thái người dùng thành công'
   };
-};
-
-module.exports = {
-  register,
-  updateProfile,
-  getCurrentUser,
-  getAllUsers,
-  updateUserStatus
 }; 
