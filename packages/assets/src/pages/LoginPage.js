@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { TextField, Button, Typography, Paper, Container, Box, Alert, Divider, Stack, Chip } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { initializeApp } from 'firebase/app';
 import { auth, db } from '../firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { useSessionPersistence } from '../hooks';
 import useHistory from '../hooks/useHistory';
+import { useSessionStorage } from '../hooks';
 import GoogleIcon from '@mui/icons-material/Google';
 
 const LoginPage = () => {
@@ -18,10 +18,11 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [networkIssue, setNetworkIssue] = useState(false);
+  const navigate = useNavigate();
   const history = useHistory();
   console.log('history object:', history);
   const { login, register, useMockAuth, directLogin, loginWithGoogle } = useAuth();
-  const { redirectToLastVisitedPath } = useSessionPersistence();
+  const { redirectToLastVisitedPath } = useSessionStorage();
 
   // Helper function to set predefined credentials
   const setCredentials = (type) => {
@@ -34,20 +35,26 @@ const LoginPage = () => {
     }
   };
 
-  // Direct login function without error handling
-  const handleDirectLogin = async (type) => {
+  // Hàm xử lý đăng nhập nhanh
+  const handleDirectLogin = (type) => {
     setLoading(true);
+    setError('');
+
     try {
+      // Gọi hàm đăng nhập trực tiếp từ useAuth hook
+      console.log(`Quick login as ${type}`);
+      const user = directLogin(type);
+      console.log('Quick login successful with user:', user);
+      
+      // Điều hướng người dùng dựa trên vai trò
       if (type === 'admin') {
-        await directLogin('admin', 'admin123');
-        redirectToLastVisitedPath();
+        history.push('/admin/dashboard');
       } else {
-        await directLogin('user', 'user123');
-        redirectToLastVisitedPath();
+        history.push('/dashboard');
       }
-    } catch (err) {
-      console.error('Direct login failed:', err);
-      setError(err.message || 'Failed to sign in');
+    } catch (error) {
+      console.error('Quick login error:', error);
+      setError(error.message || 'Quick login failed. Please try with credentials.');
     } finally {
       setLoading(false);
     }
@@ -330,6 +337,65 @@ const LoginPage = () => {
     setTestResult(prev => prev + '\n\nIf any tests failed, you may have network connectivity issues or your Firebase project might not be properly configured.');
   };
 
+  // Restore session from localStorage
+  const handleRestoreSession = () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      console.log("Attempting to restore session from localStorage");
+      
+      const mockUser = localStorage.getItem('mockAuthUser');
+      const mockProfile = localStorage.getItem('mockAuthProfile');
+      const token = localStorage.getItem('authToken');
+      
+      console.log("Found in localStorage:", { 
+        mockUser: !!mockUser, 
+        mockProfile: !!mockProfile, 
+        token: !!token 
+      });
+      
+      if (!mockUser || !mockProfile || !token) {
+        setError('No session data found. Please log in with your credentials.');
+        return;
+      }
+      
+      // Parse and validate data
+      try {
+        const parsedUser = JSON.parse(mockUser);
+        const parsedProfile = JSON.parse(mockProfile);
+        
+        console.log("Session data:", {
+          user: parsedUser ? `${parsedUser.uid} (${parsedUser.email})` : null,
+          profile: parsedProfile ? `${parsedProfile.displayName} (${parsedProfile.role})` : null
+        });
+        
+        if (!parsedUser?.uid || !parsedProfile?.role) {
+          setError('Invalid session data. Please log in again.');
+          return;
+        }
+        
+        // Data looks good, try to direct login
+        console.log("Session data valid, attempting to log in as:", parsedProfile.role);
+        const type = parsedProfile.role === 'admin' ? 'admin' : 'user';
+        handleDirectLogin(type);
+        
+      } catch (parseError) {
+        console.error("Error parsing session data:", parseError);
+        setError('Session data is corrupted. Please log in again.');
+        // Clear corrupted data
+        localStorage.removeItem('mockAuthUser');
+        localStorage.removeItem('mockAuthProfile');
+        localStorage.removeItem('authToken');
+      }
+    } catch (error) {
+      console.error("Error restoring session:", error);
+      setError('Failed to restore session. Please log in again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Run a quick network test when the component mounts
   useEffect(() => {
     testNetworkConnectivity();
@@ -484,14 +550,6 @@ const LoginPage = () => {
               Sign in with Google
             </Button>
             
-            {networkIssue && (
-              <Alert severity="info" sx={{ mt: 1, mb: 2 }}>
-                <Typography variant="body2">
-                  Google login may not work due to API connectivity issues. Please use email/password login instead.
-                </Typography>
-              </Alert>
-            )}
-            
             {/* Quick Login Buttons */}
             <Box sx={{ mt: 3, mb: 2 }}>
               <Typography variant="subtitle2" align="center" sx={{ mb: 2 }}>
@@ -539,6 +597,18 @@ const LoginPage = () => {
                 </Stack>
               </Box>
             )}
+            
+            {/* Nút khôi phục session */}
+            <Button
+              fullWidth
+              variant="outlined"
+              color="warning"
+              onClick={handleRestoreSession}
+              disabled={loading}
+              sx={{ mb: 2 }}
+            >
+              Restore Session
+            </Button>
             
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
               <Link to="/forgot-password" style={{ textDecoration: 'none' }}>

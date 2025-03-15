@@ -10,13 +10,15 @@ export { useUpdateApi } from './useUpdateApi';
 export { useDeleteApi } from './useDeleteApi';
 
 // Auth hooks
-import { useAuth, useSessionPersistence } from './useAuth';
+import { useAuth, AuthProvider } from './useAuth';
 import useRouteProtection from './useRouteProtection';
 import useHistory from './useHistory';
+import useSessionStorage from './useSessionStorage';
 
 export {
   useAuth,
-  useSessionPersistence,
+  AuthProvider,
   useRouteProtection,
-  useHistory
+  useHistory,
+  useSessionStorage
 }; 

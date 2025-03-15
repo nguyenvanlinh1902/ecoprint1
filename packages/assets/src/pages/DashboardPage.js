@@ -16,8 +16,9 @@ import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 
 const DashboardPage = () => {
-  const { userDetails } = useAuth();
+  const { userProfile, currentUser } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [orderStats, setOrderStats] = useState({
     total: 0,
     pending: 0,
@@ -29,28 +30,50 @@ const DashboardPage = () => {
   const [recentTransactions, setRecentTransactions] = useState([]);
 
   useEffect(() => {
+    console.log("DashboardPage - userProfile:", userProfile);
+    console.log("DashboardPage - currentUser:", currentUser);
+  }, [userProfile, currentUser]);
+
+  useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Get recent orders
-        const ordersResponse = await api.get('/api/orders?limit=5');
-        setRecentOrders(ordersResponse.data.data.orders || []);
+        console.log('Fetching dashboard data...');
+        setLoading(true);
+        setError(null);
         
-        // Calculate order stats
-        const allOrders = ordersResponse.data.data.orders || [];
-        const stats = {
-          total: allOrders.length,
-          pending: allOrders.filter(order => order.status === 'pending').length,
-          processing: allOrders.filter(order => order.status === 'processing').length,
-          shipped: allOrders.filter(order => order.status === 'shipped').length,
-          delivered: allOrders.filter(order => order.status === 'delivered').length
-        };
-        setOrderStats(stats);
+        // Get recent orders
+        try {
+          const ordersResponse = await api.get('/api/orders?limit=5');
+          console.log('Orders response:', ordersResponse);
+          setRecentOrders(ordersResponse.data.data?.orders || []);
+          
+          // Calculate order stats
+          const allOrders = ordersResponse.data.data?.orders || [];
+          const stats = {
+            total: allOrders.length,
+            pending: allOrders.filter(order => order.status === 'pending').length,
+            processing: allOrders.filter(order => order.status === 'processing').length,
+            shipped: allOrders.filter(order => order.status === 'shipped').length,
+            delivered: allOrders.filter(order => order.status === 'delivered').length
+          };
+          setOrderStats(stats);
+        } catch (orderError) {
+          console.error('Error fetching orders:', orderError);
+          // Continue with other requests even if orders fail
+        }
         
         // Get recent transactions
-        const transactionsResponse = await api.get('/api/transactions?limit=5');
-        setRecentTransactions(transactionsResponse.data.data.transactions || []);
+        try {
+          const transactionsResponse = await api.get('/api/transactions?limit=5');
+          console.log('Transactions response:', transactionsResponse);
+          setRecentTransactions(transactionsResponse.data.data?.transactions || []);
+        } catch (transactionError) {
+          console.error('Error fetching transactions:', transactionError);
+          // Continue even if transactions fail
+        }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
+        setError('Failed to load dashboard data. Please try again later.');
       } finally {
         setLoading(false);
       }
@@ -60,13 +83,55 @@ const DashboardPage = () => {
   }, []);
 
   if (loading) {
-    return <LinearProgress />;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+        <LinearProgress sx={{ width: '50%' }} />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Paper
+        sx={{
+          p: 3,
+          textAlign: 'center',
+          mt: 3
+        }}
+      >
+        <Typography variant="h6" color="error" gutterBottom>
+          {error}
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => window.location.reload()}
+          sx={{ mt: 2 }}
+        >
+          Retry
+        </Button>
+      </Paper>
+    );
   }
 
   return (
     <Box>
+      {/* Debug info */}
+      {process.env.NODE_ENV === 'development' && (
+        <Paper sx={{ p: 2, mb: 3, bgcolor: '#f9f9f9' }}>
+          <Typography variant="subtitle2" gutterBottom>
+            User data available:
+          </Typography>
+          <Typography variant="body2">
+            Name: {userProfile?.displayName || 'N/A'} | 
+            Email: {userProfile?.email || 'N/A'} | 
+            Role: {userProfile?.role || 'N/A'} | 
+            Balance: {userProfile?.balance || 0}
+          </Typography>
+        </Paper>
+      )}
+
       <Typography variant="h4" gutterBottom>
-        Welcome, {userDetails?.companyName || 'User'}
+        Welcome, {userProfile?.displayName || userProfile?.companyName || 'User'}
       </Typography>
       
       {/* Summary Cards */}
@@ -88,7 +153,7 @@ const DashboardPage = () => {
               <BalanceIcon color="primary" />
             </Box>
             <Typography component="p" variant="h4">
-              {formatCurrency(userDetails?.balance || 0)}
+              {formatCurrency(userProfile?.balance || 0)}
             </Typography>
             <Box sx={{ mt: 'auto' }}>
               <Button component={Link} to="/deposit" size="small" variant="outlined">

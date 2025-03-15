@@ -11,9 +11,6 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import api from '../services/api';
-import { useLocation } from 'react-router-dom';
-import { useCallback } from 'react';
-import useHistory from './useHistory';
 
 const AuthContext = createContext();
 
@@ -47,36 +44,74 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [useMockAuth, setUseMockAuth] = useState(false);
+  const [provider, setProvider] = useState(null); // 'firebase' or 'mock'
+  
+  // Log auth state changes for debugging
+  useEffect(() => {
+    console.log("Auth state updated:", { 
+      currentUser: currentUser ? `${currentUser.uid} (${currentUser.email})` : null,
+      userProfile: userProfile ? `${userProfile.displayName} (${userProfile.role})` : null,
+      loading, 
+      provider 
+    });
+  }, [currentUser, userProfile, loading, provider]);
 
   // Listen for auth state changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      
-      if (user) {
-        try {
-          // Get user profile from Firestore
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists()) {
-            setUserProfile(userDoc.data());
-          }
-          
-          // Get and set token for API calls
-          const token = await user.getIdToken();
-          api.setAuthToken(token);
-        } catch (error) {
-          console.error('Error fetching user profile:', error);
-        }
-      } else {
-        setUserProfile(null);
-        api.clearAuthToken();
-      }
-      
-      setLoading(false);
-    });
+    console.log("Setting up auth listeners...");
+    let unsubscribe = () => {};
 
-    return unsubscribe;
+    // First try to restore mock auth
+    if (restoreMockAuth()) {
+      console.log("Mock auth restored successfully");
+      return () => {}; // No cleanup needed for mock auth
+    }
+
+    // Otherwise set up Firebase auth listener
+    try {
+      console.log("Setting up Firebase auth listener");
+      unsubscribe = onAuthStateChanged(auth, async (user) => {
+        console.log("Firebase auth state changed:", user ? user.uid : 'no user');
+        setCurrentUser(user);
+        
+        if (user) {
+          try {
+            // Get user profile from Firestore
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              console.log("User profile loaded from Firestore:", userData.displayName);
+              setUserProfile(userData);
+              setProvider('firebase');
+            } else {
+              console.log("No user profile found in Firestore");
+              setUserProfile(null);
+            }
+            
+            // Get and set token for API calls
+            const token = await user.getIdToken();
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            localStorage.setItem('authToken', token);
+          } catch (error) {
+            console.error('Error fetching user profile:', error);
+            setUserProfile(null);
+          }
+        } else {
+          console.log("No Firebase user, clearing profile");
+          setUserProfile(null);
+          delete api.defaults.headers.common['Authorization'];
+          localStorage.removeItem('authToken');
+          setProvider(null);
+        }
+        
+        setLoading(false);
+      });
+    } catch (error) {
+      console.error("Error setting up Firebase auth listener:", error);
+      setLoading(false);
+    }
+
+    return () => unsubscribe();
   }, []);
 
   // Register a new user
@@ -121,48 +156,79 @@ export function AuthProvider({ children }) {
   };
 
   // Direct login with hardcoded accounts - skips all Firebase components
-  const directLogin = (email, password) => {
-    console.log('Attempting direct login with:', email);
+  const directLogin = (type = 'admin') => {
+    console.log('Attempting direct login with type:', type);
     
-    if (
-      (email === 'admin' && password === 'admin123') || 
-      (email === 'user' && password === 'user123')
-    ) {
-      // Get the appropriate user data
-      const isAdmin = email === 'admin';
-      const userData = isAdmin ? MOCK_ACCOUNTS.admin.userData : MOCK_ACCOUNTS.user.userData;
-      
-      console.log('Direct login successful for:', email);
-      
-      // Create a mock user object
-      const mockUser = {
-        uid: userData.uid,
-        email: userData.email,
-        displayName: userData.displayName,
-        getIdToken: () => Promise.resolve('mock-token-for-development')
-      };
-      
-      // Set current user and profile in state
-      setCurrentUser(mockUser);
-      setUserProfile(userData);
-      setUseMockAuth(true);
-      
-      // Store auth info in localStorage for persistence
-      localStorage.setItem('mockAuthUser', JSON.stringify(mockUser));
-      localStorage.setItem('mockAuthProfile', JSON.stringify(userData));
-      localStorage.setItem('userRole', userData.role);
-      localStorage.setItem('authToken', 'mock-token-for-development');
-      
-      return mockUser;
+    // Chọn loại người dùng
+    const isAdmin = type === 'admin';
+    
+    // Tạo dữ liệu người dùng phong phú hơn
+    const userData = {
+      uid: isAdmin ? 'admin-uid-123' : 'user-uid-456',
+      email: isAdmin ? 'admin@example.com' : 'user@example.com',
+      displayName: isAdmin ? 'Admin User' : 'Regular User',
+      role: isAdmin ? 'admin' : 'user',
+      status: 'active',
+      balance: 5000,  // Thêm balance cho việc hiển thị
+      companyName: isAdmin ? 'Admin Company' : 'User Company',
+      phone: '123456789',
+      // Thêm thông tin chi tiết hơn
+      address: {
+        street: '123 Main St',
+        city: isAdmin ? 'Admin City' : 'User City',
+        state: 'ST',
+        zip: '12345',
+        country: 'Country'
+      },
+      settings: {
+        notifications: true,
+        twoFactorAuth: false,
+        language: 'en'
+      },
+      // Thêm dữ liệu thống kê
+      stats: {
+        ordersCount: isAdmin ? 15 : 5,
+        totalSpent: isAdmin ? 12500 : 3500,
+        lastLogin: new Date().toISOString()
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    console.log('Direct login using mock data:', userData);
+    
+    // Create a mock user object
+    const mockUser = {
+      uid: userData.uid,
+      email: userData.email,
+      displayName: userData.displayName,
+      getIdToken: () => Promise.resolve('mock-token-for-development')
+    };
+    
+    // Set current user and profile in state
+    setCurrentUser(mockUser);
+    setUserProfile(userData);
+    setProvider('mock');
+    
+    // Store auth info in localStorage for persistence
+    localStorage.setItem('mockAuthUser', JSON.stringify(mockUser));
+    localStorage.setItem('mockAuthProfile', JSON.stringify(userData));
+    localStorage.setItem('userRole', userData.role);
+    localStorage.setItem('authToken', 'mock-token-for-development');
+    
+    // Cập nhật API headers
+    if (api.defaults && api.defaults.headers) {
+      api.defaults.headers.common['Authorization'] = `Bearer mock-token-for-development`;
     }
     
-    throw new Error('Invalid username or password');
+    return mockUser;
   };
 
   // Try mock login with hardcoded accounts when Firebase fails
-  const tryMockLogin = (email, password) => {
+  const tryMockLogin = (email) => {
     try {
-      return directLogin(email, password);
+      const type = email === 'admin' ? 'admin' : 'user';
+      return directLogin(type);
     } catch (error) {
       console.error('Mock login failed:', error);
       throw error;
@@ -177,7 +243,7 @@ export function AuthProvider({ children }) {
       // If using hardcoded credentials, skip Firebase entirely
       if (email === 'admin' || email === 'user') {
         console.log('Using hardcoded credentials, bypassing Firebase');
-        return directLogin(email, password);
+        return directLogin(email);
       }
       
       try {
@@ -225,7 +291,7 @@ export function AuthProvider({ children }) {
         // If Firebase fails with network error, try mock authentication
         if (firebaseError.code === 'auth/network-request-failed') {
           console.log('Network issue detected, trying mock authentication...');
-          return tryMockLogin(email, password);
+          return tryMockLogin(email);
         }
         
         // Otherwise rethrow the error
@@ -333,17 +399,32 @@ export function AuthProvider({ children }) {
       
       if (mockUser && mockProfile) {
         try {
-          setCurrentUser(JSON.parse(mockUser));
-          setUserProfile(JSON.parse(mockProfile));
-          setUseMockAuth(true);
-          setLoading(false);
-          console.log('Restored mock authentication session');
+          console.log('Restoring mock auth from localStorage');
+          const parsedUser = JSON.parse(mockUser);
+          const parsedProfile = JSON.parse(mockProfile);
+          
+          if (parsedUser && parsedProfile) {
+            setCurrentUser(parsedUser);
+            setUserProfile(parsedProfile);
+            setProvider('mock');
+            console.log('Restored mock authentication session successfully');
+          } else {
+            console.error('Invalid mockUser or mockProfile data in localStorage');
+            cleanupMockAuth();
+          }
         } catch (error) {
           console.error('Error restoring mock auth:', error);
-          localStorage.removeItem('mockAuthUser');
-          localStorage.removeItem('mockAuthProfile');
+          cleanupMockAuth();
         }
       }
+      setLoading(false);
+    };
+    
+    const cleanupMockAuth = () => {
+      localStorage.removeItem('mockAuthUser');
+      localStorage.removeItem('mockAuthProfile');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('authToken');
     };
     
     checkMockAuth();
@@ -352,25 +433,52 @@ export function AuthProvider({ children }) {
   // Sign out
   const signOut = async () => {
     try {
-      if (useMockAuth) {
-        // If using mock auth, just reset the state and clear localStorage
-        setCurrentUser(null);
-        setUserProfile(null);
-        setUseMockAuth(false);
-        localStorage.removeItem('mockAuthUser');
-        localStorage.removeItem('mockAuthProfile');
-        localStorage.removeItem('userRole');
-        localStorage.removeItem('authToken');
-        console.log('Signed out from mock authentication');
-      } else {
-        // Otherwise use Firebase signOut
-        await firebaseSignOut(auth);
-        setCurrentUser(null);
-        setUserProfile(null);
+      console.log('Signing out user...');
+      
+      // Save references to what authentication method we're using before clearing
+      const wasMockAuth = provider === 'mock';
+      
+      // Xóa tất cả thông tin đăng nhập từ localStorage
+      localStorage.removeItem('mockAuthUser');
+      localStorage.removeItem('mockAuthProfile');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('authToken');
+      
+      // Xóa token từ API service
+      if (api.clearAuthToken) {
+        api.clearAuthToken();
       }
+      
+      // Nếu sử dụng xác thực giả lập
+      if (wasMockAuth) {
+        console.log('Signing out from mock authentication');
+        setProvider(null);
+      } else {
+        // Đăng xuất khỏi Firebase Auth
+        try {
+          console.log('Signing out from Firebase Auth');
+          await firebaseSignOut(auth);
+          console.log('Firebase sign out successful');
+        } catch (firebaseError) {
+          console.error('Firebase sign out error:', firebaseError);
+          // Tiếp tục xử lý ngay cả khi Firebase lỗi
+        }
+      }
+      
+      // Đặt lại các trạng thái người dùng
+      setCurrentUser(null);
+      setUserProfile(null);
+      
+      console.log('Sign out completed successfully');
+      return true;
     } catch (error) {
       console.error('Sign out error:', error);
-      throw new Error(error.message || 'Error signing out');
+      // Vẫn đặt lại các trạng thái người dùng ngay cả khi có lỗi
+      setCurrentUser(null);
+      setUserProfile(null);
+      setProvider(null);
+      
+      return false;
     }
   };
 
@@ -390,7 +498,7 @@ export function AuthProvider({ children }) {
         throw new Error('No authenticated user');
       }
       
-      if (useMockAuth) {
+      if (provider === 'mock') {
         // For mock auth, just update the state and localStorage
         const updatedProfile = {
           ...userProfile,
@@ -433,7 +541,7 @@ export function AuthProvider({ children }) {
     signOut,
     resetPassword,
     updateProfile,
-    useMockAuth
+    provider
   };
 
   return (
@@ -447,34 +555,73 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
-/**
- * Hook to preserve authentication state between page reloads
- * and maintain page navigation history
- */
-export const useSessionPersistence = () => {
-  const { currentUser, loading } = useAuth();
-  const history = useHistory();
-  const location = useLocation();
-  
-  useEffect(() => {
-    // Store the last visited non-auth path in session storage
-    if (!loading && location.pathname !== '/login' && 
-        location.pathname !== '/register' && 
-        location.pathname !== '/reset-password') {
-      sessionStorage.setItem('lastVisitedPath', location.pathname);
-    }
-  }, [loading, location, currentUser]);
-  
-  const redirectToLastVisitedPath = useCallback(() => {
-    const lastPath = sessionStorage.getItem('lastVisitedPath');
-    if (lastPath) {
-      history.replace(lastPath);
+const restoreMockAuth = () => {
+  console.log("Attempting to restore mock auth...");
+  try {
+    // Get stored mock auth data
+    const storedUser = localStorage.getItem('mockAuthUser');
+    const storedProfile = localStorage.getItem('mockAuthProfile');
+
+    // Debug what was found
+    console.log("Found mockAuthUser:", storedUser);
+    console.log("Found mockAuthProfile:", storedProfile);
+
+    // Only process if both exist
+    if (storedUser && storedProfile) {
+      try {
+        // Parse data
+        const parsedUser = JSON.parse(storedUser);
+        const parsedProfile = JSON.parse(storedProfile);
+
+        // Add additional debug logs
+        console.log("Parsed user:", parsedUser);
+        console.log("Parsed profile:", parsedProfile);
+
+        // Make sure we have the required fields
+        if (parsedUser && parsedUser.uid && parsedProfile) {
+          console.log("Setting mock auth state with parsed data");
+          // Set the state with parsed data
+          setCurrentUser(parsedUser);
+          setUserProfile(parsedProfile);
+          setProvider('mock');
+          setLoading(false);
+          
+          // Also set token in API headers if available
+          const token = localStorage.getItem('authToken');
+          if (token) {
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          }
+          
+          return true;
+        } else {
+          console.warn("Missing required fields in mock auth data");
+          cleanupLocalStorage(); // Clean invalid data
+          return false;
+        }
+      } catch (parseError) {
+        console.error("Error parsing mock auth data:", parseError);
+        cleanupLocalStorage(); // Clean invalid data
+        return false;
+      }
     } else {
-      history.replace('/');
+      console.log("No mock auth data found in localStorage");
+      return false;
     }
-  }, [history]);
-  
-  return {
-    redirectToLastVisitedPath
-  };
+  } catch (error) {
+    console.error("Error restoring mock auth:", error);
+    return false;
+  }
+};
+
+// Helper to clean up localStorage items
+const cleanupLocalStorage = () => {
+  console.log("Cleaning up localStorage auth items");
+  try {
+    localStorage.removeItem('mockAuthUser');
+    localStorage.removeItem('mockAuthProfile');
+    localStorage.removeItem('authToken');
+    api.defaults.headers.common['Authorization'] = '';
+  } catch (error) {
+    console.error("Error cleaning localStorage:", error);
+  }
 }; 

@@ -67,7 +67,7 @@ const AdminLayout = ({ children }) => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsEl, setNotificationsEl] = useState(null);
-  const { userDetails, logout } = useAuth();
+  const { userDetails, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
@@ -91,8 +91,27 @@ const AdminLayout = ({ children }) => {
   };
 
   const handleLogout = async () => {
-    await logout();
-    navigate('/login');
+    try {
+      console.log('AdminLayout: Attempting to log out...');
+      const success = await signOut();
+      
+      if (success) {
+        console.log('AdminLayout: Logout successful, redirecting to login page');
+        // Đóng menu nếu đang mở
+        if (anchorEl) {
+          setAnchorEl(null);
+        }
+        
+        // Điều hướng về trang đăng nhập
+        navigate('/login', { replace: true });
+      } else {
+        console.error('AdminLayout: Logout was not successful');
+        alert('An error occurred during logout. Please try again.');
+      }
+    } catch (error) {
+      console.error('AdminLayout: Error during logout:', error);
+      alert('An error occurred during logout. Please try again.');
+    }
   };
 
   const menuItems = [

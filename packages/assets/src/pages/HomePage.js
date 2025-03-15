@@ -12,15 +12,24 @@ import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 
 const HomePage = () => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, signOut } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     try {
-      await logout();
-      navigate('/login');
+      console.log('HomePage: Attempting to log out...');
+      const success = await signOut();
+      
+      if (success) {
+        console.log('HomePage: Logout successful, redirecting to login page');
+        navigate('/login', { replace: true });
+      } else {
+        console.error('HomePage: Logout was not successful');
+        alert('An error occurred during logout. Please try again.');
+      }
     } catch (error) {
       console.error('Logout failed:', error);
+      alert('An error occurred during logout. Please try again.');
     }
   };
 

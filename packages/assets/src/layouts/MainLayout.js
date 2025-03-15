@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -17,7 +17,12 @@ import {
   MenuItem,
   Tooltip,
   Badge,
-  Container
+  Container,
+  Button,
+  CircularProgress,
+  Alert,
+  AlertTitle,
+  Paper
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 
@@ -36,14 +41,24 @@ const PersonIcon = () => <span>👤</span>;
 const LogoutIcon = () => <span>🚪</span>;
 const SettingsIcon = () => <span>⚙️</span>;
 const NotificationsIcon = () => <span>🔔</span>;
+const RefreshIcon = () => <span>🔄</span>;
 
-const MainLayout = () => {
+const MainLayout = ({ children }) => {
   const { userProfile, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Kiểm tra profile
+  useEffect(() => {
+    console.log('MainLayout userProfile:', userProfile);
+    if (!userProfile) {
+      console.log('MainLayout: userProfile is null or undefined');
+    }
+  }, [userProfile]);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -67,12 +82,102 @@ const MainLayout = () => {
 
   const handleLogout = async () => {
     try {
-      await signOut();
-      navigate('/login');
+      setLoading(true);
+      console.log('Attempting to log out...');
+      const success = await signOut();
+      
+      if (success) {
+        console.log('Logout successful, redirecting to login page');
+        // Đóng menu nếu đang mở
+        if (anchorEl) {
+          handleProfileMenuClose();
+        }
+        
+        // Điều hướng về trang đăng nhập
+        navigate('/login', { replace: true });
+      } else {
+        console.error('Logout was not successful');
+        alert('An error occurred during logout. Please try again.');
+      }
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('Error during logout:', error);
+      alert('An error occurred during logout. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  // Fallback UI if userProfile is not available
+  if (!userProfile) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <Box sx={{ textAlign: 'center', maxWidth: 600, p: 3 }}>
+          <Alert severity="error" sx={{ mb: 3 }}>
+            <AlertTitle>User Profile Missing</AlertTitle>
+            There was an issue loading your profile data
+          </Alert>
+          
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Authentication Problem
+            </Typography>
+            <Typography variant="body1" color="text.secondary" paragraph>
+              Your profile information could not be loaded. This may be due to:
+            </Typography>
+            <ul style={{ textAlign: 'left' }}>
+              <li>Session expiration</li>
+              <li>Account deactivation</li>
+              <li>Server connectivity issues</li>
+              <li>Data corruption</li>
+            </ul>
+          </Paper>
+          
+          {/* Debug information in development mode */}
+          {process.env.NODE_ENV === 'development' && (
+            <Paper sx={{ p: 3, mb: 3, bgcolor: '#f5f5f5' }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Debug Information:
+              </Typography>
+              <Box component="pre" sx={{ 
+                textAlign: 'left', 
+                fontSize: '0.75rem',
+                p: 1,
+                bgcolor: '#f0f0f0',
+                borderRadius: 1,
+                overflowX: 'auto'
+              }}>
+                {JSON.stringify({
+                  currentPath: location.pathname,
+                  authState: {
+                    isAdmin: isAdmin,
+                    userProfile: userProfile || 'null',
+                  }
+                }, null, 2)}
+              </Box>
+            </Paper>
+          )}
+          
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Button 
+              variant="outlined" 
+              onClick={() => window.location.reload()}
+              startIcon={<RefreshIcon />}
+            >
+              Refresh Page
+            </Button>
+            <Button 
+              variant="contained" 
+              onClick={handleLogout}
+              disabled={loading}
+              startIcon={<LogoutIcon />}
+            >
+              {loading ? 'Logging out...' : 'Logout and try again'}
+            </Button>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
 
   const userMenuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
@@ -348,7 +453,41 @@ const MainLayout = () => {
       {/* Main Content */}
       <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
         <Container maxWidth={false}>
-          <Outlet />
+          {/* Debug userProfile data */}
+          {process.env.NODE_ENV === 'development' && (
+            <Box sx={{ mb: 3, p: 2, border: '1px dashed #ccc', display: 'none' }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Debug User Data:
+              </Typography>
+              <pre style={{ fontSize: '0.75rem' }}>
+                {JSON.stringify({ userProfile }, null, 2)}
+              </pre>
+            </Box>
+          )}
+          
+          {/* Debug info in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(232, 244, 253, 0.8)' }}>
+              <Typography variant="subtitle2" gutterBottom>Debug Panel:</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <Box>
+                  <Typography variant="caption">User:</Typography>
+                  <Typography variant="body2">{userProfile?.displayName} ({userProfile?.role})</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption">Balance:</Typography>
+                  <Typography variant="body2">${userProfile?.balance || 0}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="caption">Current Path:</Typography>
+                  <Typography variant="body2">{location.pathname}</Typography>
+                </Box>
+              </Box>
+            </Paper>
+          )}
+          
+          {/* Render children directly instead of using Outlet */}
+          {children}
         </Container>
       </Box>
     </Box>

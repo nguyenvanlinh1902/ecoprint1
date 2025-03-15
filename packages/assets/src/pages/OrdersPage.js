@@ -4,7 +4,7 @@ import {
   Typography, Box, Paper, Grid, Tabs, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, IconButton,
   Button, TextField, InputAdornment, MenuItem, Select,
-  FormControl, InputLabel, Pagination, CircularProgress
+  FormControl, InputLabel, Pagination, CircularProgress, Alert
 } from '@mui/material';
 import {
   Visibility as VisibilityIcon,
@@ -15,8 +15,10 @@ import {
 import api from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
+import { useAuth } from '../hooks/useAuth';
 
 const OrdersPage = () => {
+  const { userProfile, currentUser } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -44,6 +46,12 @@ const OrdersPage = () => {
   
   const statusFilters = ['', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'];
   
+  // Log user data for debugging
+  useEffect(() => {
+    console.log("OrdersPage - userProfile:", userProfile);
+    console.log("OrdersPage - currentUser:", currentUser);
+  }, [userProfile, currentUser]);
+  
   const fetchOrders = async () => {
     try {
       setLoading(true);
@@ -66,6 +74,11 @@ const OrdersPage = () => {
       params.append('sort', sortField);
       params.append('direction', sortDirection);
       
+      // Add user ID filter for regular users (not admin)
+      if (userProfile && userProfile.role !== 'admin') {
+        params.append('userId', userProfile.uid);
+      }
+      
       const response = await api.get(`/api/orders?${params.toString()}`);
       
       setOrders(response.data.data.orders || []);
@@ -84,8 +97,10 @@ const OrdersPage = () => {
   };
   
   useEffect(() => {
-    fetchOrders();
-  }, [page, tabValue, sortBy]);
+    if (userProfile) {
+      fetchOrders();
+    }
+  }, [page, tabValue, sortBy, userProfile]);
   
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -108,18 +123,41 @@ const OrdersPage = () => {
   
   return (
     <Box>
+      {/* Debug info */}
+      {process.env.NODE_ENV === 'development' && (
+        <Paper sx={{ p: 2, mb: 3, bgcolor: '#f9f9f9' }}>
+          <Typography variant="subtitle2" gutterBottom>
+            User data available:
+          </Typography>
+          <Typography variant="body2">
+            Name: {userProfile?.displayName || 'N/A'} | 
+            Email: {userProfile?.email || 'N/A'} | 
+            Role: {userProfile?.role || 'N/A'} | 
+            User ID: {userProfile?.uid || 'N/A'}
+          </Typography>
+        </Paper>
+      )}
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Orders</Typography>
         <Box>
-          <Button
-            variant="outlined"
-            component={Link}
-            to="/orders/import"
-            startIcon={<ImportIcon />}
-            sx={{ mr: 2 }}
-          >
-            Import Orders
-          </Button>
+          {userProfile?.role === 'admin' && (
+            <Button
+              variant="outlined"
+              component={Link}
+              to="/orders/import"
+              startIcon={<ImportIcon />}
+              sx={{ mr: 2 }}
+            >
+              Import Orders
+            </Button>
+          )}
           <Button
             variant="contained"
             component={Link}
