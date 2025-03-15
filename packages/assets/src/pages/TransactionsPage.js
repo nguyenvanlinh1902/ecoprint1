@@ -12,10 +12,10 @@ import {
 import api from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../helpers/formatters';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const TransactionsPage = () => {
-  const { userDetails } = useAuth();
+  const { userProfile } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -106,7 +106,7 @@ const TransactionsPage = () => {
             Current Balance:
           </Typography>
           <Typography variant="h6" color="primary">
-            {formatCurrency(userDetails?.balance || 0)}
+            {formatCurrency(userProfile?.balance || 0)}
           </Typography>
         </Box>
       </Box>

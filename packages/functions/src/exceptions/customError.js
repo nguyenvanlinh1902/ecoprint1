@@ -1,23 +1,27 @@
-export class CustomError extends Error {
-  constructor(message, statusCode = 500, errorCode = null) {
+/**
+ * Lớp lỗi tùy chỉnh cho xử lý lỗi thống nhất
+ */
+class CustomError extends Error {
+  constructor(message, status = 500) {
     super(message);
-    this.statusCode = statusCode;
-    this.errorCode = errorCode || `ERR_${statusCode}`;
-    this.name = this.constructor.name;
-    Error.captureStackTrace(this, this.constructor);
+    this.name = 'CustomError';
+    this.status = status;
   }
 }
 
-export const errorHandler = async (ctx, next) => {
+/**
+ * Middleware xử lý lỗi cho Koa
+ */
+const errorHandler = async (ctx, next) => {
   try {
     await next();
   } catch (err) {
     if (err instanceof CustomError) {
-      ctx.status = err.statusCode;
+      ctx.status = err.status;
       ctx.body = {
         success: false,
         error: {
-          code: err.errorCode,
+          code: `ERR_${err.status}`,
           message: err.message
         }
       };
@@ -27,10 +31,15 @@ export const errorHandler = async (ctx, next) => {
       ctx.body = {
         success: false,
         error: {
-          code: 'ERR_SERVER',
-          message: 'Lỗi máy chủ'
+          code: 'ERR_INTERNAL',
+          message: 'Internal Server Error'
         }
       };
     }
   }
+};
+
+export {
+  CustomError,
+  errorHandler
 }; 

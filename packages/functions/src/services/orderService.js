@@ -1,4 +1,4 @@
-import { admin, db, storage } from '../config/firebaseConfig.js';
+import { admin, db, storage } from '../config/firebase.js';
 import { CustomError } from '../exceptions/customError.js';
 import productService from './productService.js';
 import path from 'path';

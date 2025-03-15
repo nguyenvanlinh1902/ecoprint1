@@ -3,36 +3,14 @@ import react from '@vitejs/plugin-react';
 import * as path from 'path';
 
 // Cấu hình cổng
-const fePort = process.env.FRONTEND_PORT || 3000;
-const bePort = 5011; // Cập nhật theo firebase.json
+const fePort = process.env.FRONTEND_PORT || 3001;
 
-// Cấu hình proxy
-const proxyOptions = {
-  target: `http://127.0.0.1:5011`,
-  changeOrigin: false,
-  secure: true,
-  ws: false,
-  configure: (proxy, _options) => {
-    proxy.on('error', (err, _req, _res) => {
-      console.log('proxy error', err);
-    });
-    proxy.on('proxyReq', (proxyReq, req, _res) => {
-      console.log('Sending Request to the Target:', req.method, req.url);
-    });
-    proxy.on('proxyRes', (proxyRes, req, _res) => {
-      console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
-    });
-  }
-};
+// Base URL cho backend
+const backendBaseUrl = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/backend';
 
-// Các đường dẫn API cần proxy
+// Cấu hình proxy đơn giản hơn
 const proxyConfig = {
-  '^/api(/|(\\?.*)?$)': proxyOptions,
-  '^/auth(/|(\\?.*)?$)': proxyOptions,
-  '^/functions(/|(\\?.*)?$)': proxyOptions,
-  '^/clientApi(/|(\\?.*)?$)': proxyOptions,
-  '^/apiSa(/|(\\?.*)?$)': proxyOptions,
-  '^/authSa(/|(\\?.*)?$)': proxyOptions
+  '/api': backendBaseUrl
 };
 
 // https://vitejs.dev/config/
@@ -68,6 +46,17 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@components': path.resolve(__dirname, './src/components'),
+      '@pages': path.resolve(__dirname, './src/pages'),
+      '@layouts': path.resolve(__dirname, './src/layouts'),
+      '@services': path.resolve(__dirname, './src/services'),
+      '@contexts': path.resolve(__dirname, './src/contexts'),
+      '@hooks': path.resolve(__dirname, './src/hooks'),
+      '@helpers': path.resolve(__dirname, './src/helpers'),
+      '@styles': path.resolve(__dirname, './src/styles'),
+      '@resources': path.resolve(__dirname, './src/resources'),
+      '@config': path.resolve(__dirname, './src/config'),
+      '@const': path.resolve(__dirname, './src/const'),
       '@functions': path.resolve(__dirname, '../functions/src')
     }
   },
@@ -75,7 +64,7 @@ export default defineConfig({
   // Cấu hình server dev
   server: {
     host: 'localhost',
-    port: 3001,
+    port: fePort,
     proxy: proxyConfig
   },
   

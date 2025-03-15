@@ -1,116 +1,253 @@
-import { admin } from '../config/firebaseConfig.js';
+import { admin } from '../config/firebase.js';
 import { CustomError } from '../exceptions/customError.js';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 import * as userService from '../services/userService.js';
 
+// Secret key cho JWT
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
 /**
- * Đăng ký tài khoản B2B
+ * Đăng ký người dùng mới 
  */
 export const register = async (ctx) => {
-  const userData = ctx.request.body;
-
-  // Validate dữ liệu đầu vào
-  if (!userData.email || !userData.password || !userData.companyName || !userData.phone) {
-    throw new CustomError('Thông tin đăng ký không đầy đủ', 400);
-  }
-
   try {
-    const newUser = await userService.createUser(userData);
+    const { email, password, companyName, phone } = ctx.request.body;
+    
+    // Kiểm tra dữ liệu đầu vào
+    if (!email || !password || !companyName || !phone) {
+      throw new CustomError('Thông tin không đầy đủ', 400);
+    }
+    
+    // Kiểm tra email đã tồn tại chưa
+    const existingUser = await userService.getUserByEmail(email);
+    if (existingUser) {
+      throw new CustomError('Email đã được sử dụng', 400);
+    }
+    
+    // Tạo người dùng mới
+    const newUser = await userService.createUser({
+      email,
+      password,
+      companyName,
+      phone
+    });
     
     ctx.status = 201;
     ctx.body = {
       success: true,
-      message: 'Đăng ký thành công, vui lòng chờ admin phê duyệt',
+      message: 'Đăng ký thành công',
       data: {
-        uid: newUser.uid,
+        id: newUser.uid,
         email: newUser.email,
         companyName: newUser.companyName,
+        phone: newUser.phone,
+        role: newUser.role,
         status: newUser.status
       }
     };
   } catch (error) {
-    if (error.code === 'auth/email-already-exists') {
-      throw new CustomError('Email đã tồn tại', 400);
-    }
-    throw error;
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
   }
-};
-
-/**
- * Cập nhật thông tin người dùng
- */
-export const updateProfile = async (ctx) => {
-  const { uid } = ctx.state.user;
-  const updateData = ctx.request.body;
-  
-  // Chỉ cho phép cập nhật một số trường
-  const allowedFields = ['companyName', 'phone'];
-  const filteredData = Object.keys(updateData)
-    .filter(key => allowedFields.includes(key))
-    .reduce((obj, key) => {
-      obj[key] = updateData[key];
-      return obj;
-    }, {});
-  
-  if (Object.keys(filteredData).length === 0) {
-    throw new CustomError('Không có dữ liệu hợp lệ để cập nhật', 400);
-  }
-  
-  await userService.updateUserProfile(uid, filteredData);
-  
-  ctx.body = {
-    success: true,
-    message: 'Cập nhật thông tin thành công'
-  };
 };
 
 /**
  * Lấy thông tin người dùng hiện tại
  */
 export const getCurrentUser = async (ctx) => {
-  const { uid } = ctx.state.user;
-  
-  const user = await userService.getUserById(uid);
-  
-  if (!user) {
-    throw new CustomError('Không tìm thấy thông tin người dùng', 404);
+  try {
+    const user = ctx.state.user;
+    
+    ctx.body = {
+      success: true,
+      data: {
+        id: user.id,
+        email: user.email,
+        companyName: user.companyName,
+        phone: user.phone,
+        role: user.role,
+        status: user.status,
+        balance: user.balance
+      }
+    };
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
   }
-  
-  // Loại bỏ thông tin nhạy cảm
-  delete user.password;
-  
-  ctx.body = {
-    success: true,
-    data: user
-  };
 };
 
 /**
- * Lấy danh sách người dùng (admin only)
+ * Cập nhật thông tin cá nhân
+ */
+export const updateProfile = async (ctx) => {
+  try {
+    const userId = ctx.state.user.id;
+    const { companyName, phone } = ctx.request.body;
+    
+    // Chỉ cho phép cập nhật một số trường
+    const updateData = {};
+    if (companyName) updateData.companyName = companyName;
+    if (phone) updateData.phone = phone;
+    
+    if (Object.keys(updateData).length === 0) {
+      throw new CustomError('Không có thông tin để cập nhật', 400);
+    }
+    
+    const updatedUser = await userService.updateUser(userId, updateData);
+    
+    ctx.body = {
+      success: true,
+      message: 'Cập nhật thông tin thành công',
+      data: {
+        id: updatedUser.id,
+        email: updatedUser.email,
+        companyName: updatedUser.companyName,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        status: updatedUser.status
+      }
+    };
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
+  }
+};
+
+/**
+ * Lấy danh sách tất cả người dùng (admin only)
  */
 export const getAllUsers = async (ctx) => {
-  const users = await userService.getAllUsers();
-  
-  ctx.body = {
-    success: true,
-    data: users
-  };
+  try {
+    const users = await userService.getAllUsers();
+    
+    ctx.body = {
+      success: true,
+      data: users
+    };
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
+  }
 };
 
 /**
- * Cập nhật trạng thái người dùng (admin only)
+ * Lấy thông tin người dùng theo ID
  */
-export const updateUserStatus = async (ctx) => {
-  const { userId } = ctx.params;
-  const { status } = ctx.request.body;
-  
-  if (!['pending', 'active', 'inactive'].includes(status)) {
-    throw new CustomError('Trạng thái không hợp lệ', 400);
+export const getUserById = async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    
+    // Kiểm tra quyền truy cập
+    const currentUser = ctx.state.user;
+    if (currentUser.role !== 'admin' && currentUser.id !== id) {
+      throw new CustomError('Không có quyền truy cập thông tin người dùng này', 403);
+    }
+    
+    const user = await userService.getUserById(id);
+    
+    if (!user) {
+      throw new CustomError('Không tìm thấy người dùng', 404);
+    }
+    
+    ctx.body = {
+      success: true,
+      data: user
+    };
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
   }
-  
-  await userService.updateUserStatus(userId, status);
-  
-  ctx.body = {
-    success: true,
-    message: 'Cập nhật trạng thái người dùng thành công'
-  };
+};
+
+/**
+ * Cập nhật thông tin người dùng theo ID (admin only)
+ */
+export const updateUser = async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    const updateData = ctx.request.body;
+    
+    // Kiểm tra quyền truy cập
+    const currentUser = ctx.state.user;
+    if (currentUser.role !== 'admin' && currentUser.id !== id) {
+      throw new CustomError('Không có quyền cập nhật thông tin người dùng này', 403);
+    }
+    
+    // Người dùng thường chỉ được cập nhật một số trường
+    if (currentUser.role !== 'admin') {
+      const allowedFields = ['companyName', 'phone'];
+      const updatedFields = {};
+      
+      Object.keys(updateData).forEach(key => {
+        if (allowedFields.includes(key)) {
+          updatedFields[key] = updateData[key];
+        }
+      });
+      
+      if (Object.keys(updatedFields).length === 0) {
+        throw new CustomError('Không có thông tin hợp lệ để cập nhật', 400);
+      }
+      
+      const updatedUser = await userService.updateUser(id, updatedFields);
+      
+      ctx.body = {
+        success: true,
+        message: 'Cập nhật thông tin thành công',
+        data: updatedUser
+      };
+    } else {
+      // Admin có thể cập nhật tất cả các trường
+      const updatedUser = await userService.updateUser(id, updateData);
+      
+      ctx.body = {
+        success: true,
+        message: 'Cập nhật thông tin thành công',
+        data: updatedUser
+      };
+    }
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
+  }
+};
+
+/**
+ * Xóa người dùng theo ID (admin only)
+ */
+export const deleteUser = async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    
+    await userService.deleteUser(id);
+    
+    ctx.body = {
+      success: true,
+      message: 'Xóa người dùng thành công'
+    };
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
+  }
 }; 

@@ -1,11 +1,18 @@
-import { admin } from '../config/firebaseConfig.js';
+import admin from 'firebase-admin';
 import { CustomError } from '../exceptions/customError.js';
+
+// Không khởi tạo db tại thời điểm import
+// Thay vào đó, tạo helper function để lấy db khi cần
+const getDb = () => admin.firestore();
 
 /**
  * Tạo người dùng mới trong Firebase Auth và Firestore
  */
 export const createUser = async (userData) => {
   try {
+    // Lấy db khi cần
+    const db = getDb();
+    
     // Tạo user trong Firebase Auth
     const userRecord = await admin.auth().createUser({
       email: userData.email,
@@ -26,7 +33,7 @@ export const createUser = async (userData) => {
     };
 
     // Lưu vào Firestore
-    await admin.firestore().collection('users').doc(userRecord.uid).set(firestoreData);
+    await db.collection('users').doc(userRecord.uid).set(firestoreData);
 
     return {
       uid: userRecord.uid,
@@ -41,17 +48,18 @@ export const createUser = async (userData) => {
 /**
  * Cập nhật thông tin người dùng
  */
-export const updateUserProfile = async (userId, updateData) => {
+export const updateUser = async (userId, userData) => {
   try {
+    const db = getDb();
     // Cập nhật timestamp
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    userData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
     
-    await admin.firestore().collection('users').doc(userId).update(updateData);
+    await db.collection('users').doc(userId).update(userData);
     
-    return true;
+    return getUserById(userId);
   } catch (error) {
-    console.error('Error updating user profile:', error);
-    throw new CustomError('Lỗi khi cập nhật thông tin người dùng', 500);
+    console.error('Error updating user:', error);
+    throw error;
   }
 };
 
@@ -60,19 +68,20 @@ export const updateUserProfile = async (userId, updateData) => {
  */
 export const getUserById = async (userId) => {
   try {
-    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    const db = getDb();
+    const userDoc = await db.collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
       return null;
     }
     
     return {
-      id: userDoc.id,
+      id: userId,
       ...userDoc.data()
     };
   } catch (error) {
     console.error('Error getting user by ID:', error);
-    throw new CustomError('Lỗi khi lấy thông tin người dùng', 500);
+    throw new CustomError('Database error fetching user', 500);
   }
 };
 
@@ -81,7 +90,8 @@ export const getUserById = async (userId) => {
  */
 export const getAllUsers = async () => {
   try {
-    const usersSnapshot = await admin.firestore().collection('users').get();
+    const db = getDb();
+    const usersSnapshot = await db.collection('users').get();
     const users = [];
     
     usersSnapshot.forEach(doc => {
@@ -107,14 +117,15 @@ export const getAllUsers = async () => {
  */
 export const updateUserStatus = async (userId, status) => {
   try {
+    const db = getDb();
     // Kiểm tra xem người dùng có tồn tại không
-    const userDoc = await admin.firestore().collection('users').doc(userId).get();
+    const userDoc = await db.collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
       throw new CustomError('Không tìm thấy người dùng', 404);
     }
     
-    await admin.firestore().collection('users').doc(userId).update({
+    await db.collection('users').doc(userId).update({
       status,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -136,10 +147,44 @@ export const updateUserStatus = async (userId, status) => {
   }
 };
 
-export default {
-  createUser,
-  updateUserProfile,
-  getUserById,
-  getAllUsers,
-  updateUserStatus
+/**
+ * Lấy thông tin người dùng theo email
+ * @param {string} email - Email của người dùng
+ * @returns {Promise<Object|null>} - Thông tin người dùng hoặc null nếu không tìm thấy
+ */
+export const getUserByEmail = async (email) => {
+  try {
+    const db = getDb();
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.where('email', '==', email).limit(1).get();
+    
+    if (snapshot.empty) {
+      return null;
+    }
+    
+    const doc = snapshot.docs[0];
+    return {
+      id: doc.id,
+      ...doc.data()
+    };
+  } catch (error) {
+    console.error('Error getting user by email:', error);
+    throw new CustomError('Database error fetching user', 500);
+  }
+};
+
+/**
+ * Xóa người dùng
+ * @param {string} userId - ID của người dùng
+ * @returns {Promise<boolean>} - true nếu xóa thành công
+ */
+export const deleteUser = async (userId) => {
+  try {
+    const db = getDb();
+    await db.collection('users').doc(userId).delete();
+    return true;
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    throw error;
+  }
 }; 

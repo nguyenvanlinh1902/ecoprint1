@@ -1,26 +1,22 @@
 import admin from 'firebase-admin';
-import * as functions from 'firebase-functions';
+import { getFunctions } from 'firebase-admin/functions';
 
-// Khởi tạo Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
-
-const db = admin.firestore();
-const auth = admin.auth();
-const storage = admin.storage();
+// Sử dụng lazy initialization thay vì khởi tạo ngay lập tức
+const getDb = () => admin.firestore();
+const getAuth = () => admin.auth();
+const getStorage = () => admin.storage();
 
 // Cấu hình thời gian lưu cache
 const cacheConfig = {
   ttl: 60 * 5, // 5 phút
 };
 
-// Exports để sử dụng trong các module khác
+// Export để sử dụng trong các module khác
 export {
   admin,
-  db,
-  auth,
-  storage,
-  cacheConfig,
-  functions
+  getDb,
+  getAuth,
+  getStorage,
+  getFunctions,
+  cacheConfig
 }; 

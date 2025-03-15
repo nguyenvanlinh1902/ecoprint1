@@ -5,7 +5,6 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import MaintenanceIllustration from '../resources/maintenance.svg';
 
 const MaintenancePage = () => {
   const [message, setMessage] = useState('');
@@ -79,7 +78,9 @@ const MaintenancePage = () => {
   return (
     <Container maxWidth="md">
       <Paper sx={{ p: 5, mt: 10, textAlign: 'center' }}>
-        <Box component="img" src={MaintenanceIllustration} alt="Maintenance" sx={{ width: '100%', maxWidth: 400, mb: 4 }} />
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
+          <Typography sx={{ fontSize: '80px' }}>🛠️ 🔧</Typography>
+        </Box>
         
         <Typography variant="h3" gutterBottom>
           Site Under Maintenance

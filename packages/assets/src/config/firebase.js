@@ -1,27 +1,52 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import firebaseConfig from './firebaseConfig';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
 
-// Khởi tạo Firebase
+// Firebase configuration from environment variables
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
+};
+
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Khởi tạo các dịch vụ Firebase
+// Get services
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const functions = getFunctions(app);
 
-// Kết nối với emulator nếu đang ở môi trường development
-if (process.env.NODE_ENV === 'development') {
-  connectAuthEmulator(auth, 'http://localhost:9099');
-  connectFirestoreEmulator(db, 'localhost', 8090);
-  connectStorageEmulator(storage, 'localhost', 9209);
-  connectFunctionsEmulator(functions, 'localhost', 5011);
+// Chỉ kết nối emulator khi có biến môi trường USE_EMULATOR=true
+// Thay vì tự động kết nối trong môi trường development
+const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
+
+if (useEmulator) {
+  console.log('Using Firebase Emulators - Development mode only');
   
-  console.log('Using Firebase Emulators');
+  // Tắt console verbose của emulator để giảm thông báo
+  const originalConsoleLog = console.log;
+  const firebaseEmulatorLogs = [
+    'Firebase Auth Emulator',
+    'Running in emulator mode',
+    'Emulator'
+  ];
+  
+  console.log = function(...args) {
+    if (typeof args[0] === 'string' && 
+        firebaseEmulatorLogs.some(log => args[0].includes(log))) {
+      return; // Bỏ qua các log liên quan đến emulator
+    }
+    originalConsoleLog.apply(console, args);
+  };
+  
+  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, 'localhost', 8080);
+  connectStorageEmulator(storage, 'localhost', 9199);
 }
 
-export { app, auth, db, storage, functions }; 
+export { app, auth, db, storage }; 

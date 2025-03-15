@@ -1,56 +1,185 @@
-import { admin } from '../config/firebaseConfig.js';
-import { CustomError } from '../exceptions/customError.js';
+import jwt from 'jsonwebtoken';
+import { getUserById } from '../services/userService.js';
+import { admin, db } from '../config/firebase.js';
+
+// Secret key for JWT
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
 /**
  * Middleware xác thực token từ Authorization header
  */
 export const authenticate = async (ctx, next) => {
   try {
-    const authHeader = ctx.request.headers.authorization;
-    
+    // Get token from Authorization header
+    const authHeader = ctx.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new CustomError('Không có token xác thực', 401);
-    }
-
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    
-    // Lấy thêm thông tin người dùng từ Firestore
-    const userDoc = await admin.firestore().collection('users').doc(decodedToken.uid).get();
-    
-    if (!userDoc.exists) {
-      throw new CustomError('Người dùng không tồn tại', 404);
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'Authentication failed. No token provided.'
+      };
+      return;
     }
     
-    const userData = userDoc.data();
+    const token = authHeader.split(' ')[1];
     
-    if (userData.status !== 'active') {
-      throw new CustomError('Tài khoản chưa được kích hoạt hoặc đã bị khóa', 403);
+    // Verify token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (tokenError) {
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'Authentication failed. Invalid token.'
+      };
+      return;
     }
     
-    // Lưu thông tin người dùng vào context
-    ctx.state.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      role: userData.role,
-      ...userData
+    // Get user from database
+    try {
+      const user = await getUserById(decoded.id);
+      
+      if (!user) {
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Authentication failed. User not found.'
+        };
+        return;
+      }
+      
+      // Set user in state
+      ctx.state.user = user;
+      
+      await next();
+    } catch (dbError) {
+      console.error('Database error in auth middleware:', dbError);
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        message: 'Internal server error during authentication.'
+      };
+    }
+  } catch (err) {
+    console.error('Auth middleware error:', err);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Internal server error during authentication.'
     };
-    
-    await next();
-  } catch (error) {
-    if (error instanceof CustomError) {
-      throw error;
-    }
-    throw new CustomError('Token không hợp lệ hoặc đã hết hạn', 401);
   }
 };
 
 /**
- * Middleware kiểm tra quyền admin
+ * Middleware kiểm tra quyền truy cập dựa trên role
+ * @param {Array} roles - Mảng các role có quyền truy cập
  */
-export const requireAdmin = async (ctx, next) => {
-  if (!ctx.state.user || ctx.state.user.role !== 'admin') {
-    throw new CustomError('Không có quyền truy cập', 403);
+export const authorize = (roles = []) => {
+  return async (ctx, next) => {
+    try {
+      if (!ctx.state.user) {
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Authentication required'
+        };
+        return;
+      }
+      
+      if (roles.length && !roles.includes(ctx.state.user.role)) {
+        ctx.status = 403;
+        ctx.body = {
+          success: false,
+          message: 'You do not have permission to access this resource'
+        };
+        return;
+      }
+      
+      await next();
+    } catch (error) {
+      console.error('Authorization middleware error:', error);
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        message: 'Internal server error during authorization'
+      };
+    }
+  };
+};
+
+// Verify Firebase token
+const verifyToken = async (ctx, next) => {
+  try {
+    const authHeader = ctx.request.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      ctx.status = 401;
+      ctx.body = { error: 'Unauthorized - No token provided' };
+      return;
+    }
+    
+    const token = authHeader.split('Bearer ')[1];
+    
+    // Verify token with Firebase
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    
+    // Get user from Firestore to check status and roles
+    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+    
+    if (!userDoc.exists) {
+      ctx.status = 403;
+      ctx.body = { error: 'User data not found' };
+      return;
+    }
+    
+    const userData = userDoc.data();
+    
+    // Check if user is active
+    if (userData.status !== 'active') {
+      ctx.status = 403;
+      ctx.body = { error: 'Account is not active' };
+      return;
+    }
+    
+    // Store user info in context state
+    ctx.state.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      role: userData.role,
+      displayName: userData.displayName
+    };
+    
+    return next();
+  } catch (error) {
+    ctx.status = 401;
+    ctx.body = { error: 'Unauthorized - Invalid token' };
   }
-  await next();
+};
+
+// Check if user is admin
+const isAdmin = async (ctx, next) => {
+  try {
+    if (!ctx.state.user) {
+      ctx.status = 401;
+      ctx.body = { error: 'Authentication required' };
+      return;
+    }
+    
+    if (ctx.state.user.role !== 'admin') {
+      ctx.status = 403;
+      ctx.body = { error: 'Admin access required' };
+      return;
+    }
+    
+    return next();
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { error: error.message };
+  }
+};
+
+export default {
+  verifyToken,
+  isAdmin
 }; 

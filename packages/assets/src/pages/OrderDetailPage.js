@@ -16,12 +16,12 @@ import {
 import api from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../helpers/formatters';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const OrderDetailPage = ({ admin = false }) => {
   const { orderId } = useParams();
   const navigate = useNavigate();
-  const { userDetails } = useAuth();
+  const { userProfile } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

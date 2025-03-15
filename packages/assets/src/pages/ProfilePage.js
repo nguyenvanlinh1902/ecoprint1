@@ -3,12 +3,12 @@ import {
   Typography, Box, Paper, Grid, TextField, Button, 
   CircularProgress, Divider, Alert, Card, CardContent
 } from '@mui/material';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import { formatPhoneNumber } from '../helpers/formatters';
 
 const ProfilePage = () => {
-  const { userDetails, fetchUserDetails } = useAuth();
+  const { userProfile, updateProfile } = useAuth();
   
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -16,8 +16,8 @@ const ProfilePage = () => {
   const [error, setError] = useState('');
   
   const [formData, setFormData] = useState({
-    companyName: userDetails?.companyName || '',
-    phone: userDetails?.phone || '',
+    companyName: userProfile?.companyName || '',
+    phone: userProfile?.phone || '',
   });
   
   const [passwordData, setPasswordData] = useState({
@@ -50,8 +50,8 @@ const ProfilePage = () => {
     if (editing) {
       // Cancel editing - reset form
       setFormData({
-        companyName: userDetails?.companyName || '',
-        phone: userDetails?.phone || '',
+        companyName: userProfile?.companyName || '',
+        phone: userProfile?.phone || '',
       });
       setError('');
       setSuccess(false);
@@ -84,7 +84,7 @@ const ProfilePage = () => {
       });
       
       // Refresh user details
-      await fetchUserDetails();
+      await updateProfile();
       
       setSuccess(true);
       setEditing(false);
@@ -146,7 +146,7 @@ const ProfilePage = () => {
     }
   };
 
-  if (!userDetails) {
+  if (!userProfile) {
     return <CircularProgress />;
   }
 
@@ -207,7 +207,7 @@ const ProfilePage = () => {
                 <TextField
                   fullWidth
                   label="Email Address"
-                  value={userDetails.email}
+                  value={userProfile.email}
                   disabled
                   helperText="Email cannot be changed"
                 />
@@ -216,7 +216,7 @@ const ProfilePage = () => {
                 <TextField
                   fullWidth
                   label="Account Balance"
-                  value={`$${userDetails.balance?.toFixed(2) || '0.00'}`}
+                  value={`$${userProfile.balance?.toFixed(2) || '0.00'}`}
                   disabled
                   helperText="To add funds, go to Deposit page"
                 />
@@ -241,7 +241,7 @@ const ProfilePage = () => {
                 Company Name
               </Typography>
               <Typography variant="body1">
-                {userDetails.companyName}
+                {userProfile.companyName}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -249,7 +249,7 @@ const ProfilePage = () => {
                 Phone Number
               </Typography>
               <Typography variant="body1">
-                {formatPhoneNumber(userDetails.phone)}
+                {formatPhoneNumber(userProfile.phone)}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -257,7 +257,7 @@ const ProfilePage = () => {
                 Email Address
               </Typography>
               <Typography variant="body1">
-                {userDetails.email}
+                {userProfile.email}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -265,7 +265,7 @@ const ProfilePage = () => {
                 Account Balance
               </Typography>
               <Typography variant="body1">
-                ${userDetails.balance?.toFixed(2) || '0.00'}
+                ${userProfile.balance?.toFixed(2) || '0.00'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -273,9 +273,9 @@ const ProfilePage = () => {
                 Account Status
               </Typography>
               <Typography variant="body1" sx={{ 
-                color: userDetails.status === 'active' ? 'success.main' : 'error.main' 
+                color: userProfile.status === 'active' ? 'success.main' : 'error.main' 
               }}>
-                {userDetails.status === 'active' ? 'Active' : 'Inactive'}
+                {userProfile.status === 'active' ? 'Active' : 'Inactive'}
               </Typography>
             </Grid>
             <Grid item xs={12} md={6}>
@@ -283,7 +283,7 @@ const ProfilePage = () => {
                 Member Since
               </Typography>
               <Typography variant="body1">
-                {userDetails.createdAt ? new Date(userDetails.createdAt).toLocaleDateString() : 'N/A'}
+                {userProfile.createdAt ? new Date(userProfile.createdAt).toLocaleDateString() : 'N/A'}
               </Typography>
             </Grid>
           </Grid>

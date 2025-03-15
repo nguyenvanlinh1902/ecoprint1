@@ -1,178 +1,199 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  sendPasswordResetEmail
-} from 'firebase/auth';
-import { firebaseApp } from '../config/firebaseConfig';
-import api from '../services/api';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { onAuthStateChanged, signOut, getAuth } from 'firebase/auth';
+import { auth } from '@config/firebase';
+import api from '@services/api';
 
 // Tạo context
 const AuthContext = createContext();
 
 // Provider component
-export const AuthProvider = ({ children }) => {
+export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userDetails, setUserDetails] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const auth = getAuth(firebaseApp);
-
-  // Đăng nhập
-  const login = async (email, password) => {
+  const [error, setError] = useState('');
+  
+  // Đăng ký người dùng mới - sử dụng API
+  async function register(email, password, name) {
     try {
-      setError(null);
-      // Đăng nhập với Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      
-      // Lấy token để gọi API
-      const token = await userCredential.user.getIdToken();
+      const response = await api.post('/api/auth/register', {
+        email,
+        password,
+        name
+      });
       
       // Lưu token vào localStorage
+      const { token, user } = response.data;
       localStorage.setItem('authToken', token);
       
-      // Thiết lập token làm default Authorization header cho axios
+      // Thiết lập token làm default Authorization header
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
-      return userCredential.user;
+      setCurrentUser(user);
+      setUserDetails(user);
+      
+      return user;
     } catch (error) {
-      console.error('Login error:', error);
-      
-      let errorMessage = 'An error occurred during login';
-      
-      // Xử lý các loại lỗi Firebase
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = 'Invalid email or password';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed login attempts. Please try again later';
-      } else if (error.code === 'auth/user-disabled') {
-        errorMessage = 'Your account has been disabled';
-      }
-      
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      console.error('Registration error:', error.response?.data?.message || error.message);
+      setError(getErrorMessage(error.response?.data?.code || 'server-error'));
+      throw error;
     }
-  };
+  }
+
+  // Đăng nhập với email và mật khẩu - sử dụng API
+  async function login(email, password) {
+    try {
+      const response = await api.post('/api/auth/login', {
+        email,
+        password
+      });
+      
+      // Lưu token vào localStorage
+      const { token, user } = response.data;
+      localStorage.setItem('authToken', token);
+      
+      // Thiết lập token làm default Authorization header
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      setCurrentUser(user);
+      setUserDetails(user);
+      
+      return user;
+    } catch (error) {
+      console.error('Login error:', error.response?.data?.message || error.message);
+      setError(getErrorMessage(error.response?.data?.code || 'server-error'));
+      throw error;
+    }
+  }
 
   // Đăng xuất
-  const logout = async () => {
+  async function logout() {
+    try {
+      // Gọi API để logout (nếu cần)
+      await api.post('/api/auth/logout');
+    } catch (error) {
+      console.error('Logout API error:', error);
+    }
+    
+    // Xóa token khỏi localStorage
+    localStorage.removeItem('authToken');
+    
+    // Xóa header Authorization
+    delete api.defaults.headers.common['Authorization'];
+    
+    // Reset state
+    setCurrentUser(null);
+    setUserDetails(null);
+    setError('');
+    
+    // Đăng xuất khỏi Firebase nếu đang sử dụng
     try {
       await signOut(auth);
-      
-      // Xóa token từ localStorage
-      localStorage.removeItem('authToken');
-      
-      // Xóa Authorization header
-      delete api.defaults.headers.common['Authorization'];
-      
-      // Xóa thông tin user
-      setUserDetails(null);
     } catch (error) {
-      console.error('Logout error:', error);
-      setError('An error occurred during logout');
+      console.error('Firebase signOut error:', error);
     }
-  };
+  }
 
-  // Quên mật khẩu
-  const resetPassword = async (email) => {
+  // Gửi email đặt lại mật khẩu
+  async function resetPassword(email) {
     try {
-      setError(null);
-      await sendPasswordResetEmail(auth, email);
+      await api.post('/api/auth/reset-password', { email });
       return true;
     } catch (error) {
-      console.error('Reset password error:', error);
-      
-      let errorMessage = 'An error occurred during password reset';
-      
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No user found with this email';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email format';
-      }
-      
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      console.error('Reset password error:', error.response?.data?.message || error.message);
+      setError(getErrorMessage(error.response?.data?.code || 'server-error'));
+      throw error;
     }
-  };
+  }
+
+  // Chuyển đổi mã lỗi thành thông báo thân thiện với người dùng
+  function getErrorMessage(errorCode) {
+    switch (errorCode) {
+      case 'email-already-exists':
+        return 'Email này đã được sử dụng.';
+      case 'invalid-email':
+        return 'Email không hợp lệ.';
+      case 'user-not-found':
+        return 'Không tìm thấy tài khoản với email này.';
+      case 'invalid-password':
+        return 'Mật khẩu không đúng.';
+      case 'weak-password':
+        return 'Mật khẩu quá yếu. Vui lòng sử dụng ít nhất 6 ký tự.';
+      case 'too-many-requests':
+        return 'Quá nhiều yêu cầu không thành công. Vui lòng thử lại sau.';
+      case 'server-error':
+        return 'Lỗi máy chủ. Vui lòng thử lại sau.';
+      default:
+        return 'Đã xảy ra lỗi. Vui lòng thử lại.';
+    }
+  }
 
   // Lấy thông tin người dùng chi tiết từ API
   const fetchUserDetails = async () => {
     try {
       const response = await api.get('/api/users/me');
-      setUserDetails(response.data.data);
-      return response.data.data;
+      const userData = response.data.data || response.data;
+      setUserDetails(userData);
+      return userData;
     } catch (error) {
       console.error('Error fetching user details:', error);
       return null;
     }
   };
 
-  // Theo dõi trạng thái xác thực
+  // Kiểm tra token khi component mount
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
+    const token = localStorage.getItem('authToken');
+    
+    if (token) {
+      // Nếu có token, thiết lập header và kiểm tra token còn hợp lệ không
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
-      if (user) {
-        // Lấy token mới mỗi khi trạng thái auth thay đổi
-        const token = await user.getIdToken();
-        
-        // Lưu token vào localStorage
-        localStorage.setItem('authToken', token);
-        
-        // Thiết lập token làm default Authorization header cho axios
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        // Lấy thông tin chi tiết người dùng
-        await fetchUserDetails();
-      }
-      
-      setLoading(false);
-    });
-
-    // Cleanup
-    return unsubscribe;
-  }, []);
-
-  // Kiểm tra user còn hạn không mỗi khi làm mới trang
-  useEffect(() => {
-    const checkToken = async () => {
-      const token = localStorage.getItem('authToken');
-      
-      if (token && !currentUser) {
-        // Nếu có token nhưng không có user, thử thiết lập lại header
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        try {
-          // Kiểm tra token bằng cách gọi API
-          await fetchUserDetails();
-        } catch (error) {
-          // Nếu token không hợp lệ, xóa khỏi localStorage
+      // Lấy thông tin người dùng để kiểm tra token
+      fetchUserDetails()
+        .then(userData => {
+          if (userData) {
+            setCurrentUser(userData);
+            setLoading(false);
+          } else {
+            // Token không hợp lệ
+            localStorage.removeItem('authToken');
+            delete api.defaults.headers.common['Authorization'];
+            setLoading(false);
+          }
+        })
+        .catch(() => {
+          // Lỗi khi lấy thông tin người dùng
           localStorage.removeItem('authToken');
           delete api.defaults.headers.common['Authorization'];
-        }
-      }
-    };
-    
-    checkToken();
-  }, [currentUser]);
+          setLoading(false);
+        });
+    } else {
+      setLoading(false);
+    }
+  }, []);
 
   const value = {
     currentUser,
     userDetails,
     loading,
     error,
+    setError,
+    register,
     login,
     logout,
     resetPassword,
     fetchUserDetails
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && children}
+    </AuthContext.Provider>
+  );
+}
 
 // Hook tùy chỉnh để sử dụng context
-export const useAuth = () => {
+export function useAuth() {
   return useContext(AuthContext);
-}; 
+} 

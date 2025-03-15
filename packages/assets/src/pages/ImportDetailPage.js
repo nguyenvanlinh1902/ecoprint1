@@ -12,12 +12,12 @@ import {
 import api from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const ImportDetailPage = () => {
   const { batchId } = useParams();
   const navigate = useNavigate();
-  const { userDetails } = useAuth();
+  const { userProfile } = useAuth();
   
   const [batchDetails, setBatchDetails] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -102,7 +102,7 @@ const ImportDetailPage = () => {
   const unpaidOrders = orders.filter(order => !order.paid);
   const unpaidCost = unpaidOrders.reduce((sum, order) => sum + order.totalPrice, 0);
   
-  const canPayForBatch = unpaidOrders.length > 0 && userDetails?.balance >= unpaidCost;
+  const canPayForBatch = unpaidOrders.length > 0 && userProfile?.balance >= unpaidCost;
   
   return (
     <Box>
@@ -160,7 +160,7 @@ const ImportDetailPage = () => {
             
             {unpaidOrders.length > 0 && !canPayForBatch && (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                Insufficient funds. Your balance: {formatCurrency(userDetails?.balance || 0)}, 
+                Insufficient funds. Your balance: {formatCurrency(userProfile?.balance || 0)}, 
                 Required: {formatCurrency(unpaidCost)}
               </Alert>
             )}

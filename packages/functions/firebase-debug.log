@@ -1,0 +1,249 @@
+[debug] [2025-03-15T02:36:03.448Z] ----------------------------------------------------------------------
+[debug] [2025-03-15T02:36:03.452Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\AvadaGroup\Desktop\Project\ecoprint1\node_modules\firebase-tools\lib\bin\firebase.js emulators:start --only functions,firestore,auth,storage
+[debug] [2025-03-15T02:36:03.452Z] CLI Version:   12.9.1
+[debug] [2025-03-15T02:36:03.452Z] Platform:      win32
+[debug] [2025-03-15T02:36:03.453Z] Node Version:  v20.17.0
+[debug] [2025-03-15T02:36:03.453Z] Time:          Sat Mar 15 2025 09:36:03 GMT+0700 (Indochina Time)
+[debug] [2025-03-15T02:36:03.453Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-03-15T02:36:03.601Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-03-15T02:36:03.601Z] > authorizing via signed-in user (linhnv@avadagroup.com)
+[debug] [2025-03-15T02:36:03.740Z] java version "22.0.2" 2024-07-16
+
+[debug] [2025-03-15T02:36:03.741Z] Java(TM) SE Runtime Environment (build 22.0.2+9-70)
+Java HotSpot(TM) 64-Bit Server VM (build 22.0.2+9-70, mixed mode, sharing)
+
+[debug] [2025-03-15T02:36:03.778Z] Parsed Java major version: 22
+[info] i  emulators: Starting emulators: auth, functions, firestore, storage {"metadata":{"emulator":{"name":"hub"},"message":"Starting emulators: auth, functions, firestore, storage"}}
+[debug] [2025-03-15T02:36:03.799Z] [logging] Logging Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.799Z] [auth] Authentication Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.799Z] [firestore] Firestore Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.800Z] [firestore.websocket] websocket server for firestore only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.800Z] [storage] Storage Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[warn] !  ui: Emulator UI unable to start on port 4000, starting on 4001 instead. {"metadata":{"emulator":{"name":"ui"},"message":"Emulator UI unable to start on port 4000, starting on 4001 instead."}}
+[debug] [2025-03-15T02:36:03.801Z] assigned listening specs for emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4001},{"address":"::1","family":"IPv6","port":4001}]},"metadata":{"message":"assigned listening specs for emulators"}}
+[debug] [2025-03-15T02:36:03.809Z] [hub] writing locator at C:\Users\AVADAG~1\AppData\Local\Temp\hub-ecoprint1-3cd5c.json
+[debug] [2025-03-15T02:36:03.822Z] [functions] Functions Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.822Z] [eventarc] Eventarc Emulator only supports listening on one address (127.0.0.1). Not listening on ::1
+[debug] [2025-03-15T02:36:03.823Z] late-assigned ports for functions and eventarc emulators {"user":{"hub":[{"address":"127.0.0.1","family":"IPv4","port":4400},{"address":"::1","family":"IPv6","port":4400}],"logging":[{"address":"127.0.0.1","family":"IPv4","port":4500}],"auth":[{"address":"127.0.0.1","family":"IPv4","port":9099}],"firestore":[{"address":"127.0.0.1","family":"IPv4","port":8080}],"firestore.websocket":[{"address":"127.0.0.1","family":"IPv4","port":9150}],"storage":[{"address":"127.0.0.1","family":"IPv4","port":9199}],"ui":[{"address":"127.0.0.1","family":"IPv4","port":4001},{"address":"::1","family":"IPv6","port":4001}],"functions":[{"address":"127.0.0.1","family":"IPv4","port":5001}],"eventarc":[{"address":"127.0.0.1","family":"IPv4","port":9299}]},"metadata":{"message":"late-assigned ports for functions and eventarc emulators"}}
+[warn] !  functions: The following emulators are not running, calls to these services from the Functions emulator will affect production: database, hosting, pubsub {"metadata":{"emulator":{"name":"functions"},"message":"The following emulators are not running, calls to these services from the Functions emulator will affect production: \u001b[1mdatabase, hosting, pubsub\u001b[22m"}}
+[debug] [2025-03-15T02:36:03.829Z] defaultcredentials: writing to file C:\Users\AvadaGroup\AppData\Roaming\firebase\linhnv_avadagroup_com_application_default_credentials.json
+[debug] [2025-03-15T02:36:03.832Z] Setting GAC to C:\Users\AvadaGroup\AppData\Roaming\firebase\linhnv_avadagroup_com_application_default_credentials.json {"metadata":{"emulator":{"name":"functions"},"message":"Setting GAC to C:\\Users\\AvadaGroup\\AppData\\Roaming\\firebase\\linhnv_avadagroup_com_application_default_credentials.json"}}
+[debug] [2025-03-15T02:36:03.835Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ecoprint1-3cd5c/adminSdkConfig [none]
+[debug] [2025-03-15T02:36:04.320Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ecoprint1-3cd5c/adminSdkConfig 200
+[debug] [2025-03-15T02:36:04.320Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ecoprint1-3cd5c/adminSdkConfig {"projectId":"ecoprint1-3cd5c","storageBucket":"ecoprint1-3cd5c.firebasestorage.app"}
+[debug] [2025-03-15T02:36:04.342Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: auto_download"}}
+[debug] [2025-03-15T02:36:04.343Z] Ignoring unsupported arg: single_project_mode_error {"metadata":{"emulator":{"name":"firestore"},"message":"Ignoring unsupported arg: single_project_mode_error"}}
+[debug] [2025-03-15T02:36:04.343Z] Starting Firestore Emulator with command {"binary":"java","args":["-Dgoogle.cloud_firestore.debug_log_level=FINE","-Duser.language=en","-jar","C:\\Users\\AvadaGroup\\.cache\\firebase\\emulators\\cloud-firestore-emulator-v1.18.2.jar","--host","127.0.0.1","--port",8080,"--websocket_port",9150,"--project_id","ecoprint1-3cd5c","--rules","C:\\Users\\AvadaGroup\\Desktop\\Project\\ecoprint1\\firestore.rules","--single_project_mode",true,"--functions_emulator","127.0.0.1:5001"],"optionalArgs":["port","webchannel_port","host","rules","websocket_port","functions_emulator","seed_from_export","project_id","single_project_mode"],"joinArgs":false} {"metadata":{"emulator":{"name":"firestore"},"message":"Starting Firestore Emulator with command {\"binary\":\"java\",\"args\":[\"-Dgoogle.cloud_firestore.debug_log_level=FINE\",\"-Duser.language=en\",\"-jar\",\"C:\\\\Users\\\\AvadaGroup\\\\.cache\\\\firebase\\\\emulators\\\\cloud-firestore-emulator-v1.18.2.jar\",\"--host\",\"127.0.0.1\",\"--port\",8080,\"--websocket_port\",9150,\"--project_id\",\"ecoprint1-3cd5c\",\"--rules\",\"C:\\\\Users\\\\AvadaGroup\\\\Desktop\\\\Project\\\\ecoprint1\\\\firestore.rules\",\"--single_project_mode\",true,\"--functions_emulator\",\"127.0.0.1:5001\"],\"optionalArgs\":[\"port\",\"webchannel_port\",\"host\",\"rules\",\"websocket_port\",\"functions_emulator\",\"seed_from_export\",\"project_id\",\"single_project_mode\"],\"joinArgs\":false}"}}
+[info] i  firestore: Firestore Emulator logging to firestore-debug.log {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator logging to \u001b[1mfirestore-debug.log\u001b[22m"}}
+[info] +  firestore: Firestore Emulator UI websocket is running on 9150. {"metadata":{"emulator":{"name":"firestore"},"message":"Firestore Emulator UI websocket is running on 9150."}}
+[debug] [2025-03-15T02:36:17.491Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"storage"},"message":"Ignoring unsupported arg: port"}}
+[debug] [2025-03-15T02:36:19.688Z] Temp file directory for storage emulator: C:\Users\AVADAG~1\AppData\Local\Temp/firebase/storage/blobs {"metadata":{"emulator":{"name":"storage"},"message":"Temp file directory for storage emulator: C:\\Users\\AVADAG~1\\AppData\\Local\\Temp/firebase/storage/blobs"}}
+[debug] [2025-03-15T02:36:19.707Z] Ignoring unsupported arg: auto_download {"metadata":{"emulator":{"name":"ui"},"message":"Ignoring unsupported arg: auto_download"}}
+[debug] [2025-03-15T02:36:19.708Z] Ignoring unsupported arg: port {"metadata":{"emulator":{"name":"ui"},"message":"Ignoring unsupported arg: port"}}
+[debug] [2025-03-15T02:36:19.708Z] Starting Emulator UI with command {"binary":"node","args":["C:\\Users\\AvadaGroup\\.cache\\firebase\\emulators\\ui-v1.11.7\\server\\server.js"],"optionalArgs":[],"joinArgs":false} {"metadata":{"emulator":{"name":"ui"},"message":"Starting Emulator UI with command {\"binary\":\"node\",\"args\":[\"C:\\\\Users\\\\AvadaGroup\\\\.cache\\\\firebase\\\\emulators\\\\ui-v1.11.7\\\\server\\\\server.js\"],\"optionalArgs\":[],\"joinArgs\":false}"}}
+[info] i  ui: Emulator UI logging to ui-debug.log {"metadata":{"emulator":{"name":"ui"},"message":"Emulator UI logging to \u001b[1mui-debug.log\u001b[22m"}}
+[debug] [2025-03-15T02:36:19.943Z] Web / API server started at 127.0.0.1:4001
+ {"metadata":{"emulator":{"name":"ui"},"message":"Web / API server started at 127.0.0.1:4001\n"}}
+[debug] [2025-03-15T02:36:19.944Z] Web / API server started at ::1:4001
+ {"metadata":{"emulator":{"name":"ui"},"message":"Web / API server started at ::1:4001\n"}}
+[info] i  functions: Watching "C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions" for Cloud Functions... {"metadata":{"emulator":{"name":"functions"},"message":"Watching \"C:\\Users\\AvadaGroup\\Desktop\\Project\\ecoprint1\\packages\\functions\" for Cloud Functions..."}}
+[debug] [2025-03-15T02:36:19.980Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2025-03-15T02:36:22.228Z] > [functions] package.json contents: {
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions for EcoPrint",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "dev": "firebase emulators:start --only functions,firestore,auth,storage",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@koa/cors": "^4.0.0",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.3.1",
+    "firebase-admin": "^11.11.1",
+    "firebase-functions": "^4.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "koa": "^2.14.2",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.1"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.1.0"
+  },
+  "private": true
+}
+[debug] [2025-03-15T02:36:22.228Z] Building nodejs source
+[debug] [2025-03-15T02:36:22.229Z] Failed to find version of module node: reached end of search path C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules
+[info] +  functions: Using node@20 from host. 
+[debug] [2025-03-15T02:36:22.232Z] Could not find functions.yaml. Must use http discovery
+[debug] [2025-03-15T02:36:22.246Z] Found firebase-functions binary at 'C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8547
+
+[error] Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-body' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+    at packageResolve (node:internal/modules/esm/resolve:854:9)
+    at moduleResolve (node:internal/modules/esm/resolve:927:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1169:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:540:12)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:509:25)
+    at ModuleLoader.getModuleJob (node:internal/modules/esm/loader:239:38)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/module_job:96:40)
+    at link (node:internal/modules/esm/module_job:95:36) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+[debug] [2025-03-15T02:36:22.794Z] Got response code 400; body Failed to generate manifest from function source: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-body' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+[error] !!  functions: Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error {"metadata":{"emulator":{"name":"functions"},"message":"Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error"}}
+[info] 
+┌─────────────────────────────────────────────────────────────┐
+│ ✔  All emulators ready! It is now safe to connect your app. │
+│ i  View Emulator UI at http://127.0.0.1:4001/               │
+└─────────────────────────────────────────────────────────────┘
+
+┌────────────────┬────────────────┬─────────────────────────────────┐
+│ Emulator       │ Host:Port      │ View in Emulator UI             │
+├────────────────┼────────────────┼─────────────────────────────────┤
+│ Authentication │ 127.0.0.1:9099 │ http://127.0.0.1:4001/auth      │
+├────────────────┼────────────────┼─────────────────────────────────┤
+│ Functions      │ 127.0.0.1:5001 │ http://127.0.0.1:4001/functions │
+├────────────────┼────────────────┼─────────────────────────────────┤
+│ Firestore      │ 127.0.0.1:8080 │ http://127.0.0.1:4001/firestore │
+├────────────────┼────────────────┼─────────────────────────────────┤
+│ Storage        │ 127.0.0.1:9199 │ http://127.0.0.1:4001/storage   │
+└────────────────┴────────────────┴─────────────────────────────────┘
+  Emulator Hub running at 127.0.0.1:4400
+  Other reserved ports: 4500, 9150
+
+Issues? Report them at https://github.com/firebase/firebase-tools/issues and attach the *-debug.log files.
+ 
+[debug] [2025-03-15T02:37:51.169Z] File C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\src\controllers\userController.js changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Users\\AvadaGroup\\Desktop\\Project\\ecoprint1\\packages\\functions\\src\\controllers\\userController.js changed, reloading triggers"}}
+[debug] [2025-03-15T02:37:52.174Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2025-03-15T02:37:57.208Z] > [functions] package.json contents: {
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions for EcoPrint",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "dev": "firebase emulators:start --only functions,firestore,auth,storage",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@koa/cors": "^4.0.0",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.3.1",
+    "firebase-admin": "^11.11.1",
+    "firebase-functions": "^4.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "koa": "^2.14.2",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.1"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.1.0"
+  },
+  "private": true
+}
+[debug] [2025-03-15T02:37:57.208Z] Building nodejs source
+[debug] [2025-03-15T02:37:57.209Z] Failed to find version of module node: reached end of search path C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules
+[info] +  functions: Using node@20 from host. 
+[debug] [2025-03-15T02:37:57.212Z] Could not find functions.yaml. Must use http discovery
+[debug] [2025-03-15T02:37:57.241Z] Found firebase-functions binary at 'C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8544
+
+[error] Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-body' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+    at packageResolve (node:internal/modules/esm/resolve:854:9)
+    at moduleResolve (node:internal/modules/esm/resolve:927:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1169:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:540:12)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:509:25)
+    at ModuleLoader.getModuleJob (node:internal/modules/esm/loader:239:38)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/module_job:96:40)
+    at link (node:internal/modules/esm/module_job:95:36) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+[debug] [2025-03-15T02:37:58.920Z] Got response code 400; body Failed to generate manifest from function source: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-body' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+[error] !!  functions: Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error {"metadata":{"emulator":{"name":"functions"},"message":"Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error"}}
+[debug] [2025-03-15T02:45:03.314Z] File C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\package.json changed, reloading triggers {"metadata":{"emulator":{"name":"functions"},"message":"File C:\\Users\\AvadaGroup\\Desktop\\Project\\ecoprint1\\packages\\functions\\package.json changed, reloading triggers"}}
+[debug] [2025-03-15T02:45:04.346Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2025-03-15T02:45:09.080Z] > [functions] package.json contents: {
+  "name": "functions",
+  "version": "1.0.0",
+  "description": "Firebase Functions for EcoPrint",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "dev": "firebase emulators:start --only functions,firestore,auth,storage",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@koa/cors": "^4.0.0",
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.3.1",
+    "firebase-admin": "^11.11.1",
+    "firebase-functions": "^4.5.0",
+    "jsonwebtoken": "^9.0.2",
+    "koa": "^2.14.2",
+    "koa-body": "^6.0.1",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.1"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.1.0"
+  },
+  "private": true
+}
+[debug] [2025-03-15T02:45:09.081Z] Building nodejs source
+[debug] [2025-03-15T02:45:09.081Z] Failed to find version of module node: reached end of search path C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules
+[info] +  functions: Using node@20 from host. 
+[debug] [2025-03-15T02:45:09.101Z] Could not find functions.yaml. Must use http discovery
+[debug] [2025-03-15T02:45:09.125Z] Found firebase-functions binary at 'C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8053
+
+[error] Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-helmet' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+    at packageResolve (node:internal/modules/esm/resolve:854:9)
+    at moduleResolve (node:internal/modules/esm/resolve:927:18)
+    at defaultResolve (node:internal/modules/esm/resolve:1169:11)
+    at ModuleLoader.defaultResolve (node:internal/modules/esm/loader:540:12)
+    at ModuleLoader.resolve (node:internal/modules/esm/loader:509:25)
+    at ModuleLoader.getModuleJob (node:internal/modules/esm/loader:239:38)
+    at ModuleWrap.<anonymous> (node:internal/modules/esm/module_job:96:40)
+    at link (node:internal/modules/esm/module_job:95:36) {
+  code: 'ERR_MODULE_NOT_FOUND'
+}
+
+[debug] [2025-03-15T02:45:10.165Z] Got response code 400; body Failed to generate manifest from function source: Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'koa-helmet' imported from C:\Users\AvadaGroup\Desktop\Project\ecoprint1\packages\functions\index.js
+[error] !!  functions: Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error {"metadata":{"emulator":{"name":"functions"},"message":"Failed to load function definition from source: FirebaseError: Functions codebase could not be analyzed successfully. It may have a syntax or runtime error"}}

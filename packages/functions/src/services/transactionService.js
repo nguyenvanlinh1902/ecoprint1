@@ -1,4 +1,4 @@
-import { admin } from '../config/firebaseConfig.js';
+import { admin } from '../config/firebase.js';
 import { CustomError } from '../exceptions/customError.js';
 import path from 'path';
 import fs from 'fs';
