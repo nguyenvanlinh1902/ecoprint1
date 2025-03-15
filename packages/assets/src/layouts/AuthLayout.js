@@ -1,12 +1,11 @@
 import React from 'react';
-import { Outlet } from 'react-router-dom';
-import { Box, Container, Typography, Paper } from '@mui/material';
+import { Box, Container, Typography } from '@mui/material';
 
 /**
  * Layout component for authentication pages (login, register)
  * Provides a consistent wrapper for all authentication related pages
  */
-const AuthLayout = () => {
+const AuthLayout = ({ children }) => {
   return (
     <Box
       sx={{
@@ -25,7 +24,7 @@ const AuthLayout = () => {
           mb: 4
         }}
       >
-        <Container maxWidth="lg">
+        <Container maxWidth={false}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Typography 
               sx={{ 
@@ -40,8 +39,8 @@ const AuthLayout = () => {
         </Container>
       </Box>
 
-      <Container component="main" sx={{ flex: 1 }}>
-        <Outlet />
+      <Container component="main" sx={{ flex: 1 }} maxWidth={false}>
+        {children}
       </Container>
 
       <Box 
@@ -54,7 +53,7 @@ const AuthLayout = () => {
           borderTop: '1px solid #eaeaea'
         }}
       >
-        <Container maxWidth="lg">
+        <Container maxWidth={false}>
           <Typography variant="body2" color="text.secondary">
             &copy; {new Date().getFullYear()} EcoPrint. All rights reserved.
           </Typography>

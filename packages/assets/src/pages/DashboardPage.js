@@ -11,7 +11,7 @@ import {
   AddShoppingCart as CreateOrderIcon
 } from '@mui/icons-material';
 import api from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 

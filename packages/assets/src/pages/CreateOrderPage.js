@@ -8,7 +8,8 @@ import {
 } from '@mui/material';
 import api from '../services/api';
 import { formatCurrency } from '../helpers/formatters';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
+import { useFetchApi } from '../hooks/useFetchApi';
 
 const steps = ['Select Product', 'Order Details', 'Shipping Information', 'Review & Confirm'];
 
@@ -61,57 +62,61 @@ const CreateOrderPage = () => {
     }
   }, [location]);
   
-  // Load products
-  useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoadingProducts(true);
-        const response = await api.get('/api/products');
-        setProducts(response.data.data.products || []);
-      } catch (error) {
-        console.error('Error fetching products:', error);
-        setError('Failed to load products. Please try again later.');
-      } finally {
-        setLoadingProducts(false);
-      }
-    };
-    
-    fetchProducts();
-  }, []);
+  // Sử dụng useFetchApi để lấy danh sách sản phẩm
+  const { 
+    data: productsData, 
+    loading: loadingProductsList,
+    error: productsError 
+  } = useFetchApi({
+    resource: 'products',
+    autoFetch: true
+  });
   
-  // Load selected product details
+  // Cập nhật state products khi có dữ liệu từ API
   useEffect(() => {
-    const fetchProductDetails = async () => {
-      if (!selectedProductId) {
-        setSelectedProduct(null);
-        return;
+    if (productsData) {
+      setProducts(productsData.products || []);
+    }
+    if (productsError) {
+      setError('Failed to load products. Please try again later.');
+    }
+  }, [productsData, productsError]);
+  
+  // Sử dụng useFetchApi để lấy chi tiết sản phẩm khi có selectedProductId
+  const {
+    data: productDetail,
+    loading: loadingProductDetail,
+    error: productDetailError
+  } = useFetchApi({
+    resource: 'products',
+    id: selectedProductId,
+    autoFetch: !!selectedProductId
+  });
+  
+  // Cập nhật state khi có dữ liệu chi tiết sản phẩm
+  useEffect(() => {
+    if (productDetail) {
+      setSelectedProduct(productDetail);
+      
+      // Initialize options if available
+      if (productDetail.options) {
+        const initialOptions = {};
+        productDetail.options.forEach(optionGroup => {
+          if (optionGroup.items && optionGroup.items.length > 0) {
+            initialOptions[optionGroup.name] = optionGroup.items[0].id;
+          }
+        });
+        setSelectedOptions(initialOptions);
       }
       
-      try {
-        setLoadingProducts(true);
-        const response = await api.get(`/api/products/${selectedProductId}`);
-        setSelectedProduct(response.data.data);
-        
-        // Initialize options if available
-        if (response.data.data.options) {
-          const initialOptions = {};
-          response.data.data.options.forEach(optionGroup => {
-            if (optionGroup.items && optionGroup.items.length > 0) {
-              initialOptions[optionGroup.name] = optionGroup.items[0].id;
-            }
-          });
-          setSelectedOptions(initialOptions);
-        }
-      } catch (error) {
-        console.error('Error fetching product details:', error);
-        setError('Failed to load product details. Please try again later.');
-      } finally {
-        setLoadingProducts(false);
-      }
-    };
+      setLoadingProducts(false);
+    }
     
-    fetchProductDetails();
-  }, [selectedProductId]);
+    if (productDetailError) {
+      setError('Failed to load product details. Please try again later.');
+      setLoadingProducts(false);
+    }
+  }, [productDetail, productDetailError]);
   
   // Calculate order total when relevant factors change
   useEffect(() => {
@@ -225,7 +230,7 @@ const CreateOrderPage = () => {
         totalPrice: orderSummary.total
       };
       
-      const response = await api.post('/api/orders', orderData);
+      const response = await api.orders.create(orderData);
       
       setSuccess(true);
       

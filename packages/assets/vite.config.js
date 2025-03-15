@@ -5,12 +5,16 @@ import * as path from 'path';
 // Cấu hình cổng
 const fePort = process.env.FRONTEND_PORT || 3001;
 
-// Base URL cho backend
-const backendBaseUrl = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/backend';
+// Base URL cho backend - use the environment variable or fall back to the default
+const backendBaseUrl = process.env.VITE_API_BASE_URL || 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
 
 // Cấu hình proxy đơn giản hơn
 const proxyConfig = {
-  '/api': backendBaseUrl
+  '/api': {
+    target: backendBaseUrl,
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/api/, '')
+  }
 };
 
 // https://vitejs.dev/config/
@@ -30,7 +34,10 @@ export default defineConfig({
     },
     
     // Plugin React
-    react()
+    react({
+      // Enable Fast Refresh
+      fastRefresh: true,
+    })
   ],
   
   // Cấu hình optimization
@@ -65,12 +72,23 @@ export default defineConfig({
   server: {
     host: 'localhost',
     port: fePort,
-    proxy: proxyConfig
+    proxy: proxyConfig,
+    // Preserve the history state for React Router
+    historyApiFallback: true,
+    // Reload all pages across all views
+    hmr: {
+      // Ensure HMR preserves the page state
+      overlay: true,
+      // Don't lose client state on reload
+      clientPort: fePort
+    }
   },
   
   // Cấu hình build
   build: {
     outDir: '../../static',
-    emptyOutDir: false
+    emptyOutDir: false,
+    // Generate source maps for easier debugging
+    sourcemap: true,
   }
 }); 

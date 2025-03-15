@@ -7,7 +7,7 @@ import {
   orderBy, 
   limit 
 } from 'firebase/firestore';
-import { db } from '@config/firebase';
+import { db } from '../firebase';
 
 /**
  * Hook để lắng nghe các thay đổi trong thời gian thực từ một collection

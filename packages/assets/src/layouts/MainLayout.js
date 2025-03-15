@@ -103,7 +103,6 @@ const MainLayout = () => {
             duration: theme.transitions.duration.leavingScreen,
           }),
           ...(open && {
-            marginLeft: drawerWidth,
             width: `calc(100% - ${drawerWidth}px)`,
             transition: (theme) => theme.transitions.create(['width', 'margin'], {
               easing: theme.transitions.easing.sharp,
@@ -348,7 +347,7 @@ const MainLayout = () => {
 
       {/* Main Content */}
       <Box component="main" sx={{ flexGrow: 1, p: 3, mt: 8 }}>
-        <Container maxWidth="xl">
+        <Container maxWidth={false}>
           <Outlet />
         </Container>
       </Box>

@@ -17,14 +17,25 @@ import api from '../services/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
+import { useFetchApi } from '../hooks/useFetchApi';
 
 const OrderDetailPage = ({ admin = false }) => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   const { userProfile } = useAuth();
-  const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  
+  // Sử dụng useFetchApi thay vì gọi API trực tiếp
+  const { 
+    data: order, 
+    loading, 
+    error, 
+    refetch: refreshOrder 
+  } = useFetchApi({
+    resource: 'orders',
+    id: orderId,
+    autoFetch: true
+  });
+  
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
@@ -36,36 +47,18 @@ const OrderDetailPage = ({ admin = false }) => {
   const [statusError, setStatusError] = useState('');
   
   const orderStatusSteps = ['pending', 'processing', 'shipped', 'delivered'];
-  
-  useEffect(() => {
-    const fetchOrderDetails = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get(`/api/orders/${orderId}`);
-        setOrder(response.data.data);
-      } catch (error) {
-        console.error('Error fetching order:', error);
-        setError('Failed to load order details. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOrderDetails();
-  }, [orderId]);
 
   const handlePayForOrder = async () => {
     try {
       setPaymentLoading(true);
       setPaymentError('');
       
-      await api.post(`/api/orders/${orderId}/pay`);
+      await api.transactions.payOrder(orderId);
       
       setPaymentSuccess(true);
       
-      // Refresh order details after payment
-      const response = await api.get(`/api/orders/${orderId}`);
-      setOrder(response.data.data);
+      // Làm mới dữ liệu đơn hàng sau khi thanh toán
+      refreshOrder();
       
     } catch (error) {
       console.error('Payment failed:', error);
@@ -89,13 +82,10 @@ const OrderDetailPage = ({ admin = false }) => {
       setStatusLoading(true);
       setStatusError('');
       
-      await api.patch(`/api/orders/${orderId}/status`, {
-        status: newStatus
-      });
+      await api.orders.updateStatus(orderId, newStatus);
       
-      // Refresh order details
-      const response = await api.get(`/api/orders/${orderId}`);
-      setOrder(response.data.data);
+      // Làm mới dữ liệu đơn hàng sau khi cập nhật trạng thái
+      refreshOrder();
       
       handleCloseStatusDialog();
     } catch (error) {

@@ -9,4 +9,14 @@ export { useCreateApi } from './useCreateApi';
 export { useUpdateApi } from './useUpdateApi';
 export { useDeleteApi } from './useDeleteApi';
 
-// Các hooks khác có thể thêm sau 
+// Auth hooks
+import { useAuth, useSessionPersistence } from './useAuth';
+import useRouteProtection from './useRouteProtection';
+import useHistory from './useHistory';
+
+export {
+  useAuth,
+  useSessionPersistence,
+  useRouteProtection,
+  useHistory
+}; 

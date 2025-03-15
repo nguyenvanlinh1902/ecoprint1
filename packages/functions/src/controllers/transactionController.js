@@ -1,9 +1,7 @@
 import { CustomError } from '../exceptions/customError.js';
 import { admin, db } from '../config/firebase.js';
 
-/**
- * Tạo yêu cầu nạp tiền
- */
+// Export stub functions that aren't part of the default export
 export const createDeposit = async (ctx) => {
   ctx.body = {
     success: true,
@@ -11,19 +9,6 @@ export const createDeposit = async (ctx) => {
   };
 };
 
-/**
- * Thanh toán đơn hàng
- */
-export const payOrder = async (ctx) => {
-  ctx.body = {
-    success: true,
-    message: 'Order paid successfully'
-  };
-};
-
-/**
- * Thanh toán nhiều đơn hàng từ batch import
- */
 export const payBatchOrders = async (ctx) => {
   ctx.body = {
     success: true,
@@ -31,29 +16,6 @@ export const payBatchOrders = async (ctx) => {
   };
 };
 
-/**
- * Lấy lịch sử giao dịch của người dùng
- */
-export const getUserTransactions = async (ctx) => {
-  ctx.body = {
-    success: true,
-    data: []
-  };
-};
-
-/**
- * Lấy tất cả giao dịch (Admin only)
- */
-export const getAllTransactions = async (ctx) => {
-  ctx.body = {
-    success: true,
-    data: []
-  };
-};
-
-/**
- * Xác nhận/từ chối giao dịch (Admin only)
- */
 export const updateTransactionStatus = async (ctx) => {
   ctx.body = {
     success: true,

@@ -114,10 +114,30 @@ export const formatDateTime = (timestamp) => {
 export const formatPhoneNumber = (phoneNumber) => {
   if (!phoneNumber) return 'N/A';
   
-  const cleaned = ('' + phoneNumber).replace(/\D/g, '');
-  const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-  if (match) {
-    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
+  // Ensure it's a string
+  const phoneStr = String(phoneNumber);
+  
+  // Remove all non-numeric characters
+  const cleaned = phoneStr.replace(/\D/g, '');
+  
+  // Check for different phone number formats
+  const match10 = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
+  if (match10) {
+    return '(' + match10[1] + ') ' + match10[2] + '-' + match10[3];
   }
-  return phoneNumber;
+  
+  // For 7-digit numbers
+  const match7 = cleaned.match(/^(\d{3})(\d{4})$/);
+  if (match7) {
+    return match7[1] + '-' + match7[2];
+  }
+  
+  // For international numbers with country code (assume US +1 if 11 digits)
+  const match11 = cleaned.match(/^1(\d{3})(\d{3})(\d{4})$/);
+  if (match11) {
+    return '+1 (' + match11[1] + ') ' + match11[2] + '-' + match11[3];
+  }
+  
+  // If we can't format it, just return it cleaned
+  return cleaned.length > 0 ? cleaned : phoneNumber;
 }; 

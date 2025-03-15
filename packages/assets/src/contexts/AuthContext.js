@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, getAuth } from 'firebase/auth';
-import { auth } from '@config/firebase';
+import { auth } from '../firebase';
 import api from '@services/api';
 
 // Tạo context
@@ -156,14 +156,16 @@ export function AuthProvider({ children }) {
             setCurrentUser(userData);
             setLoading(false);
           } else {
-            // Token không hợp lệ
+            // Token không hợp lệ, nhưng không tự động chuyển về login
+            // Chỉ xóa token khỏi local storage
             localStorage.removeItem('authToken');
             delete api.defaults.headers.common['Authorization'];
             setLoading(false);
           }
         })
         .catch(() => {
-          // Lỗi khi lấy thông tin người dùng
+          // Lỗi khi lấy thông tin người dùng, nhưng không tự động chuyển về login
+          // Chỉ xóa token khỏi local storage
           localStorage.removeItem('authToken');
           delete api.defaults.headers.common['Authorization'];
           setLoading(false);

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { 
-  AppBar, Toolbar, Typography, Box, Drawer, Divider, 
-  List, ListItem, ListItemIcon, ListItemText, IconButton, 
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  AppBar, Toolbar, Typography, Box, Drawer, Divider,
+  List, ListItem, ListItemIcon, ListItemText, IconButton,
   Container, Avatar, Menu, MenuItem, Tooltip, Badge
 } from '@mui/material';
-import { 
+import {
   Dashboard as DashboardIcon,
   People as PeopleIcon,
   Inventory as InventoryIcon,
@@ -17,7 +17,7 @@ import {
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 240;
 
@@ -30,13 +30,11 @@ const Main = styled('main', { shouldForwardProp: (prop) => prop !== 'open' })(
       easing: theme.transitions.easing.sharp,
       duration: theme.transitions.duration.leavingScreen,
     }),
-    marginLeft: 0,
     ...(open && {
       transition: theme.transitions.create('margin', {
         easing: theme.transitions.easing.easeOut,
         duration: theme.transitions.duration.enteringScreen,
       }),
-      marginLeft: drawerWidth,
     }),
   }),
 );
@@ -49,7 +47,6 @@ const AppBarStyled = styled(AppBar, { shouldForwardProp: (prop) => prop !== 'ope
     }),
     ...(open && {
       width: `calc(100% - ${drawerWidth}px)`,
-      marginLeft: drawerWidth,
       transition: theme.transitions.create(['margin', 'width'], {
         easing: theme.transitions.easing.easeOut,
         duration: theme.transitions.duration.enteringScreen,
@@ -66,7 +63,7 @@ const DrawerHeader = styled('div')(({ theme }) => ({
   justifyContent: 'flex-end',
 }));
 
-const AdminLayout = () => {
+const AdminLayout = ({ children }) => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsEl, setNotificationsEl] = useState(null);
@@ -132,7 +129,7 @@ const AdminLayout = () => {
                   </Badge>
                 </IconButton>
               </Tooltip>
-              
+
               <Menu
                 anchorEl={notificationsEl}
                 open={Boolean(notificationsEl)}
@@ -143,17 +140,17 @@ const AdminLayout = () => {
                 <MenuItem>3 new orders received</MenuItem>
                 <MenuItem>2 payment proofs pending review</MenuItem>
               </Menu>
-              
+
               <Tooltip title="Account settings">
                 <IconButton onClick={handleMenu} color="inherit">
-                  <Avatar 
-                    alt={userDetails.companyName} 
-                    src="/static/avatar/admin.jpg" 
+                  <Avatar
+                    alt={userDetails?.companyName || userDetails?.name || 'Admin User'}
+                    src="/static/avatar/admin.jpg"
                     sx={{ width: 32, height: 32 }}
                   />
                 </IconButton>
               </Tooltip>
-              
+
               <Menu
                 anchorEl={anchorEl}
                 open={Boolean(anchorEl)}
@@ -166,8 +163,8 @@ const AdminLayout = () => {
           )}
         </Toolbar>
       </AppBarStyled>
-
-      <Drawer
+      {open && (
+        <Drawer
         sx={{
           width: drawerWidth,
           flexShrink: 0,
@@ -201,11 +198,12 @@ const AdminLayout = () => {
           ))}
         </List>
       </Drawer>
+      )}
 
       <Main open={open}>
         <DrawerHeader />
-        <Container maxWidth="lg">
-          <Outlet />
+        <Container maxWidth={false} sx={{ px: 2 }}>
+          {children}
         </Container>
       </Main>
     </Box>

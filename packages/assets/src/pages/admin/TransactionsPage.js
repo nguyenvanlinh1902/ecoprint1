@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow,
   FormControl, InputLabel, Select, MenuItem, TextField,
   InputAdornment, Button, Pagination, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogContentText,
-  DialogActions, Alert, Chip
+  DialogActions, Alert, Chip, IconButton
 } from '@mui/material';
 import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Add as AddIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  ArrowBack as ArrowBackIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material';
-import { Link } from 'react-router-dom';
 import api from '../../services/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../../helpers/formatters';
 
 const TransactionsPage = () => {
+  const navigate = useNavigate();
+  const { transactionId } = useParams();
+  const location = useLocation();
+  
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,20 +58,42 @@ const TransactionsPage = () => {
   const [addSuccess, setAddSuccess] = useState(false);
   const [users, setUsers] = useState([]);
   
-  // Transaction details dialog
-  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  // Transaction details
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
   
   useEffect(() => {
-    fetchTransactions();
-    
     // Get URL parameters if any
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const userIdParam = params.get('userId');
     if (userIdParam) {
       setUserId(userIdParam);
     }
-  }, [page]);
+    
+    if (!transactionId) {
+      fetchTransactions();
+    }
+  }, [page, transactionId, location.search]);
+  
+  // Load transaction details if transactionId is provided
+  useEffect(() => {
+    if (transactionId) {
+      fetchTransactionDetails(transactionId);
+    }
+  }, [transactionId]);
+  
+  const fetchTransactionDetails = async (id) => {
+    try {
+      setLoadingDetails(true);
+      const response = await api.get(`/api/admin/transactions/${id}`);
+      setSelectedTransaction(response.data.data);
+    } catch (error) {
+      console.error('Error fetching transaction details:', error);
+      setError('Failed to load transaction details. Please try again later.');
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
   
   const fetchTransactions = async () => {
     try {
@@ -151,6 +179,18 @@ const TransactionsPage = () => {
     fetchTransactions();
   };
   
+  const handleClearFilters = () => {
+    setType('');
+    setStatus('');
+    setSearch('');
+    setDateRange({
+      startDate: '',
+      endDate: ''
+    });
+    setPage(1);
+    fetchTransactions();
+  };
+  
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1);
@@ -206,21 +246,147 @@ const TransactionsPage = () => {
   };
   
   const handleViewDetails = (transaction) => {
-    setSelectedTransaction(transaction);
-    setDetailsDialogOpen(true);
+    navigate(`/admin/transactions/${transaction.id}`);
+  };
+  
+  const handleBackToList = () => {
+    navigate('/admin/transactions');
+  };
+  
+  // Render transaction details view
+  const renderTransactionDetails = () => {
+    if (loadingDetails) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+    
+    if (!selectedTransaction) {
+      return (
+        <Alert severity="error">Transaction not found or has been deleted.</Alert>
+      );
+    }
+    
+    return (
+      <Paper sx={{ p: 3, width: '100%' }}>
+        <Box sx={{ mb: 3 }}>
+          <Button 
+            startIcon={<ArrowBackIcon />} 
+            onClick={handleBackToList}
+          >
+            Back to Transactions
+          </Button>
+        </Box>
+        
+        <Typography variant="h5" gutterBottom>
+          Transaction Details
+        </Typography>
+        
+        <Grid container spacing={3} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Transaction ID
+            </Typography>
+            <Typography variant="body1" fontWeight="medium">
+              {selectedTransaction.id}
+            </Typography>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Date & Time
+            </Typography>
+            <Typography variant="body1">
+              {formatDateTime(selectedTransaction.createdAt)}
+            </Typography>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              User
+            </Typography>
+            <Typography variant="body1">
+              {selectedTransaction.user ? (
+                <span>
+                  {selectedTransaction.user.name} ({selectedTransaction.user.email})
+                </span>
+              ) : 'N/A'}
+            </Typography>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Type
+            </Typography>
+            <Chip 
+              label={selectedTransaction.type} 
+              color={selectedTransaction.type === 'deposit' ? 'success' : 
+                     selectedTransaction.type === 'withdrawal' ? 'error' : 'default'} 
+              size="small" 
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Amount
+            </Typography>
+            <Typography 
+              variant="body1" 
+              fontWeight="bold"
+              color={selectedTransaction.type === 'deposit' ? 'success.main' : 
+                     selectedTransaction.type === 'withdrawal' ? 'error.main' : 'text.primary'}
+            >
+              {formatCurrency(selectedTransaction.amount)}
+            </Typography>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Status
+            </Typography>
+            <StatusBadge status={selectedTransaction.status} />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Description
+            </Typography>
+            <Typography variant="body1">
+              {selectedTransaction.description || 'No description provided'}
+            </Typography>
+          </Grid>
+          
+          {selectedTransaction.notes && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Admin Notes
+              </Typography>
+              <Typography variant="body1">
+                {selectedTransaction.notes}
+              </Typography>
+            </Grid>
+          )}
+        </Grid>
+      </Paper>
+    );
   };
   
   return (
-    <Box>
+    <Box sx={{ width: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Transactions</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleAddDialogOpen}
-        >
-          Add Manual Transaction
-        </Button>
+        
+        {!transactionId && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAddDialogOpen}
+          >
+            Add Manual Transaction
+          </Button>
+        )}
       </Box>
       
       {error && (
@@ -235,193 +401,187 @@ const TransactionsPage = () => {
         </Alert>
       )}
       
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="flex-end">
-          <Grid item xs={12} sm={6} md={3}>
-            <form onSubmit={handleSearchSubmit}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Search transactions..."
-                value={search}
-                onChange={handleSearchChange}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </form>
-          </Grid>
+      {/* Show transaction details if transactionId is provided, otherwise show list */}
+      {transactionId ? (
+        renderTransactionDetails()
+      ) : (
+        <>
+          {/* Filters */}
+          <Paper sx={{ p: 3, mb: 3, width: '100%' }}>
+            <Grid container spacing={2} alignItems="flex-end">
+              <Grid item xs={12} sm={6} md={3}>
+                <form onSubmit={handleSearchSubmit}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    placeholder="Search transactions..."
+                    value={search}
+                    onChange={handleSearchChange}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </form>
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={type}
+                    onChange={handleTypeChange}
+                    label="Type"
+                  >
+                    <MenuItem value="">All Types</MenuItem>
+                    <MenuItem value="deposit">Deposit</MenuItem>
+                    <MenuItem value="withdrawal">Withdrawal</MenuItem>
+                    <MenuItem value="refund">Refund</MenuItem>
+                    <MenuItem value="payment">Payment</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={status}
+                    onChange={handleStatusChange}
+                    label="Status"
+                  >
+                    <MenuItem value="">All Status</MenuItem>
+                    <MenuItem value="pending">Pending</MenuItem>
+                    <MenuItem value="completed">Completed</MenuItem>
+                    <MenuItem value="failed">Failed</MenuItem>
+                    <MenuItem value="cancelled">Cancelled</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Start Date"
+                  type="date"
+                  name="startDate"
+                  value={dateRange.startDate}
+                  onChange={handleDateRangeChange}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} sm={6} md={2}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="End Date"
+                  type="date"
+                  name="endDate"
+                  value={dateRange.endDate}
+                  onChange={handleDateRangeChange}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </Grid>
+              
+              <Grid item xs={12} md={1}>
+                <Box sx={{ display: 'flex' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={handleFilter}
+                    sx={{ mr: 1 }}
+                  >
+                    <FilterIcon />
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={handleClearFilters}
+                  >
+                    <ClearIcon />
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
           
-          <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Type</InputLabel>
-              <Select
-                value={type}
-                onChange={handleTypeChange}
-                label="Type"
-              >
-                <MenuItem value="">All Types</MenuItem>
-                <MenuItem value="deposit">Deposit</MenuItem>
-                <MenuItem value="payment">Payment</MenuItem>
-                <MenuItem value="refund">Refund</MenuItem>
-                <MenuItem value="adjustment">Adjustment</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={status}
-                onChange={handleStatusChange}
-                label="Status"
-              >
-                <MenuItem value="">All Statuses</MenuItem>
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="failed">Failed</MenuItem>
-                <MenuItem value="cancelled">Cancelled</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              label="From Date"
-              type="date"
-              name="startDate"
-              value={dateRange.startDate}
-              onChange={handleDateRangeChange}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              label="To Date"
-              type="date"
-              name="endDate"
-              value={dateRange.endDate}
-              onChange={handleDateRangeChange}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={1}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                variant="outlined"
-                startIcon={<FilterIcon />}
-                onClick={handleFilter}
-                fullWidth
-              >
-                Filter
-              </Button>
-            </Box>
-          </Grid>
-        </Grid>
-        
-        {userId && (
-          <Box sx={{ mt: 2 }}>
-            <Chip 
-              label={`Filtered by User ID: ${userId}`} 
-              onDelete={() => {
-                setUserId('');
-                fetchTransactions();
-              }} 
-              color="primary"
-            />
-          </Box>
-        )}
-      </Paper>
-      
-      {/* Transactions List */}
-      <Paper>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>ID</TableCell>
-                <TableCell>User</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Description</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
+          <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto' }}>
+            <Table sx={{ minWidth: 800 }}>
+              <TableHead>
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
-                    <CircularProgress size={30} sx={{ my: 2 }} />
-                  </TableCell>
+                  <TableCell width="15%">ID</TableCell>
+                  <TableCell width="15%">Date</TableCell>
+                  <TableCell width="20%">User</TableCell>
+                  <TableCell width="15%">Type</TableCell>
+                  <TableCell width="15%">Amount</TableCell>
+                  <TableCell width="15%">Status</TableCell>
+                  <TableCell width="5%" align="center">Actions</TableCell>
                 </TableRow>
-              ) : transactions.length > 0 ? (
-                transactions.map((transaction) => (
-                  <TableRow key={transaction.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
-                        {transaction.id.substring(0, 8)}...
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Link to={`/admin/users/${transaction.userId}`}>
-                        {transaction.user?.companyName || transaction.user?.name || transaction.userId.substring(0, 8) + '...'}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}</TableCell>
-                    <TableCell>{transaction.description}</TableCell>
-                    <TableCell align="right" sx={{ 
-                      color: transaction.type === 'deposit' || transaction.type === 'refund' 
-                        ? 'success.main' 
-                        : transaction.type === 'payment' 
-                          ? 'error.main' 
-                          : 'inherit'
-                    }}>
-                      {transaction.type === 'deposit' || transaction.type === 'refund' ? '+' : '-'}
-                      {formatCurrency(transaction.amount)}
-                    </TableCell>
-                    <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={transaction.status} />
-                    </TableCell>
-                    <TableCell align="center">
-                      <Button
-                        size="small"
-                        startIcon={<VisibilityIcon />}
-                        onClick={() => handleViewDetails(transaction)}
-                      >
-                        Details
-                      </Button>
+              </TableHead>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      <CircularProgress size={24} sx={{ my: 3 }} />
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={8} align="center">
-                    No transactions found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                ) : transactions.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      No transactions found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  transactions.map((transaction) => (
+                    <TableRow key={transaction.id}>
+                      <TableCell>{transaction.id}</TableCell>
+                      <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
+                      <TableCell>
+                        {transaction.user ? transaction.user.name : 'N/A'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={transaction.type} 
+                          color={
+                            transaction.type === 'deposit' ? 'success' : 
+                            transaction.type === 'withdrawal' ? 'error' : 'default'
+                          } 
+                          size="small" 
+                        />
+                      </TableCell>
+                      <TableCell 
+                        sx={{ 
+                          color: transaction.type === 'deposit' ? 'success.main' : 
+                                 transaction.type === 'withdrawal' ? 'error.main' : 'inherit',
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        {formatCurrency(transaction.amount)}
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={transaction.status} />
+                      </TableCell>
+                      <TableCell align="center">
+                        <IconButton 
+                          size="small"
+                          onClick={() => handleViewDetails(transaction)}
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
             <Pagination 
               count={totalPages} 
               page={page} 
@@ -429,18 +589,31 @@ const TransactionsPage = () => {
               color="primary" 
             />
           </Box>
-        )}
-      </Paper>
-      
-      {/* Add Transaction Dialog */}
-      <Dialog open={addDialogOpen} onClose={handleAddDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Manual Transaction</DialogTitle>
-        <DialogContent>
-          {!addSuccess ? (
-            <>
+          
+          {/* Add Transaction Dialog */}
+          <Dialog 
+            open={addDialogOpen} 
+            onClose={handleAddDialogClose} 
+            maxWidth="md" 
+            fullWidth
+          >
+            <DialogTitle>Add Manual Transaction</DialogTitle>
+            <DialogContent>
+              {addError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  {addError}
+                </Alert>
+              )}
+              
+              {addSuccess && (
+                <Alert severity="success" sx={{ mb: 2 }}>
+                  Transaction added successfully!
+                </Alert>
+              )}
+              
               <Grid container spacing={2} sx={{ mt: 1 }}>
                 <Grid item xs={12}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth required>
                     <InputLabel>User</InputLabel>
                     <Select
                       name="userId"
@@ -450,7 +623,7 @@ const TransactionsPage = () => {
                     >
                       {users.map(user => (
                         <MenuItem key={user.id} value={user.id}>
-                          {user.companyName || user.name} ({user.email})
+                          {user.name} ({user.email})
                         </MenuItem>
                       ))}
                     </Select>
@@ -458,7 +631,7 @@ const TransactionsPage = () => {
                 </Grid>
                 
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth required>
                     <InputLabel>Type</InputLabel>
                     <Select
                       name="type"
@@ -467,6 +640,7 @@ const TransactionsPage = () => {
                       label="Type"
                     >
                       <MenuItem value="deposit">Deposit</MenuItem>
+                      <MenuItem value="withdrawal">Withdrawal</MenuItem>
                       <MenuItem value="refund">Refund</MenuItem>
                       <MenuItem value="adjustment">Adjustment</MenuItem>
                     </Select>
@@ -478,29 +652,18 @@ const TransactionsPage = () => {
                     name="amount"
                     label="Amount"
                     type="number"
+                    fullWidth
+                    required
                     value={newTransaction.amount}
                     onChange={handleNewTransactionChange}
-                    fullWidth
                     InputProps={{
                       startAdornment: <InputAdornment position="start">$</InputAdornment>,
                     }}
                   />
                 </Grid>
                 
-                <Grid item xs={12}>
-                  <TextField
-                    name="description"
-                    label="Description"
-                    value={newTransaction.description}
-                    onChange={handleNewTransactionChange}
-                    fullWidth
-                    multiline
-                    rows={2}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <FormControl fullWidth>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth required>
                     <InputLabel>Status</InputLabel>
                     <Select
                       name="status"
@@ -510,129 +673,37 @@ const TransactionsPage = () => {
                     >
                       <MenuItem value="pending">Pending</MenuItem>
                       <MenuItem value="completed">Completed</MenuItem>
+                      <MenuItem value="failed">Failed</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
-              </Grid>
-              
-              {addError && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {addError}
-                </Alert>
-              )}
-            </>
-          ) : (
-            <Alert severity="success">
-              Transaction added successfully!
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleAddDialogClose}>
-            {addSuccess ? 'Close' : 'Cancel'}
-          </Button>
-          {!addSuccess && (
-            <Button 
-              onClick={handleAddTransaction} 
-              variant="contained"
-              disabled={addLoading || !newTransaction.userId || !newTransaction.amount || !newTransaction.description}
-            >
-              {addLoading ? <CircularProgress size={24} /> : 'Add Transaction'}
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
-      
-      {/* Transaction Details Dialog */}
-      <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Transaction Details</DialogTitle>
-        <DialogContent>
-          {selectedTransaction && (
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <Typography variant="subtitle2">Transaction ID</Typography>
-                <Typography variant="body1" sx={{ fontFamily: 'monospace' }}>
-                  {selectedTransaction.id}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2">Type</Typography>
-                <Typography variant="body1">
-                  {selectedTransaction.type.charAt(0).toUpperCase() + selectedTransaction.type.slice(1)}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2">Status</Typography>
-                <StatusBadge status={selectedTransaction.status} />
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2">Amount</Typography>
-                <Typography 
-                  variant="body1"
-                  sx={{ 
-                    color: selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' 
-                      ? 'success.main' 
-                      : selectedTransaction.type === 'payment' 
-                        ? 'error.main' 
-                        : 'inherit',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  {selectedTransaction.type === 'deposit' || selectedTransaction.type === 'refund' ? '+' : '-'}
-                  {formatCurrency(selectedTransaction.amount)}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2">Date</Typography>
-                <Typography variant="body1">
-                  {formatDateTime(selectedTransaction.createdAt)}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <Typography variant="subtitle2">User</Typography>
-                <Typography variant="body1">
-                  <Link to={`/admin/users/${selectedTransaction.userId}`}>
-                    {selectedTransaction.user?.companyName || selectedTransaction.user?.name || 'Unknown'}
-                  </Link>
-                  {' '}
-                  ({selectedTransaction.user?.email || 'No email'})
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <Typography variant="subtitle2">Description</Typography>
-                <Typography variant="body1">
-                  {selectedTransaction.description}
-                </Typography>
-              </Grid>
-              
-              {selectedTransaction.metadata && Object.keys(selectedTransaction.metadata).length > 0 && (
+                
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2">Additional Information</Typography>
-                  <List dense>
-                    {Object.entries(selectedTransaction.metadata).map(([key, value]) => (
-                      <ListItem key={key}>
-                        <ListItemText 
-                          primary={`${key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1')}`}
-                          secondary={value}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
+                  <TextField
+                    name="description"
+                    label="Description"
+                    fullWidth
+                    multiline
+                    rows={3}
+                    value={newTransaction.description}
+                    onChange={handleNewTransactionChange}
+                  />
                 </Grid>
-              )}
-            </Grid>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+              </Grid>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleAddDialogClose}>Cancel</Button>
+              <Button 
+                onClick={handleAddTransaction} 
+                variant="contained" 
+                disabled={addLoading || !newTransaction.userId || !newTransaction.amount}
+              >
+                {addLoading ? <CircularProgress size={24} /> : 'Add Transaction'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
     </Box>
   );
 };

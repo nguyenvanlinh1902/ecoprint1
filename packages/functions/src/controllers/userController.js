@@ -3,9 +3,10 @@ import { CustomError } from '../exceptions/customError.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import * as userService from '../services/userService.js';
+import * as functions from 'firebase-functions';
 
-// Secret key cho JWT
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+// Secret key for JWT from config
+const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
 
 /**
  * Đăng ký người dùng mới 

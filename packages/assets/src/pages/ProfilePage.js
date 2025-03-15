@@ -1,21 +1,36 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Typography, Box, Paper, Grid, TextField, Button, 
-  CircularProgress, Divider, Alert, Card, CardContent
+  CircularProgress, Divider, Alert, Card, CardContent,
+  Avatar, List, ListItem, ListItemText, ListItemAvatar,
+  ListItemIcon, Switch, Chip, Stack
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import api from '../services/api';
 import { formatPhoneNumber } from '../helpers/formatters';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import EmailIcon from '@mui/icons-material/Email';
+import BusinessIcon from '@mui/icons-material/Business';
+import PhoneIcon from '@mui/icons-material/Phone';
+import GoogleIcon from '@mui/icons-material/Google';
+import LockIcon from '@mui/icons-material/Lock';
+import BadgeIcon from '@mui/icons-material/Badge';
+import SecurityIcon from '@mui/icons-material/Security';
 
 const ProfilePage = () => {
-  const { userProfile, updateProfile } = useAuth();
+  console.log('ProfilePage rendering');
+  const { userProfile, updateProfile, currentUser } = useAuth();
+  console.log('User profile from auth:', userProfile);
+  console.log('Current user from auth:', currentUser);
   
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [initialLoad, setInitialLoad] = useState(true);
   
   const [formData, setFormData] = useState({
+    displayName: userProfile?.displayName || '',
     companyName: userProfile?.companyName || '',
     phone: userProfile?.phone || '',
   });
@@ -29,6 +44,19 @@ const ProfilePage = () => {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Update form data when user profile changes
+  useEffect(() => {
+    console.log('userProfile changed:', userProfile);
+    if (userProfile) {
+      setFormData({
+        displayName: userProfile.displayName || '',
+        companyName: userProfile.companyName || '',
+        phone: userProfile.phone || '',
+      });
+      setInitialLoad(false);
+    }
+  }, [userProfile]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -50,6 +78,7 @@ const ProfilePage = () => {
     if (editing) {
       // Cancel editing - reset form
       setFormData({
+        displayName: userProfile?.displayName || '',
         companyName: userProfile?.companyName || '',
         phone: userProfile?.phone || '',
       });
@@ -63,6 +92,11 @@ const ProfilePage = () => {
     e.preventDefault();
     
     // Validation
+    if (!formData.displayName.trim()) {
+      setError('Name is required');
+      return;
+    }
+    
     if (!formData.companyName.trim()) {
       setError('Company name is required');
       return;
@@ -78,19 +112,18 @@ const ProfilePage = () => {
     setSuccess(false);
     
     try {
-      await api.put('/api/users/me', {
+      // First update profile in Firestore via custom function
+      await updateProfile({
+        displayName: formData.displayName,
         companyName: formData.companyName,
         phone: formData.phone,
       });
-      
-      // Refresh user details
-      await updateProfile();
       
       setSuccess(true);
       setEditing(false);
     } catch (error) {
       console.error('Failed to update profile:', error);
-      setError(error.response?.data?.error?.message || 'Failed to update profile');
+      setError(error.message || 'Failed to update profile');
     } finally {
       setLoading(false);
     }
@@ -146,9 +179,62 @@ const ProfilePage = () => {
     }
   };
 
-  if (!userProfile) {
-    return <CircularProgress />;
+  // If still loading initially, show a loading indicator
+  if (initialLoad) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '70vh' }}>
+        <CircularProgress />
+        <Typography variant="body1" sx={{ ml: 2 }}>
+          Loading profile...
+        </Typography>
+      </Box>
+    );
   }
+
+  // If userProfile is null after initial load, show a helpful message
+  if (!userProfile) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          <Typography variant="h6">Profile information unavailable</Typography>
+          <Typography variant="body1">
+            We couldn't load your profile information. This may be due to a network issue.
+          </Typography>
+        </Alert>
+        <Paper sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', py: 5 }}>
+            <AccountCircleIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+            <Typography variant="h6" gutterBottom>Profile Data Unavailable</Typography>
+            <Typography variant="body1" align="center">
+              Please check your internet connection and try refreshing the page.
+            </Typography>
+            <Button 
+              variant="contained" 
+              sx={{ mt: 3 }}
+              onClick={() => window.location.reload()}
+            >
+              Refresh Page
+            </Button>
+          </Box>
+        </Paper>
+      </Box>
+    );
+  }
+  
+  // Safe access to user profile with defaults to prevent errors
+  const safeUserProfile = {
+    displayName: userProfile?.displayName || 'User',
+    email: userProfile?.email || 'No email available',
+    role: userProfile?.role || 'user',
+    companyName: userProfile?.companyName || 'Not set',
+    phone: userProfile?.phone || 'Not set',
+    photoURL: userProfile?.photoURL || null
+  };
+
+  // Check if the user has connected with Google
+  const hasGoogleProvider = currentUser?.providerData?.some(
+    provider => provider.providerId === 'google.com'
+  );
 
   return (
     <Box>
@@ -168,215 +254,277 @@ const ProfilePage = () => {
         </Alert>
       )}
 
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5">Account Information</Typography>
-          <Button 
-            variant={editing ? "outlined" : "contained"} 
-            color={editing ? "error" : "primary"}
-            onClick={handleEditToggle}
+      {/* User Profile Card */}
+      <Paper sx={{ p: 0, mb: 4, overflow: 'hidden' }}>
+        <Box sx={{ 
+          p: 3, 
+          backgroundColor: 'primary.main', 
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <Avatar 
+            src={safeUserProfile.photoURL} 
+            alt={safeUserProfile.displayName}
+            sx={{ width: 80, height: 80, border: '3px solid white' }}
           >
-            {editing ? "Cancel" : "Edit Profile"}
-          </Button>
+            {safeUserProfile.displayName.charAt(0)}
+          </Avatar>
+          <Box>
+            <Typography variant="h5">
+              {safeUserProfile.displayName}
+            </Typography>
+            <Typography variant="body1">
+              {safeUserProfile.email}
+            </Typography>
+            <Chip 
+              label={safeUserProfile.role === 'admin' ? 'Admin' : 'User'} 
+              color={safeUserProfile.role === 'admin' ? 'error' : 'primary'}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 1, backgroundColor: 'rgba(255, 255, 255, 0.2)' }}
+            />
+          </Box>
         </Box>
-        
-        {editing ? (
-          <form onSubmit={handleSubmit}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Company Name"
-                  name="companyName"
-                  value={formData.companyName}
-                  onChange={handleChange}
-                  required
+
+        <Box sx={{ p: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6">Account Information</Typography>
+            <Button 
+              variant={editing ? "outlined" : "contained"} 
+              color={editing ? "error" : "primary"}
+              onClick={handleEditToggle}
+              startIcon={editing ? null : <AccountCircleIcon />}
+            >
+              {editing ? "Cancel" : "Edit Profile"}
+            </Button>
+          </Box>
+          
+          {editing ? (
+            <form onSubmit={handleSubmit}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Full Name"
+                    name="displayName"
+                    value={formData.displayName}
+                    onChange={handleChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Company Name"
+                    name="companyName"
+                    value={formData.companyName}
+                    onChange={handleChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Phone Number"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Email Address"
+                    value={safeUserProfile.email}
+                    disabled
+                    helperText="Email cannot be changed"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      disabled={loading}
+                    >
+                      {loading ? <CircularProgress size={24} /> : "Save Changes"}
+                    </Button>
+                  </Box>
+                </Grid>
+              </Grid>
+            </form>
+          ) : (
+            <List>
+              <ListItem>
+                <ListItemIcon>
+                  <BadgeIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Full Name" 
+                  secondary={safeUserProfile.displayName} 
                 />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
+              </ListItem>
+              <Divider variant="inset" component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <EmailIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Email Address" 
+                  secondary={safeUserProfile.email} 
                 />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Email Address"
-                  value={userProfile.email}
-                  disabled
-                  helperText="Email cannot be changed"
+              </ListItem>
+              <Divider variant="inset" component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <BusinessIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Company Name" 
+                  secondary={safeUserProfile.companyName} 
                 />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Account Balance"
-                  value={`$${userProfile.balance?.toFixed(2) || '0.00'}`}
-                  disabled
-                  helperText="To add funds, go to Deposit page"
+              </ListItem>
+              <Divider variant="inset" component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <PhoneIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Phone Number" 
+                  secondary={safeUserProfile.phone ? formatPhoneNumber(safeUserProfile.phone) : 'Not set'} 
                 />
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={loading}
-                  >
-                    {loading ? <CircularProgress size={24} /> : "Save Changes"}
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </form>
-        ) : (
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Company Name
-              </Typography>
-              <Typography variant="body1">
-                {userProfile.companyName}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Phone Number
-              </Typography>
-              <Typography variant="body1">
-                {formatPhoneNumber(userProfile.phone)}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Email Address
-              </Typography>
-              <Typography variant="body1">
-                {userProfile.email}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Account Balance
-              </Typography>
-              <Typography variant="body1">
-                ${userProfile.balance?.toFixed(2) || '0.00'}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Account Status
-              </Typography>
-              <Typography variant="body1" sx={{ 
-                color: userProfile.status === 'active' ? 'success.main' : 'error.main' 
-              }}>
-                {userProfile.status === 'active' ? 'Active' : 'Inactive'}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" color="text.secondary">
-                Member Since
-              </Typography>
-              <Typography variant="body1">
-                {userProfile.createdAt ? new Date(userProfile.createdAt).toLocaleDateString() : 'N/A'}
-              </Typography>
-            </Grid>
-          </Grid>
-        )}
+              </ListItem>
+              <Divider variant="inset" component="li" />
+              
+              <ListItem>
+                <ListItemIcon>
+                  <SecurityIcon />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Account Type" 
+                  secondary={safeUserProfile.role === 'admin' ? 'Administrator' : 'Standard User'} 
+                />
+              </ListItem>
+            </List>
+          )}
+        </Box>
       </Paper>
-      
+
+      {/* Connected Accounts Section */}
+      <Paper sx={{ p: 3, mb: 4 }}>
+        <Typography variant="h6" gutterBottom>
+          Connected Accounts
+        </Typography>
+        <List>
+          <ListItem>
+            <ListItemIcon>
+              <GoogleIcon color={hasGoogleProvider ? "primary" : "disabled"} />
+            </ListItemIcon>
+            <ListItemText 
+              primary="Google" 
+              secondary={hasGoogleProvider ? "Connected" : "Not connected"} 
+            />
+            <Chip 
+              label={hasGoogleProvider ? "Connected" : "Not Connected"} 
+              color={hasGoogleProvider ? "success" : "default"}
+              size="small"
+            />
+          </ListItem>
+        </List>
+      </Paper>
+
+      {/* Password Section */}
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5">Security</Typography>
+          <Typography variant="h6">Password & Security</Typography>
           <Button 
             variant={changingPassword ? "outlined" : "contained"} 
             color={changingPassword ? "error" : "primary"}
-            onClick={() => {
-              setChangingPassword(!changingPassword);
-              setPasswordError('');
-              setPasswordSuccess(false);
-              setPasswordData({
-                currentPassword: '',
-                newPassword: '',
-                confirmPassword: '',
-              });
-            }}
+            onClick={() => setChangingPassword(!changingPassword)}
+            startIcon={changingPassword ? null : <LockIcon />}
+            disabled={hasGoogleProvider && !currentUser?.email}
           >
             {changingPassword ? "Cancel" : "Change Password"}
           </Button>
         </Box>
-        
-        {passwordSuccess && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            Password changed successfully!
+
+        {hasGoogleProvider && !currentUser?.email && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            You're signed in with Google, so no password is needed.
           </Alert>
         )}
         
-        {passwordError && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {passwordError}
-          </Alert>
-        )}
-        
-        {changingPassword ? (
-          <form onSubmit={handlePasswordSubmit}>
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Current Password"
-                  name="currentPassword"
-                  type="password"
-                  value={passwordData.currentPassword}
-                  onChange={handlePasswordChange}
-                  required
-                />
+        {changingPassword && (
+          <>
+            {passwordError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {passwordError}
+              </Alert>
+            )}
+            
+            {passwordSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Password updated successfully!
+              </Alert>
+            )}
+            
+            <form onSubmit={handlePasswordSubmit}>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    type="password"
+                    label="Current Password"
+                    name="currentPassword"
+                    value={passwordData.currentPassword}
+                    onChange={handlePasswordChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    type="password"
+                    label="New Password"
+                    name="newPassword"
+                    value={passwordData.newPassword}
+                    onChange={handlePasswordChange}
+                    required
+                    helperText="Password must be at least 6 characters"
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    type="password"
+                    label="Confirm New Password"
+                    name="confirmPassword"
+                    value={passwordData.confirmPassword}
+                    onChange={handlePasswordChange}
+                    required
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      type="submit"
+                      variant="contained"
+                      color="primary"
+                      disabled={loading}
+                    >
+                      {loading ? <CircularProgress size={24} /> : "Update Password"}
+                    </Button>
+                  </Box>
+                </Grid>
               </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="New Password"
-                  name="newPassword"
-                  type="password"
-                  value={passwordData.newPassword}
-                  onChange={handlePasswordChange}
-                  required
-                  helperText="At least 6 characters"
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Confirm New Password"
-                  name="confirmPassword"
-                  type="password"
-                  value={passwordData.confirmPassword}
-                  onChange={handlePasswordChange}
-                  required
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    disabled={loading}
-                  >
-                    {loading ? <CircularProgress size={24} /> : "Update Password"}
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </form>
-        ) : (
-          <Typography>
-            For security reasons, we recommend changing your password regularly.
-          </Typography>
+            </form>
+          </>
         )}
       </Paper>
     </Box>

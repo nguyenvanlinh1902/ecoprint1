@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import { getUserById } from '../services/userService.js';
 import { admin, db } from '../config/firebase.js';
+import * as functions from 'firebase-functions';
 
-// Secret key for JWT
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+// Secret key for JWT from config
+const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
 
 /**
  * Middleware xác thực token từ Authorization header

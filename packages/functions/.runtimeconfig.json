@@ -1,0 +1,17 @@
+{
+  "firebase": {
+    "api_key": "AIzaSyAEkrwAAQ5iuqOkWNqlReRon_59lTnLKf8",
+    "auth_domain": "ecoprint1-3cd5c.firebaseapp.com",
+    "project_id": "ecoprint1-3cd5c",
+    "storage_bucket": "ecoprint1-3cd5c.appspot.com",
+    "messaging_sender_id": "643722203154",
+    "app_id": "1:643722203154:web:7a89c317be9292cc5688cb",
+    "measurement_id": "G-T98N3N4HGY"
+  },
+  "emulator": {
+    "enabled": true
+  },
+  "jwt": {
+    "secret": "your-secret-key"
+  }
+} 

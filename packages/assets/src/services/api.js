@@ -1,12 +1,18 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/ecoprint/us-central1/api';
+// For development environment, use the Vite proxy configured in vite.config.js
+// For production, it will use the environment variable or fall back to /api
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+console.log('API_BASE_URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  // Add a timeout to prevent hanging requests
+  timeout: 15000
 });
 
 // Request interceptor for adding auth token
@@ -29,10 +35,13 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Handle 401 Unauthorized globally - could redirect to login
+    console.error('API Error:', error?.response?.status, error?.response?.data || error.message);
+    
+    // Only handle 401 errors for token removal - don't redirect automatically
     if (error.response && error.response.status === 401) {
+      // Only remove the token from localStorage
       localStorage.removeItem('authToken');
-      // Could redirect to login page
+      // Don't redirect - let the component handle redirection if needed
     }
     return Promise.reject(error);
   }
@@ -100,11 +109,15 @@ const admin = {
 const setAuthToken = (token) => {
   if (token) {
     localStorage.setItem('authToken', token);
+    // Also update the current instance
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
   }
 };
 
 const clearAuthToken = () => {
   localStorage.removeItem('authToken');
+  // Also clear from current instance
+  delete api.defaults.headers.common['Authorization'];
 };
 
 export default {
