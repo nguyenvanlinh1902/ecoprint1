@@ -2,15 +2,38 @@ import App from 'koa';
 import cors from '@koa/cors';
 import Router from '@koa/router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
+import createErrorHandler from '../middleware/errorHandler.js';
+import * as errorService from '../services/errorService.js';
+import render from 'koa-ejs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import appConfig from '../config/app.js';
 
+// ES module compatibility
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Initialize the Koa application
 const app = new App();
-const router = new Router();
+app.proxy = true;
 
+// Configure EJS rendering
+render(app, {
+  cache: appConfig.views.cache,
+  debug: appConfig.views.debug,
+  layout: false,
+  root: path.resolve(__dirname, '../../../views'),
+  viewExt: 'html'
+});
+
+// Error handler middleware
+app.use(createErrorHandler());
+
+// CORS configuration
 app.use(cors({
   origin: (ctx) => {
-    const allowedOrigins = ['http://localhost:3001', 'http://localhost:9099'];
     const requestOrigin = ctx.request.header.origin;
-    if (allowedOrigins.includes(requestOrigin)) {
+    if (appConfig.cors.allowedOrigins.includes(requestOrigin)) {
       return requestOrigin;
     }
     return false;
@@ -18,13 +41,16 @@ app.use(cors({
   allowMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
   exposeHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
-  credentials: true,
+  credentials: appConfig.cors.credentials,
 }));
 
-// Body parser middleware
+// Custom JSON body parser middleware
 app.use(async (ctx, next) => {
+  console.log('test')
+
   if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
     try {
+      console.log('test')
       const body = await new Promise((resolve, reject) => {
         let data = '';
         ctx.req.on('data', chunk => {
@@ -47,28 +73,9 @@ app.use(async (ctx, next) => {
   await next();
 });
 
-// Error handler
-app.use(async (ctx, next) => {
-  try {
-    await next();
-  } catch (err) {
-    console.error('Auth error:', {
-      url: ctx.url,
-      method: ctx.method,
-      headers: ctx.headers,
-      error: err.message,
-      stack: err.stack
-    });
-    
-    ctx.status = err.status || 500;
-    ctx.body = {
-      error: err.message || 'Internal Server Error',
-      code: err.code || 'unknown_error'
-    };
-  }
-});
+// Auth routes
+const router = new Router();
 
-// Auth routes will be added here
 router.post('/register', async (ctx) => {
   const { email, password } = ctx.request.body;
 
@@ -76,7 +83,10 @@ router.post('/register', async (ctx) => {
     ctx.status = 400;
     ctx.body = { 
       success: false,
-      error: 'Email and password are required' 
+      error: {
+        code: 'ERR_VALIDATION',
+        message: 'Email and password are required'
+      }
     };
     return;
   }
@@ -98,10 +108,7 @@ router.post('/register', async (ctx) => {
     // };
   } catch (error) {
     ctx.status = error.message === 'Registration timed out' ? 504 : 400;
-    ctx.body = {
-      success: false,
-      error: error.message
-    };
+    ctx.body = errorService.formatError(error, ctx.status);
   }
 });
 
@@ -109,7 +116,11 @@ router.post('/login', async (ctx) => {
   // Implementation for login
 });
 
-app.use(router.routes());
+// Register routes
 app.use(router.allowedMethods());
+app.use(router.routes());
+
+// Global error handling
+app.on('error', errorService.handleError);
 
 export default app; 

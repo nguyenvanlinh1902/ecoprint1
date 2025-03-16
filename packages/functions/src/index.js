@@ -8,5 +8,3 @@ if (getApps().length === 0) {
 }
 
 // API endpoints
-export const api = functions.https.onRequest(apiHandler.callback());
-export const auth = functions.https.onRequest(authHandler.callback());

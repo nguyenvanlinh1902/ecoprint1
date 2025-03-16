@@ -11,13 +11,15 @@ const TOKEN_EXPIRES_IN = '7d';
  * Register a new user
  */
 export const register = async (ctx) => {
+  console.log('Register endpoint hit - start processing');
   try {
-    console.log('Register endpoint hit - start processing');
-    
     // Get request data directly from ctx.request.body since we've already parsed it
     const requestData = ctx.request.body;
     
+    console.log('Request data:', JSON.stringify(requestData));
+    
     if (!requestData || Object.keys(requestData).length === 0) {
+      console.error('Empty request body');
       ctx.status = 400;
       ctx.body = { error: 'Request body is empty or could not be parsed' };
       return;
@@ -26,12 +28,26 @@ export const register = async (ctx) => {
     const { email, password, displayName, phone = '', companyName = '' } = requestData;
     
     if (!email || !password || !displayName) {
+      console.error('Missing required fields');
       ctx.status = 400;
       ctx.body = { error: 'Missing required fields' };
       return;
     }
     
+    console.log('Checking if user exists:', email);
+    
+    // Check if user already exists before trying to create
     try {
+      const existingUser = await admin.auth().getUserByEmail(email).catch(() => null);
+      if (existingUser) {
+        console.log('User already exists:', email);
+        ctx.status = 409;
+        ctx.body = { error: 'Email already exists' };
+        return;
+      }
+      
+      console.log('Creating user in Firebase Auth:', email);
+      
       // Create user in Firebase Auth
       const userRecord = await admin.auth().createUser({
         email,
@@ -39,6 +55,9 @@ export const register = async (ctx) => {
         displayName,
         disabled: false,
       });
+      
+      console.log('User created in Firebase Auth:', userRecord.uid);
+      console.log('Storing user data in Firestore');
       
       // Store additional user information in Firestore
       await db.collection('users').doc(userRecord.uid).set({
@@ -52,6 +71,8 @@ export const register = async (ctx) => {
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         balance: 0
       });
+      
+      console.log('User data stored in Firestore');
       
       ctx.status = 201;
       ctx.body = { 
