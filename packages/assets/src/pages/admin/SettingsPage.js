@@ -99,7 +99,7 @@ const SettingsPage = () => {
         setApiKeys(apiKeysResponse.data.data);
         
       } catch (error) {
-        console.error('Error fetching settings:', error);
+        /* error removed */
         setError('Failed to load settings. Please try again later.');
       } finally {
         setLoading(false);
@@ -147,7 +147,7 @@ const SettingsPage = () => {
       
       setSuccess('General settings saved successfully.');
     } catch (error) {
-      console.error('Error saving general settings:', error);
+      /* error removed */
       setError('Failed to save general settings. Please try again later.');
     } finally {
       setSaving(false);
@@ -164,7 +164,7 @@ const SettingsPage = () => {
       
       setSuccess('Email settings saved successfully.');
     } catch (error) {
-      console.error('Error saving email settings:', error);
+      /* error removed */
       setError('Failed to save email settings. Please try again later.');
     } finally {
       setSaving(false);
@@ -181,7 +181,7 @@ const SettingsPage = () => {
       
       setSuccess('Email connection test successful!');
     } catch (error) {
-      console.error('Error testing email connection:', error);
+      /* error removed */
       setError('Email connection test failed. Please check your settings.');
     } finally {
       setSaving(false);
@@ -199,7 +199,7 @@ const SettingsPage = () => {
       
       setTemplateDialogOpen(true);
     } catch (error) {
-      console.error('Error fetching template:', error);
+      /* error removed */
       setError('Failed to load email template. Please try again later.');
     } finally {
       setLoading(false);
@@ -223,7 +223,7 @@ const SettingsPage = () => {
       setTemplateDialogOpen(false);
       setSuccess('Email template saved successfully.');
     } catch (error) {
-      console.error('Error saving template:', error);
+      /* error removed */
       setError('Failed to save email template. Please try again later.');
     } finally {
       setSaving(false);
@@ -243,7 +243,7 @@ const SettingsPage = () => {
       setNewKeyName('');
       setKeyDialogOpen(true);
     } catch (error) {
-      console.error('Error generating API key:', error);
+      /* error removed */
       setError('Failed to generate API key. Please try again later.');
     } finally {
       setSaving(false);
@@ -263,7 +263,7 @@ const SettingsPage = () => {
       setConfirmDeleteDialog(false);
       setSuccess('API key deleted successfully.');
     } catch (error) {
-      console.error('Error deleting API key:', error);
+      /* error removed */
       setError('Failed to delete API key. Please try again later.');
     }
   };

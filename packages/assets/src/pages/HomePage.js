@@ -9,26 +9,26 @@ import {
   Divider 
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import useHistory from '../hooks/useHistory';
 
 const HomePage = () => {
   const { currentUser, signOut } = useAuth();
-  const navigate = useNavigate();
+  const history = useHistory();
 
   const handleLogout = async () => {
     try {
-      console.log('HomePage: Attempting to log out...');
+      /* log removed */
       const success = await signOut();
       
       if (success) {
-        console.log('HomePage: Logout successful, redirecting to login page');
-        navigate('/login', { replace: true });
+        /* log removed */
+        history.replace('/login');
       } else {
-        console.error('HomePage: Logout was not successful');
+        /* error removed */
         alert('An error occurred during logout. Please try again.');
       }
     } catch (error) {
-      console.error('Logout failed:', error);
+      /* error removed */
       alert('An error occurred during logout. Please try again.');
     }
   };

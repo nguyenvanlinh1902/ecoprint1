@@ -59,7 +59,7 @@ const OrderDetailPage = () => {
         setOrder(response.data.data);
         setAdminNotes(response.data.data.adminNotes || '');
       } catch (error) {
-        console.error('Error fetching order:', error);
+        /* error removed */
         setError('Failed to load order details. Please try again later.');
       } finally {
         setLoading(false);
@@ -95,7 +95,7 @@ const OrderDetailPage = () => {
       handleStatusDialogClose();
       
     } catch (error) {
-      console.error('Error updating status:', error);
+      /* error removed */
       setStatusError(error.response?.data?.message || 'Failed to update status. Please try again.');
     } finally {
       setStatusLoading(false);
@@ -135,7 +135,7 @@ const OrderDetailPage = () => {
       handleTrackingDialogClose();
       
     } catch (error) {
-      console.error('Error updating tracking info:', error);
+      /* error removed */
       setTrackingError(error.response?.data?.message || 'Failed to update tracking information. Please try again.');
     } finally {
       setTrackingLoading(false);
@@ -154,7 +154,7 @@ const OrderDetailPage = () => {
       setEditingNotes(false);
       
     } catch (error) {
-      console.error('Error saving notes:', error);
+      /* error removed */
     } finally {
       setNotesLoading(false);
     }

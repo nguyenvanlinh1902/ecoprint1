@@ -92,11 +92,11 @@ const AdminLayout = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      console.log('AdminLayout: Attempting to log out...');
+      /* log removed */
       const success = await signOut();
       
       if (success) {
-        console.log('AdminLayout: Logout successful, redirecting to login page');
+        /* log removed */
         // Đóng menu nếu đang mở
         if (anchorEl) {
           setAnchorEl(null);
@@ -105,11 +105,11 @@ const AdminLayout = ({ children }) => {
         // Điều hướng về trang đăng nhập
         navigate('/login', { replace: true });
       } else {
-        console.error('AdminLayout: Logout was not successful');
+        /* error removed */
         alert('An error occurred during logout. Please try again.');
       }
     } catch (error) {
-      console.error('AdminLayout: Error during logout:', error);
+      /* error removed */
       alert('An error occurred during logout. Please try again.');
     }
   };

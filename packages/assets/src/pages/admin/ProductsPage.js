@@ -133,7 +133,7 @@ const ProductsPage = () => {
         });
       }
     } catch (error) {
-      console.error('Error loading product:', error);
+      /* error removed */
       setFormError('Failed to load product data');
     } finally {
       setLoading(false);
@@ -158,7 +158,7 @@ const ProductsPage = () => {
       setTotal(response.data.total || 0);
       setError('');
     } catch (error) {
-      console.error('Error fetching products:', error);
+      /* error removed */
       setError('Failed to fetch products. Please try again.');
     } finally {
       setLoading(false);
@@ -170,7 +170,7 @@ const ProductsPage = () => {
       const response = await api.get('/api/categories');
       setCategories(response.data.data || []);
     } catch (error) {
-      console.error('Error fetching categories:', error);
+      /* error removed */
     }
   };
   
@@ -238,7 +238,7 @@ const ProductsPage = () => {
         fetchProducts();
       }
     } catch (error) {
-      console.error('Error deleting product:', error);
+      /* error removed */
       setError('Failed to delete product. Please try again.');
     } finally {
       setDeleting(false);
@@ -411,7 +411,7 @@ const ProductsPage = () => {
       }, 1500);
       
     } catch (error) {
-      console.error('Error saving product:', error);
+      /* error removed */
       setFormError(error.response?.data?.message || 'Failed to save product. Please try again.');
     } finally {
       setSaving(false);
@@ -513,7 +513,7 @@ const ProductsPage = () => {
       link.click();
       link.remove();
     } catch (error) {
-      console.error('Error downloading template:', error);
+      /* error removed */
       setImportError('Failed to download template. Please try again.');
     }
   };
@@ -549,7 +549,7 @@ const ProductsPage = () => {
         setImportSuccess(true);
       }
     } catch (error) {
-      console.error('Error importing products:', error);
+      /* error removed */
       setImportError(error.response?.data?.message || 'Failed to import products. Please try again.');
     } finally {
       setImporting(false);

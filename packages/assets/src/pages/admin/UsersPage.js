@@ -61,7 +61,7 @@ const UsersPage = () => {
       setTotalPages(response.data.data.totalPages || 1);
       
     } catch (error) {
-      console.error('Error fetching users:', error);
+      /* error removed */
       setError('Failed to load users. Please try again later.');
     } finally {
       setLoading(false);
@@ -125,7 +125,7 @@ const UsersPage = () => {
       handleDialogClose();
       
     } catch (error) {
-      console.error(`Error performing ${dialogAction} action:`, error);
+      /* error removed */
       setError(`Failed to ${dialogAction} user. Please try again later.`);
     } finally {
       setActionLoading(false);

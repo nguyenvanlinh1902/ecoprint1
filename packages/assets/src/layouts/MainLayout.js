@@ -55,9 +55,9 @@ const MainLayout = ({ children }) => {
 
   // Kiểm tra profile
   useEffect(() => {
-    console.log('MainLayout userProfile:', userProfile);
+    /* log removed */
     if (!userProfile) {
-      console.log('MainLayout: userProfile is null or undefined');
+      /* log removed */
     }
   }, [userProfile]);
 
@@ -84,11 +84,11 @@ const MainLayout = ({ children }) => {
   const handleLogout = async () => {
     try {
       setLoading(true);
-      console.log('Attempting to log out...');
+      /* log removed */
       const success = await signOut();
       
       if (success) {
-        console.log('Logout successful, redirecting to login page');
+        /* log removed */
         // Đóng menu nếu đang mở
         if (anchorEl) {
           handleProfileMenuClose();
@@ -97,11 +97,11 @@ const MainLayout = ({ children }) => {
         // Điều hướng về trang đăng nhập
         navigate('/login', { replace: true });
       } else {
-        console.error('Logout was not successful');
+        /* error removed */
         alert('An error occurred during logout. Please try again.');
       }
     } catch (error) {
-      console.error('Error during logout:', error);
+      /* error removed */
       alert('An error occurred during logout. Please try again.');
     } finally {
       setLoading(false);

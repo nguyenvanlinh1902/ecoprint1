@@ -30,21 +30,21 @@ const DashboardPage = () => {
   const [recentTransactions, setRecentTransactions] = useState([]);
 
   useEffect(() => {
-    console.log("DashboardPage - userProfile:", userProfile);
-    console.log("DashboardPage - currentUser:", currentUser);
+    /* log removed */
+    /* log removed */
   }, [userProfile, currentUser]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        console.log('Fetching dashboard data...');
+        /* log removed */
         setLoading(true);
         setError(null);
         
         // Get recent orders
         try {
           const ordersResponse = await api.get('/api/orders?limit=5');
-          console.log('Orders response:', ordersResponse);
+          /* log removed */
           setRecentOrders(ordersResponse.data.data?.orders || []);
           
           // Calculate order stats
@@ -58,21 +58,21 @@ const DashboardPage = () => {
           };
           setOrderStats(stats);
         } catch (orderError) {
-          console.error('Error fetching orders:', orderError);
+          /* error removed */
           // Continue with other requests even if orders fail
         }
         
         // Get recent transactions
         try {
           const transactionsResponse = await api.get('/api/transactions?limit=5');
-          console.log('Transactions response:', transactionsResponse);
+          /* log removed */
           setRecentTransactions(transactionsResponse.data.data?.transactions || []);
         } catch (transactionError) {
-          console.error('Error fetching transactions:', transactionError);
+          /* error removed */
           // Continue even if transactions fail
         }
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        /* error removed */
         setError('Failed to load dashboard data. Please try again later.');
       } finally {
         setLoading(false);

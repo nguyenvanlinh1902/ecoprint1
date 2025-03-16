@@ -400,7 +400,7 @@ export const getProductImportTemplate = async (ctx) => {
     ctx.body = excelBuffer;
     
   } catch (error) {
-    console.error('Error generating template:', error);
+    
     ctx.status = 500;
     ctx.body = { error: 'Failed to generate import template' };
   }
@@ -565,7 +565,7 @@ export const importProducts = async (ctx) => {
     ctx.body = results;
     
   } catch (error) {
-    console.error('Error importing products:', error);
+    
     ctx.status = 500;
     ctx.body = { 
       error: 'Failed to import products',

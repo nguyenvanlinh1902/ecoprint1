@@ -39,7 +39,7 @@ export const useCollection = (collectionName, queryConstraints = []) => {
         setLoading(false);
       }, 
       (err) => {
-        console.error('Firestore collection error:', err);
+        /* error removed */
         setError(err.message);
         setLoading(false);
       }

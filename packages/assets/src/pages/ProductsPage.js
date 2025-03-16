@@ -54,7 +54,7 @@ const ProductsPage = () => {
         const uniqueCategories = [...new Set(allProducts.map(product => product.category))].filter(Boolean);
         setCategories(uniqueCategories);
       } catch (error) {
-        console.error('Error fetching products:', error);
+        /* error removed */
         setError('Failed to load products. Please try again later.');
       } finally {
         setLoading(false);

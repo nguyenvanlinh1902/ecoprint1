@@ -37,7 +37,7 @@ export const uploadPaymentProof = async (file, userId) => {
     
     return url;
   } catch (error) {
-    console.error('Error uploading payment proof:', error);
+    
     throw new CustomError('Error when uploading payment proof', 500);
   }
 };
@@ -69,7 +69,7 @@ export const createTransaction = async (transactionData) => {
       ...newTransaction
     };
   } catch (error) {
-    console.error('Error creating transaction:', error);
+    
     throw new CustomError('Error when creating transaction', 500);
   }
 };
@@ -157,7 +157,7 @@ export const payForOrder = async (userId, orderId) => {
       };
     });
   } catch (error) {
-    console.error('Error paying for order:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -271,7 +271,7 @@ export const payForBatchOrders = async (userId, batchId) => {
       };
     });
   } catch (error) {
-    console.error('Error paying for batch orders:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -334,7 +334,7 @@ export const getUserTransactions = async (userId, type, status, page = 1, limit 
       }
     };
   } catch (error) {
-    console.error('Error getting user transactions:', error);
+    
     throw new CustomError('Error when getting transaction history', 500);
   }
 };
@@ -418,7 +418,7 @@ export const getAllTransactions = async (type, status, page = 1, limit = 10) => 
       }
     };
   } catch (error) {
-    console.error('Error getting all transactions:', error);
+    
     throw new CustomError('Error when getting all transactions', 500);
   }
 };
@@ -489,7 +489,7 @@ export const updateTransactionStatus = async (transactionId, status, note = '') 
       };
     });
   } catch (error) {
-    console.error('Error updating transaction status:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }

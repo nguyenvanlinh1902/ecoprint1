@@ -45,7 +45,7 @@ const DashboardPage = () => {
         const response = await api.get('/api/admin/dashboard');
         setDashboardData(response.data.data);
       } catch (error) {
-        console.error('Error fetching dashboard data:', error);
+        /* error removed */
         setError('Failed to load dashboard data. Please try again later.');
       } finally {
         setLoading(false);

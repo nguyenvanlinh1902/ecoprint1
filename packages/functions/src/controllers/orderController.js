@@ -249,7 +249,7 @@ export const importOrders = async (ctx) => {
       }
     };
   } catch (error) {
-    console.error('Error importing orders:', error);
+    
     ctx.status = 500;
     ctx.body = {
       success: false,
@@ -314,7 +314,7 @@ export const getBatchImportOrders = async (ctx) => {
       data: batch
     };
   } catch (error) {
-    console.error('Error getting batch import details:', error);
+    
     ctx.status = 500;
     ctx.body = {
       success: false,
@@ -437,7 +437,7 @@ export const confirmBatchImport = async (ctx) => {
       }
     };
   } catch (error) {
-    console.error('Error confirming batch import:', error);
+    
     ctx.status = 500;
     ctx.body = {
       success: false,

@@ -138,12 +138,12 @@ router.get('/admin/dashboard', authMiddleware.verifyToken, authMiddleware.isAdmi
       }
     };
   } catch (error) {
-    console.error('Error fetching dashboard data:', error);
+    // Silent error handling
     ctx.status = 500;
     ctx.body = {
       success: false,
       message: 'Failed to fetch dashboard data'
-    };
+    }
   }
 });
 

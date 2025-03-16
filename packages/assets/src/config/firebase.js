@@ -26,23 +26,30 @@ const storage = getStorage(app);
 const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
 
 if (useEmulator) {
-  console.log('Using Firebase Emulators - Development mode only');
+  /* Logging disabled */
+//   // const originalConsoleLog = console.log;
+//   // console.log = function(...args) {
+  //   // Only log in development mode
+  //   if (process.env.NODE_ENV === 'development') {
+  //     originalConsoleLog.apply(console, args);
+  //   }
+  // };
   
   // Tắt console verbose của emulator để giảm thông báo
-  const originalConsoleLog = console.log;
+//   // const originalConsoleLog = console.log;
   const firebaseEmulatorLogs = [
     'Firebase Auth Emulator',
     'Running in emulator mode',
     'Emulator'
   ];
   
-  console.log = function(...args) {
-    if (typeof args[0] === 'string' && 
-        firebaseEmulatorLogs.some(log => args[0].includes(log))) {
-      return; // Bỏ qua các log liên quan đến emulator
-    }
-    originalConsoleLog.apply(console, args);
-  };
+//   // console.log = function(...args) {
+  //   if (typeof args[0] === 'string' && 
+  //       firebaseEmulatorLogs.some(log => args[0].includes(log))) {
+  //     return; // Bỏ qua các log liên quan đến emulator
+  //   }
+  //   originalConsoleLog.apply(console, args);
+  // };
   
   connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, 'localhost', 8080);

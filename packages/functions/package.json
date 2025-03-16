@@ -9,6 +9,8 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "dev": "firebase emulators:start --only functions,firestore,auth,storage",
+    "dev:minimal": "FIRESTORE_EMULATOR_LOG_LEVEL=error FIREBASE_DEBUG=false firebase emulators:start --only functions,firestore,auth,storage",
+    "start:minimal": "NODE_ENV=production FIREBASE_DEBUG=false FIRESTORE_EMULATOR_LOG_LEVEL=error firebase emulators:start --only functions,firestore,auth,storage",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test": "echo \"Error: no test specified\" && exit 1"

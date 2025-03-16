@@ -48,8 +48,8 @@ const OrdersPage = () => {
   
   // Log user data for debugging
   useEffect(() => {
-    console.log("OrdersPage - userProfile:", userProfile);
-    console.log("OrdersPage - currentUser:", currentUser);
+    /* log removed */
+    /* log removed */
   }, [userProfile, currentUser]);
   
   const fetchOrders = async () => {
@@ -89,7 +89,7 @@ const OrdersPage = () => {
         setStats(response.data.data.stats);
       }
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      /* error removed */
       setError('Failed to load orders. Please try again later.');
     } finally {
       setLoading(false);

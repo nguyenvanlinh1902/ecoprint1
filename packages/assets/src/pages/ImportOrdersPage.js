@@ -68,7 +68,7 @@ const ImportOrdersPage = () => {
       // Move to the next step
       setActiveStep(1);
     } catch (error) {
-      console.error('Error uploading file:', error);
+      /* error removed */
       setError(error.response?.data?.message || 'Failed to upload file. Please try again.');
     } finally {
       setLoading(false);
@@ -85,7 +85,7 @@ const ImportOrdersPage = () => {
       // Move to the final step
       setActiveStep(2);
     } catch (error) {
-      console.error('Error confirming batch:', error);
+      /* error removed */
       setError(error.response?.data?.message || 'Failed to confirm batch. Please try again.');
     } finally {
       setLoading(false);

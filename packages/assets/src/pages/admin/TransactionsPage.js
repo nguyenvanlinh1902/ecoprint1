@@ -88,7 +88,7 @@ const TransactionsPage = () => {
       const response = await api.get(`/api/admin/transactions/${id}`);
       setSelectedTransaction(response.data.data);
     } catch (error) {
-      console.error('Error fetching transaction details:', error);
+      /* error removed */
       setError('Failed to load transaction details. Please try again later.');
     } finally {
       setLoadingDetails(false);
@@ -134,7 +134,7 @@ const TransactionsPage = () => {
       setTotalPages(response.data.data.totalPages || 1);
       
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      /* error removed */
       setError('Failed to load transactions. Please try again later.');
     } finally {
       setLoading(false);
@@ -146,7 +146,7 @@ const TransactionsPage = () => {
       const response = await api.get('/api/admin/users/list');
       setUsers(response.data.data || []);
     } catch (error) {
-      console.error('Error fetching users list:', error);
+      /* error removed */
     }
   };
   
@@ -238,7 +238,7 @@ const TransactionsPage = () => {
       }, 1500);
       
     } catch (error) {
-      console.error('Error adding transaction:', error);
+      /* error removed */
       setAddError('Failed to add transaction. Please check the details and try again.');
     } finally {
       setAddLoading(false);

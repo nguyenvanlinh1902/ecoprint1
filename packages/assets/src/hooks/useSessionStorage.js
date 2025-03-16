@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from './useAuth';
+import useHistory from './useHistory';
 
 /**
  * Hook to manage session storage for path redirections
@@ -10,7 +11,7 @@ import { useAuth } from './useAuth';
 export const useSessionStorage = () => {
   const { currentUser, loading } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
+  const history = useHistory();
 
   // Store the current path for later use
   useEffect(() => {
@@ -29,11 +30,11 @@ export const useSessionStorage = () => {
     
     if (intendedPath) {
       sessionStorage.removeItem('intendedPath');
-      navigate(intendedPath);
+      history.push(intendedPath);
     } else if (lastPath) {
-      navigate(lastPath);
+      history.push(lastPath);
     } else {
-      navigate('/dashboard');
+      history.push('/dashboard');
     }
   };
   

@@ -61,7 +61,7 @@ const OrderDetailPage = ({ admin = false }) => {
       refreshOrder();
       
     } catch (error) {
-      console.error('Payment failed:', error);
+      /* error removed */
       setPaymentError(error.response?.data?.message || 'Payment failed. Please try again later.');
     } finally {
       setPaymentLoading(false);
@@ -89,7 +89,7 @@ const OrderDetailPage = ({ admin = false }) => {
       
       handleCloseStatusDialog();
     } catch (error) {
-      console.error('Status update failed:', error);
+      /* error removed */
       setStatusError(error.response?.data?.message || 'Failed to update status. Please try again.');
     } finally {
       setStatusLoading(false);

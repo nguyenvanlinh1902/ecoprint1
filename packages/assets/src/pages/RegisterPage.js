@@ -111,7 +111,7 @@ const RegisterPage = () => {
     try {
       // Use either API registration or Firebase registration based on the switch
       if (useApi) {
-        console.log('Using API registration...');
+        /* log removed */
         try {
           const result = await registerViaApi(
             formData.email, 
@@ -129,11 +129,11 @@ const RegisterPage = () => {
             } 
           });
         } catch (apiError) {
-          console.error('API registration failed:', apiError);
+          /* error removed */
           setServerError(apiError.message || 'API registration failed. Please try again later.');
         }
       } else {
-        console.log('Using Firebase registration...');
+        /* log removed */
         try {
           await register(
             formData.email, 
@@ -151,12 +151,12 @@ const RegisterPage = () => {
             } 
           });
         } catch (firebaseError) {
-          console.error('Firebase registration failed:', firebaseError);
+          /* error removed */
           setServerError(firebaseError.message || 'Firebase registration failed. Please try again later.');
         }
       }
     } catch (err) {
-      console.error('Unexpected registration error:', err);
+      /* error removed */
       setServerError(err.message || 'Failed to register. Please try again later.');
     } finally {
       setLoading(false);

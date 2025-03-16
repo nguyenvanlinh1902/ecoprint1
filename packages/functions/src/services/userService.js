@@ -40,7 +40,6 @@ export const createUser = async (userData) => {
       ...firestoreData
     };
   } catch (error) {
-    console.error('Error creating user:', error);
     throw error;
   }
 };
@@ -58,7 +57,6 @@ export const updateUser = async (userId, userData) => {
     
     return getUserById(userId);
   } catch (error) {
-    console.error('Error updating user:', error);
     throw error;
   }
 };
@@ -80,7 +78,6 @@ export const getUserById = async (userId) => {
       ...userDoc.data()
     };
   } catch (error) {
-    console.error('Error getting user by ID:', error);
     throw new CustomError('Database error fetching user', 500);
   }
 };
@@ -107,7 +104,6 @@ export const getAllUsers = async () => {
     
     return users;
   } catch (error) {
-    console.error('Error getting all users:', error);
     throw new CustomError('Lỗi khi lấy danh sách người dùng', 500);
   }
 };
@@ -139,7 +135,6 @@ export const updateUserStatus = async (userId, status) => {
     
     return true;
   } catch (error) {
-    console.error('Error updating user status:', error);
     if (error instanceof CustomError) {
       throw error;
     }
@@ -168,7 +163,6 @@ export const getUserByEmail = async (email) => {
       ...doc.data()
     };
   } catch (error) {
-    console.error('Error getting user by email:', error);
     throw new CustomError('Database error fetching user', 500);
   }
 };
@@ -184,7 +178,6 @@ export const deleteUser = async (userId) => {
     await db.collection('users').doc(userId).delete();
     return true;
   } catch (error) {
-    console.error('Error deleting user:', error);
     throw error;
   }
 }; 

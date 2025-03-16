@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { TextField, Button, Typography, Paper, Container, Box, Alert, Divider, Stack, Chip } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import { getAuth, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
@@ -11,16 +11,15 @@ import { useSessionStorage } from '../hooks';
 import GoogleIcon from '@mui/icons-material/Google';
 
 const LoginPage = () => {
-  console.log('LoginPage rendering');
+  /* log removed */
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [networkIssue, setNetworkIssue] = useState(false);
-  const navigate = useNavigate();
   const history = useHistory();
-  console.log('history object:', history);
+  /* log removed */
   const { login, register, useMockAuth, directLogin, loginWithGoogle } = useAuth();
   const { redirectToLastVisitedPath } = useSessionStorage();
 
@@ -42,9 +41,9 @@ const LoginPage = () => {
 
     try {
       // Gọi hàm đăng nhập trực tiếp từ useAuth hook
-      console.log(`Quick login as ${type}`);
+      /* log removed */
       const user = directLogin(type);
-      console.log('Quick login successful with user:', user);
+      /* log removed */
       
       // Điều hướng người dùng dựa trên vai trò
       if (type === 'admin') {
@@ -53,7 +52,7 @@ const LoginPage = () => {
         history.push('/dashboard');
       }
     } catch (error) {
-      console.error('Quick login error:', error);
+      /* error removed */
       setError(error.message || 'Quick login failed. Please try with credentials.');
     } finally {
       setLoading(false);
@@ -75,7 +74,7 @@ const LoginPage = () => {
       await login(email, password);
       redirectToLastVisitedPath();
     } catch (error) {
-      console.error('Login error:', error);
+      /* error removed */
       
       if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
         setNetworkIssue(true);
@@ -94,12 +93,12 @@ const LoginPage = () => {
     setLoading(true);
     
     try {
-      console.log('Starting Google login process...');
+      /* log removed */
       await loginWithGoogle();
-      console.log('Google login successful, redirecting...');
+      /* log removed */
       redirectToLastVisitedPath();
     } catch (error) {
-      console.error('Google login error:', error);
+      /* error removed */
       
       // Check if it's a 404 error
       if (error.message && error.message.includes('404')) {
@@ -343,60 +342,41 @@ const LoginPage = () => {
     setError('');
     
     try {
-      console.log("Attempting to restore session from localStorage");
-      
       const mockUser = localStorage.getItem('mockAuthUser');
       const mockProfile = localStorage.getItem('mockAuthProfile');
       const token = localStorage.getItem('authToken');
-      
-      console.log("Found in localStorage:", { 
-        mockUser: !!mockUser, 
-        mockProfile: !!mockProfile, 
-        token: !!token 
-      });
       
       if (!mockUser || !mockProfile || !token) {
         setError('No session data found. Please log in with your credentials.');
         return;
       }
-      
       // Parse and validate data
       try {
         const parsedUser = JSON.parse(mockUser);
         const parsedProfile = JSON.parse(mockProfile);
-        
-        console.log("Session data:", {
-          user: parsedUser ? `${parsedUser.uid} (${parsedUser.email})` : null,
-          profile: parsedProfile ? `${parsedProfile.displayName} (${parsedProfile.role})` : null
-        });
         
         if (!parsedUser?.uid || !parsedProfile?.role) {
           setError('Invalid session data. Please log in again.');
           return;
         }
         
-        // Data looks good, try to direct login
-        console.log("Session data valid, attempting to log in as:", parsedProfile.role);
         const type = parsedProfile.role === 'admin' ? 'admin' : 'user';
         handleDirectLogin(type);
         
       } catch (parseError) {
-        console.error("Error parsing session data:", parseError);
         setError('Session data is corrupted. Please log in again.');
-        // Clear corrupted data
         localStorage.removeItem('mockAuthUser');
         localStorage.removeItem('mockAuthProfile');
         localStorage.removeItem('authToken');
       }
     } catch (error) {
-      console.error("Error restoring session:", error);
       setError('Failed to restore session. Please log in again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Run a quick network test when the component mounts
+  // Run a quick network test when the component mounts 
   useEffect(() => {
     testNetworkConnectivity();
   }, []);

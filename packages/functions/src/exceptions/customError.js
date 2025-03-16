@@ -26,7 +26,7 @@ const errorHandler = async (ctx, next) => {
         }
       };
     } else {
-      console.error('Unhandled error:', err);
+      // Silent error handling - no logging
       ctx.status = 500;
       ctx.body = {
         success: false,

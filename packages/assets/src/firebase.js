@@ -14,37 +14,22 @@ const firebaseConfig = {
   appId: import.meta.env.FIREBASE_APP_ID || '1:643722203154:web:7a89c317be9292cc5688cb'
 };
 
-// Log configuration details without sensitive info
-console.log('Firebase config loaded:', {
-  apiKey: firebaseConfig.apiKey ? '✓' : '✗',
-  authDomain: firebaseConfig.authDomain ? '✓' : '✗',
-  projectId: firebaseConfig.projectId ? '✓' : '✗',
-  storageBucket: firebaseConfig.storageBucket ? '✓' : '✗',
-  messagingSenderId: firebaseConfig.messagingSenderId ? '✓' : '✗',
-  appId: firebaseConfig.appId ? '✓' : '✗'
-});
 
-// Initialize Firebase with fallbacks to prevent crashes
 let app, auth, db, storage;
 
 try {
-  // Initialize the Firebase app
   app = initializeApp(firebaseConfig);
-  console.log('Firebase app initialized successfully');
-  
+    
   try {
-    // Initialize Firebase Auth with custom settings
     auth = getAuth(app);
     auth.settings = auth.settings || {};
     auth.settings.appVerificationDisabledForTesting = true; // Simplify testing
-    console.log('Firebase auth initialized successfully');
   } catch (authError) {
-    console.error('Error initializing Firebase Auth:', authError);
-    // Create a fallback auth object to prevent crashes
+
     auth = {
       currentUser: null,
       onAuthStateChanged: (callback) => {
-        console.warn('Using mock auth state change handler');
+        /* warning removed */
         callback(null);
         return () => {}; // Return unsubscribe function
       },
@@ -58,9 +43,9 @@ try {
   try {
     // Initialize Firestore
     db = getFirestore(app);
-    console.log('Firestore initialized successfully');
+    /* log removed */
   } catch (dbError) {
-    console.error('Error initializing Firestore:', dbError);
+    /* error removed */
     // Create a fallback db object
     db = {
       collection: () => ({
@@ -76,9 +61,9 @@ try {
   try {
     // Initialize Storage
     storage = getStorage(app);
-    console.log('Firebase storage initialized successfully');
+    /* log removed */
   } catch (storageError) {
-    console.error('Error initializing Firebase Storage:', storageError);
+    /* error removed */
     // Create a fallback storage object
     storage = {
       ref: () => ({
@@ -88,13 +73,13 @@ try {
     };
   }
 } catch (error) {
-  console.error('Error initializing Firebase:', error);
+  /* error removed */
   // Create fallback objects for everything
   app = {};
   auth = {
     currentUser: null,
     onAuthStateChanged: (callback) => {
-      console.warn('Using mock auth state change handler');
+      /* warning removed */
       callback(null);
       return () => {}; // Return unsubscribe function
     },
@@ -123,25 +108,28 @@ try {
 // Emulator support
 const useEmulator = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
 
-console.log('Using Firebase Emulators:', useEmulator);
+/* log removed */
 
 if (useEmulator) {
   try {
-    const authEmulatorUrl = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL || 'http://localhost:9099';
-    console.log('Connecting to Firebase Auth Emulator on', authEmulatorUrl);
+    // Update Auth emulator connection with new port
+    const authEmulatorUrl = import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL || 'http://localhost:9088';
+    /* log removed */
     connectAuthEmulator(auth, authEmulatorUrl, { disableWarnings: true });
     
-    const firestoreHost = (import.meta.env.VITE_FIREBASE_FIRESTORE_EMULATOR_URL || 'localhost:8080').split(':');
-    console.log('Connecting to Firestore Emulator on', firestoreHost.join(':'));
-    connectFirestoreEmulator(db, firestoreHost[0], parseInt(firestoreHost[1] || '8080'));
+    // Update Firestore emulator connection with new port
+    const firestoreHost = (import.meta.env.VITE_FIREBASE_FIRESTORE_EMULATOR_URL || 'localhost:8091').split(':');
+    /* log removed */
+    connectFirestoreEmulator(db, firestoreHost[0], parseInt(firestoreHost[1] || '8091'));
     
-    const storageHost = (import.meta.env.VITE_FIREBASE_STORAGE_EMULATOR_URL || 'localhost:9199').split(':');
-    console.log('Connecting to Storage Emulator on', storageHost.join(':'));
-    connectStorageEmulator(storage, storageHost[0], parseInt(storageHost[1] || '9199'));
+    // Update Storage emulator connection with new port
+    const storageHost = (import.meta.env.VITE_FIREBASE_STORAGE_EMULATOR_URL || 'localhost:9189').split(':');
+    /* log removed */
+    connectStorageEmulator(storage, storageHost[0], parseInt(storageHost[1] || '9189'));
     
-    console.log('All Firebase emulators connected successfully');
+    /* log removed */
   } catch (error) {
-    console.error('Error connecting to Firebase emulators:', error);
+    /* error removed */
   }
 }
 

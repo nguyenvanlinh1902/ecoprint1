@@ -80,7 +80,7 @@ const ProductFormPage = () => {
         setCategories(categoriesResponse.data.data || []);
         
       } catch (error) {
-        console.error('Error fetching data:', error);
+        /* error removed */
         setError('Failed to load data. Please try again later.');
       } finally {
         setLoading(false);
@@ -261,7 +261,7 @@ const ProductFormPage = () => {
       }, 1500);
       
     } catch (error) {
-      console.error('Error saving product:', error);
+      /* error removed */
       setError(error.response?.data?.message || 'Failed to save product. Please try again.');
     } finally {
       setSaving(false);

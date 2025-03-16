@@ -32,7 +32,7 @@ const MaintenancePage = () => {
         }
         
       } catch (error) {
-        console.error('Error fetching maintenance info:', error);
+        /* error removed */
         setError('Unable to fetch maintenance information. Please try again later.');
       } finally {
         setLoading(false);

@@ -13,8 +13,8 @@ const assetsMiddleware = () => {
     }
 
     try {
-      // In production, serve from static directory
-      const staticDir = path.resolve('../../../static');
+      // Fix the static directory path to use the workspace root
+      const staticDir = path.resolve(process.cwd(), '../..', 'static');
       const requestPath = ctx.path === '/' ? '/index.html' : ctx.path;
       const filePath = path.join(staticDir, requestPath);
 
@@ -37,13 +37,12 @@ const assetsMiddleware = () => {
             ctx.body = await fs.readFile(indexPath);
             return;
           } catch (indexError) {
-            // If index.html doesn't exist, proceed to next middleware
-            console.error('Error serving index.html:', indexError);
+            // Silent error - proceed to next middleware
           }
         }
       }
     } catch (error) {
-      console.error('Error in assets middleware:', error);
+      // Silent error handling
     }
 
     return next();

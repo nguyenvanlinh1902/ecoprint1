@@ -37,7 +37,7 @@ export const useDocument = (collectionName, documentId) => {
         setLoading(false);
       }, 
       (err) => {
-        console.error(`Firestore document error (${collectionName}/${documentId}):`, err);
+        /* error removed */
         setError(err.message);
         setLoading(false);
       }

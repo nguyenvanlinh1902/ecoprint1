@@ -29,7 +29,7 @@ export const createProduct = async (productData) => {
       ...newProduct
     };
   } catch (error) {
-    console.error('Error creating product:', error);
+    
     throw new CustomError('Lỗi khi tạo sản phẩm mới', 500);
   }
 };
@@ -60,7 +60,7 @@ export const updateProduct = async (productId, updateData) => {
       ...updatedDoc.data()
     };
   } catch (error) {
-    console.error('Error updating product:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -85,7 +85,7 @@ export const getProductById = async (productId) => {
       ...productDoc.data()
     };
   } catch (error) {
-    console.error('Error getting product by ID:', error);
+    
     throw new CustomError('Lỗi khi lấy thông tin sản phẩm', 500);
   }
 };
@@ -108,7 +108,7 @@ export const getAllProducts = async () => {
     
     return products;
   } catch (error) {
-    console.error('Error getting all products:', error);
+    
     throw new CustomError('Lỗi khi lấy danh sách sản phẩm', 500);
   }
 };
@@ -134,7 +134,7 @@ export const getProductsByStatus = async (isActive) => {
     
     return products;
   } catch (error) {
-    console.error('Error getting products by status:', error);
+    
     throw new CustomError('Lỗi khi lấy danh sách sản phẩm theo trạng thái', 500);
   }
 };
@@ -179,7 +179,7 @@ export const deleteProduct = async (productId) => {
       message: 'Xóa sản phẩm thành công'
     };
   } catch (error) {
-    console.error('Error deleting product:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }

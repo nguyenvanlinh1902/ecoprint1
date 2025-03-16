@@ -55,7 +55,7 @@ export const authenticate = async (ctx, next) => {
       
       await next();
     } catch (dbError) {
-      console.error('Database error in auth middleware:', dbError);
+      // Silent error handling
       ctx.status = 500;
       ctx.body = {
         success: false,
@@ -63,7 +63,7 @@ export const authenticate = async (ctx, next) => {
       };
     }
   } catch (err) {
-    console.error('Auth middleware error:', err);
+    // Silent error handling
     ctx.status = 500;
     ctx.body = {
       success: false,
@@ -99,11 +99,11 @@ export const authorize = (roles = []) => {
       
       await next();
     } catch (error) {
-      console.error('Authorization middleware error:', error);
-      ctx.status = 500;
+      // Silent error handling
+      ctx.status = 403;
       ctx.body = {
         success: false,
-        message: 'Internal server error during authorization'
+        message: 'Unauthorized access.'
       };
     }
   };

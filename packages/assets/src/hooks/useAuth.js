@@ -46,19 +46,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [provider, setProvider] = useState(null); // 'firebase' or 'mock'
   
-  // Log auth state changes for debugging
-  useEffect(() => {
-    console.log("Auth state updated:", { 
-      currentUser: currentUser ? `${currentUser.uid} (${currentUser.email})` : null,
-      userProfile: userProfile ? `${userProfile.displayName} (${userProfile.role})` : null,
-      loading, 
-      provider 
-    });
-  }, [currentUser, userProfile, loading, provider]);
-
   // Helper to clean up localStorage items
   const cleanupLocalStorage = () => {
-    console.log("Cleaning up localStorage auth items");
+    /* log removed */
     try {
       localStorage.removeItem('mockAuthUser');
       localStorage.removeItem('mockAuthProfile');
@@ -67,21 +57,20 @@ export function AuthProvider({ children }) {
         api.defaults.headers.common['Authorization'] = '';
       }
     } catch (error) {
-      console.error("Error cleaning localStorage:", error);
+      /* log removed */
     }
   };
 
   // Helper function to restore mock auth
   const restoreMockAuth = () => {
-    console.log("Attempting to restore mock auth...");
+    /* log removed */
     try {
       // Get stored mock auth data
       const storedUser = localStorage.getItem('mockAuthUser');
       const storedProfile = localStorage.getItem('mockAuthProfile');
 
       // Debug what was found
-      console.log("Found mockAuthUser:", storedUser);
-      console.log("Found mockAuthProfile:", storedProfile);
+      /* log removed */
 
       // Only process if both exist
       if (storedUser && storedProfile) {
@@ -91,12 +80,11 @@ export function AuthProvider({ children }) {
           const parsedProfile = JSON.parse(storedProfile);
 
           // Add additional debug logs
-          console.log("Parsed user:", parsedUser);
-          console.log("Parsed profile:", parsedProfile);
+          /* log removed */
 
           // Make sure we have the required fields
           if (parsedUser && parsedUser.uid && parsedProfile) {
-            console.log("Setting mock auth state with parsed data");
+            /* log removed */
             // Set the state with parsed data
             setCurrentUser(parsedUser);
             setUserProfile(parsedProfile);
@@ -111,41 +99,41 @@ export function AuthProvider({ children }) {
             
             return true;
           } else {
-            console.warn("Missing required fields in mock auth data");
+            /* log removed */
             cleanupLocalStorage(); // Clean invalid data
             return false;
           }
         } catch (parseError) {
-          console.error("Error parsing mock auth data:", parseError);
+          /* log removed */
           cleanupLocalStorage(); // Clean invalid data
           return false;
         }
       } else {
-        console.log("No mock auth data found in localStorage");
+        /* log removed */
         return false;
       }
     } catch (error) {
-      console.error("Error restoring mock auth:", error);
+      /* log removed */
       return false;
     }
   };
 
   // Listen for auth state changes
   useEffect(() => {
-    console.log("Setting up auth listeners...");
+    /* log removed */
     let unsubscribe = () => {};
 
     // First try to restore mock auth
     if (restoreMockAuth()) {
-      console.log("Mock auth restored successfully");
+      /* log removed */
       return () => {}; // No cleanup needed for mock auth
     }
 
     // Otherwise set up Firebase auth listener
     try {
-      console.log("Setting up Firebase auth listener");
+      /* log removed */
       unsubscribe = onAuthStateChanged(auth, async (user) => {
-        console.log("Firebase auth state changed:", user ? user.uid : 'no user');
+        /* log removed */
         setCurrentUser(user);
         
         if (user) {
@@ -154,11 +142,11 @@ export function AuthProvider({ children }) {
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
               const userData = userDoc.data();
-              console.log("User profile loaded from Firestore:", userData.displayName);
+              /* log removed */
               setUserProfile(userData);
               setProvider('firebase');
             } else {
-              console.log("No user profile found in Firestore");
+              /* log removed */
               setUserProfile(null);
             }
             
@@ -169,11 +157,11 @@ export function AuthProvider({ children }) {
             }
             localStorage.setItem('authToken', token);
           } catch (error) {
-            console.error('Error fetching user profile:', error);
+            /* log removed */
             setUserProfile(null);
           }
         } else {
-          console.log("No Firebase user, clearing profile");
+          /* log removed */
           setUserProfile(null);
           if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
             delete api.defaults.headers.common['Authorization'];
@@ -185,7 +173,7 @@ export function AuthProvider({ children }) {
         setLoading(false);
       });
     } catch (error) {
-      console.error("Error setting up Firebase auth listener:", error);
+      /* log removed */
       setLoading(false);
     }
 
@@ -195,10 +183,10 @@ export function AuthProvider({ children }) {
   // Register a new user
   const register = async (email, password, displayName, companyName, phone) => {
     try {
-      console.log('Attempting to register user with email:', email);
+      /* log removed */
       // Create user in Firebase Auth
       const { user } = await createUserWithEmailAndPassword(auth, email, password);
-      console.log('User created successfully:', user.uid);
+      /* log removed */
       
       // Create user profile in Firestore
       const userData = {
@@ -212,14 +200,14 @@ export function AuthProvider({ children }) {
       };
       
       await setDoc(doc(db, 'users', user.uid), userData);
-      console.log('User profile created in Firestore');
+      /* log removed */
       
       // Set the profile immediately
       setUserProfile(userData);
       
       return user;
     } catch (error) {
-      console.error('Registration error:', error.code, error.message);
+      /* log removed */
       
       if (error.code === 'auth/email-already-in-use') {
         throw new Error('This email is already registered. Please use a different email or login.');
@@ -236,7 +224,7 @@ export function AuthProvider({ children }) {
   // Register a new user using API instead of Firebase directly
   const registerViaApi = async (email, password, displayName, companyName, phone) => {
     try {
-      console.log('Attempting to register user via API with email:', email);
+      /* log removed */
       
       // Create user data object
       const userData = {
@@ -248,15 +236,12 @@ export function AuthProvider({ children }) {
       };
       
       // Thêm log trước khi gọi API
-      console.log('Sending registration data to API (without password):', {
-        ...userData,
-        password: '********'
-      });
+      /* log removed */
       
       try {
         // Call the API endpoint with timeout để tránh hanging request
         const response = await api.auth.register(userData);
-        console.log('API registration successful:', response.data);
+        /* log removed */
         
         // Return the response data so the calling component can handle redirects
         return {
@@ -265,15 +250,11 @@ export function AuthProvider({ children }) {
           uid: response.data.uid
         };
       } catch (apiError) {
-        console.error('API call failed:', apiError);
+        /* log removed */
         
         // Handle common API errors
         if (apiError.response) {
-          console.error('API response error:', {
-            status: apiError.response.status,
-            data: apiError.response.data,
-            headers: apiError.response.headers
-          });
+          /* log removed */
           
           if (apiError.response.status === 409 || 
             (apiError.response.data && apiError.response.data.error && 
@@ -286,7 +267,7 @@ export function AuthProvider({ children }) {
         
         // Nếu không có response thì có thể là lỗi network
         if (apiError.request && !apiError.response) {
-          console.error('No response received:', apiError.request);
+          /* log removed */
           throw new Error('No response received from server. Please check your internet connection and try again.');
         }
         
@@ -294,14 +275,14 @@ export function AuthProvider({ children }) {
         throw new Error(apiError.message || 'An error occurred during registration. Please try again.');
       }
     } catch (error) {
-      console.error('Registration process error:', error);
+      /* log removed */
       throw error;
     }
   };
 
   // Direct login with hardcoded accounts - skips all Firebase components
   const directLogin = (type = 'admin') => {
-    console.log('Attempting direct login with type:', type);
+    /* log removed */
     
     // Chọn loại người dùng
     const isAdmin = type === 'admin';
@@ -339,7 +320,7 @@ export function AuthProvider({ children }) {
       updatedAt: new Date().toISOString()
     };
     
-    console.log('Direct login using mock data:', userData);
+    /* log removed */
     
     // Create a mock user object
     const mockUser = {
@@ -364,7 +345,7 @@ export function AuthProvider({ children }) {
     if (api && api.defaults && api.defaults.headers) {
       api.defaults.headers.common['Authorization'] = `Bearer mock-token-for-development`;
     } else {
-      console.warn('API object is not fully initialized, cannot set Authorization header');
+      /* log removed */
     }
     
     return mockUser;
@@ -376,7 +357,7 @@ export function AuthProvider({ children }) {
       const type = email === 'admin' ? 'admin' : 'user';
       return directLogin(type);
     } catch (error) {
-      console.error('Mock login failed:', error);
+      /* log removed */
       throw error;
     }
   };
@@ -384,18 +365,18 @@ export function AuthProvider({ children }) {
   // Log in existing user
   const login = async (email, password) => {
     try {
-      console.log('Attempting to sign in with email/username:', email);
+      /* log removed */
       
       // If using hardcoded credentials, skip Firebase entirely
       if (email === 'admin' || email === 'user') {
-        console.log('Using hardcoded credentials, bypassing Firebase');
+        /* log removed */
         return directLogin(email);
       }
       
       try {
         // Try Firebase authentication
         const { user } = await signInWithEmailAndPassword(auth, email, password);
-        console.log('Firebase sign in successful, user:', user.uid);
+        /* log removed */
         
         try {
           // Get fresh user profile
@@ -406,14 +387,14 @@ export function AuthProvider({ children }) {
             
             // Check if user is active
             if (userData.status !== 'active') {
-              console.log('User account is not active:', userData.status);
+              /* log removed */
               await firebaseSignOut(auth);
               throw new Error('Your account is not active. Please contact administrator.');
             }
             
             setUserProfile(userData);
           } else {
-            console.log('User document does not exist in Firestore');
+            /* log removed */
             // Create a basic profile if it doesn't exist
             const basicProfile = {
               email: user.email,
@@ -426,17 +407,17 @@ export function AuthProvider({ children }) {
             setUserProfile(basicProfile);
           }
         } catch (firestoreError) {
-          console.error('Error accessing Firestore after authentication:', firestoreError);
+          /* log removed */
           // Still return the user even if Firestore access fails
         }
         
         return user;
       } catch (firebaseError) {
-        console.error('Firebase authentication error:', firebaseError.code, firebaseError.message);
+        /* log removed */
         
         // If Firebase fails with network error, try mock authentication
         if (firebaseError.code === 'auth/network-request-failed') {
-          console.log('Network issue detected, trying mock authentication...');
+          /* log removed */
           return tryMockLogin(email);
         }
         
@@ -444,7 +425,7 @@ export function AuthProvider({ children }) {
         throw firebaseError;
       }
     } catch (error) {
-      console.error('Authentication error:', error.code || 'no-code', error.message);
+      /* log removed */
       
       // Provide more user-friendly error messages
       if (error.code === 'auth/network-request-failed') {
@@ -466,7 +447,7 @@ export function AuthProvider({ children }) {
   // Login with Google
   const loginWithGoogle = async () => {
     try {
-      console.log('Starting Google sign-in process');
+      /* log removed */
       const provider = new GoogleAuthProvider();
       // Add scopes for better compatibility
       provider.addScope('profile');
@@ -477,9 +458,9 @@ export function AuthProvider({ children }) {
         prompt: 'select_account'
       });
       
-      console.log('Calling signInWithPopup...');
+      /* log removed */
       const { user } = await signInWithPopup(auth, provider);
-      console.log('Google sign in successful, user:', user.uid);
+      /* log removed */
       
       try {
         // Check if user exists in Firestore
@@ -496,15 +477,15 @@ export function AuthProvider({ children }) {
             createdAt: new Date()
           };
           
-          console.log('Creating new user profile in Firestore');
+          /* log removed */
           await setDoc(doc(db, 'users', user.uid), userData);
           setUserProfile(userData);
         } else {
-          console.log('User already exists in Firestore');
+          /* log removed */
           setUserProfile(userDoc.data());
         }
       } catch (firestoreError) {
-        console.error('Error accessing Firestore after Google authentication:', firestoreError);
+        /* log removed */
         // Create a basic local profile even if Firestore access fails
         const basicUserData = {
           email: user.email,
@@ -518,7 +499,7 @@ export function AuthProvider({ children }) {
       
       return user;
     } catch (error) {
-      console.error('Google authentication error:', error.code, error.message);
+      /* log removed */
       
       // Check for specific 404 error
       if (error.message && error.message.includes('404')) {
@@ -540,7 +521,7 @@ export function AuthProvider({ children }) {
   // Sign out
   const signOut = async () => {
     try {
-      console.log('Signing out user...');
+      /* log removed */
       
       // Save references to what authentication method we're using before clearing
       const wasMockAuth = provider === 'mock';
@@ -558,16 +539,16 @@ export function AuthProvider({ children }) {
       
       // Nếu sử dụng xác thực giả lập
       if (wasMockAuth) {
-        console.log('Signing out from mock authentication');
+        /* log removed */
         setProvider(null);
       } else {
         // Đăng xuất khỏi Firebase Auth
         try {
-          console.log('Signing out from Firebase Auth');
+          /* log removed */
           await firebaseSignOut(auth);
-          console.log('Firebase sign out successful');
+          /* log removed */
         } catch (firebaseError) {
-          console.error('Firebase sign out error:', firebaseError);
+          /* log removed */
           // Tiếp tục xử lý ngay cả khi Firebase lỗi
         }
       }
@@ -576,10 +557,10 @@ export function AuthProvider({ children }) {
       setCurrentUser(null);
       setUserProfile(null);
       
-      console.log('Sign out completed successfully');
+      /* log removed */
       return true;
     } catch (error) {
-      console.error('Sign out error:', error);
+      /* log removed */
       // Vẫn đặt lại các trạng thái người dùng ngay cả khi có lỗi
       setCurrentUser(null);
       setUserProfile(null);

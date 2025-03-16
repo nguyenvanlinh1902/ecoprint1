@@ -240,7 +240,7 @@ const CreateOrderPage = () => {
       }, 2000);
       
     } catch (error) {
-      console.error('Error creating order:', error);
+      /* error removed */
       setError(error.response?.data?.message || 'Failed to create order. Please try again.');
     } finally {
       setLoading(false);

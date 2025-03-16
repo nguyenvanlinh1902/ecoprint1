@@ -22,5 +22,8 @@
     "concurrently": "^8.0.1",
     "firebase-tools": "^12.0.1"
   },
-  "type": "module"
-} 
+  "type": "module",
+  "dependencies": {
+    "firebase-functions": "^6.3.2"
+  }
+}

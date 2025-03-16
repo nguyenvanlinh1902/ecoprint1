@@ -39,7 +39,7 @@ const ImportDetailPage = () => {
         setOrders(response.data.data.orders || []);
         setBatchDetails(response.data.data.batchDetails || {});
       } catch (error) {
-        console.error('Error fetching batch details:', error);
+        /* error removed */
         setError('Failed to load batch details. Please try again later.');
       } finally {
         setLoading(false);
@@ -64,7 +64,7 @@ const ImportDetailPage = () => {
       setBatchDetails(response.data.data.batchDetails || {});
       
     } catch (error) {
-      console.error('Payment failed:', error);
+      /* error removed */
       setPaymentError(error.response?.data?.message || 'Payment failed. Please try again later.');
     } finally {
       setPaymentLoading(false);

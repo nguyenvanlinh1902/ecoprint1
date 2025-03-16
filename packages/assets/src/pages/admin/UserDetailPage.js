@@ -104,7 +104,7 @@ const UserDetailPage = () => {
           role: response.data.data.role || 'user'
         });
       } catch (error) {
-        console.error('Error fetching user details:', error);
+        /* error removed */
         setError('Failed to load user details. Please try again later.');
       } finally {
         setLoading(false);
@@ -128,7 +128,7 @@ const UserDetailPage = () => {
       const response = await api.get(`/api/admin/users/${userId}/orders?limit=5`);
       setRecentOrders(response.data.data.orders || []);
     } catch (error) {
-      console.error('Error fetching recent orders:', error);
+      /* error removed */
     } finally {
       setOrdersLoading(false);
     }
@@ -140,7 +140,7 @@ const UserDetailPage = () => {
       const response = await api.get(`/api/admin/users/${userId}/transactions?limit=5`);
       setTransactions(response.data.data.transactions || []);
     } catch (error) {
-      console.error('Error fetching transactions:', error);
+      /* error removed */
     } finally {
       setTransactionsLoading(false);
     }
@@ -167,7 +167,7 @@ const UserDetailPage = () => {
       setEditMode(false);
       setSuccess('User profile updated successfully');
     } catch (error) {
-      console.error('Error updating user profile:', error);
+      /* error removed */
       setError('Failed to update user profile. Please try again.');
     }
   };
@@ -205,7 +205,7 @@ const UserDetailPage = () => {
       setSuccess(`User status updated to ${statusDialog.action}`);
       handleStatusDialogClose();
     } catch (error) {
-      console.error('Error updating user status:', error);
+      /* error removed */
       setStatusDialog({
         ...statusDialog,
         loading: false,
@@ -247,7 +247,7 @@ const UserDetailPage = () => {
         success: true
       });
     } catch (error) {
-      console.error('Error resetting password:', error);
+      /* error removed */
       setResetPasswordDialog({
         ...resetPasswordDialog,
         loading: false,

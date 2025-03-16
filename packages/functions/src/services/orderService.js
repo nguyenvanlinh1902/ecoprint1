@@ -51,7 +51,7 @@ export const createOrder = async (userId, orderData) => {
       }
     };
   } catch (error) {
-    console.error('Error creating order:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -92,7 +92,7 @@ export const uploadDesignFile = async (file, userId) => {
     
     return url;
   } catch (error) {
-    console.error('Error uploading design file:', error);
+    
     throw new CustomError('Error when uploading design file', 500);
   }
 };
@@ -130,7 +130,7 @@ export const uploadImportFile = async (file, userId) => {
     
     return url;
   } catch (error) {
-    console.error('Error uploading import file:', error);
+    
     throw new CustomError('Error when uploading import file', 500);
   }
 };
@@ -172,7 +172,7 @@ export const processImportFile = async (fileUrl, userId) => {
             const product = await productService.getProductById(row.productId);
             
             if (!product) {
-              console.error(`Product not found: ${row.productId}`);
+              
               return;
             }
             
@@ -228,7 +228,7 @@ export const processImportFile = async (fileUrl, userId) => {
             orders.push(orderWithId);
             totalPrice += priceCalculation.totalPrice;
           } catch (error) {
-            console.error('Error processing row:', error);
+            
           }
         })
         .on('end', async () => {
@@ -260,7 +260,7 @@ export const processImportFile = async (fileUrl, userId) => {
       orders
     };
   } catch (error) {
-    console.error('Error processing import file:', error);
+    
     throw new CustomError('Error when processing import file', 500);
   }
 };
@@ -321,7 +321,7 @@ export const getOrdersByBatchId = async (batchId, userId, isAdmin = false) => {
     
     return orders;
   } catch (error) {
-    console.error('Error getting orders by batch ID:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -364,7 +364,7 @@ export const confirmBatchImport = async (batchId, userId) => {
       totalPrice: batchData.totalPrice
     };
   } catch (error) {
-    console.error('Error confirming batch import:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -442,7 +442,7 @@ export const getUserOrders = async (userId, status, page = 1, limit = 10) => {
       }
     };
   } catch (error) {
-    console.error('Error getting user orders:', error);
+    
     throw new CustomError('Error when getting user orders', 500);
   }
 };
@@ -528,7 +528,7 @@ export const getAllOrders = async (status, page = 1, limit = 10) => {
       }
     };
   } catch (error) {
-    console.error('Error getting all orders:', error);
+    
     throw new CustomError('Error when getting all orders', 500);
   }
 };
@@ -566,7 +566,7 @@ export const getOrderById = async (orderId, userId = null) => {
     
     return order;
   } catch (error) {
-    console.error('Error getting order by ID:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }
@@ -595,15 +595,12 @@ export const updateOrderStatus = async (orderId, status) => {
     // Lấy thông tin đơn hàng sau khi cập nhật
     const updatedDoc = await db.collection('orders').doc(orderId).get();
     
-    // Gửi email thông báo cho người dùng (mock)
-    console.log(`Notification email sent to user about order ${orderId} status update to ${status}`);
-    
     return {
       id: updatedDoc.id,
       ...updatedDoc.data()
     };
   } catch (error) {
-    console.error('Error updating order status:', error);
+    
     if (error instanceof CustomError) {
       throw error;
     }

@@ -25,7 +25,7 @@ export const useFetchApi = (options = {}) => {
 
   const fetchData = async () => {
     if (!resource) {
-      console.error("Resource type (orders, products, etc.) is required");
+      /* error removed */
       setError("Cấu hình API không hợp lệ");
       return null;
     }
@@ -65,7 +65,7 @@ export const useFetchApi = (options = {}) => {
       setData(response.data.data || response.data);
       return response.data.data || response.data;
     } catch (err) {
-      console.error(`Lỗi khi tải dữ liệu ${resource}:`, err);
+      /* error removed */
       setError(err.response?.data?.message || `Có lỗi xảy ra khi tải dữ liệu ${resource}`);
       throw err;
     } finally {

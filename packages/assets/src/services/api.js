@@ -4,7 +4,7 @@ import axios from 'axios';
 // For production, it will use the environment variable or fall back to /api
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-console.log('API_BASE_URL:', API_BASE_URL);
+/* log removed */
 
 // Helper function to validate api client integrity
 const createApiClient = () => {
@@ -42,7 +42,7 @@ const createApiClient = () => {
     
     return client;
   } catch (error) {
-    console.error('Error creating API client:', error);
+    /* error removed */
     // Return a minimal implementation that won't crash
     return {
       defaults: {
@@ -72,16 +72,12 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    // Thêm logging để debug
-    console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`, {
-      headers: config.headers,
-      body: config.data
-    });
-    
+    // Silent request tracking - no logs
+    /* log removed */
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
+    /* error removed */
     return Promise.reject(error);
   }
 );
@@ -92,7 +88,7 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('API Error:', error?.response?.status, error?.response?.data || error.message);
+    /* error removed */
     
     // Only handle 401 errors for token removal - don't redirect automatically
     if (error.response && error.response.status === 401) {
@@ -170,7 +166,7 @@ const setAuthToken = (token) => {
     if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
     } else {
-      console.warn('Cannot set Authorization header: API object not fully initialized');
+      /* warning removed */
     }
   }
 };
@@ -181,7 +177,7 @@ const clearAuthToken = () => {
   if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
     delete api.defaults.headers.common['Authorization'];
   } else {
-    console.warn('Cannot clear Authorization header: API object not fully initialized');
+    /* warning removed */
   }
 };
 

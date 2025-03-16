@@ -62,7 +62,7 @@ const TransactionDetailPage = () => {
         
         setTransaction(transactionData);
       } catch (error) {
-        console.error('Error fetching transaction:', error);
+        /* error removed */
         setError('Failed to load transaction details. Please try again.');
       } finally {
         setLoading(false);
@@ -86,7 +86,7 @@ const TransactionDetailPage = () => {
         updatedAt: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error approving transaction:', error);
+      /* error removed */
       setError('Failed to approve transaction. Please try again.');
     } finally {
       setActionLoading(false);
@@ -114,7 +114,7 @@ const TransactionDetailPage = () => {
         updatedAt: new Date().toISOString()
       });
     } catch (error) {
-      console.error('Error rejecting transaction:', error);
+      /* error removed */
       setError('Failed to reject transaction. Please try again.');
     } finally {
       setActionLoading(false);

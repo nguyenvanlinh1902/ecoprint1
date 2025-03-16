@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 /**
  * Compatibility hook that provides the useHistory API from React Router v5
@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
  */
 export const useHistory = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   
   // Create a history object that mimics the React Router v5 history API
   return {
@@ -15,7 +16,7 @@ export const useHistory = () => {
     replace: (path, state) => navigate(path, { replace: true, state }),
     goBack: () => navigate(-1),
     go: (n) => navigate(n),
-    location: window.location
+    location: location
   };
 };
 

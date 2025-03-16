@@ -15,34 +15,35 @@ const TOKEN_EXPIRES_IN = '7d';
  */
 export const register = async (ctx) => {
   try {
-    console.log('Register request received:', {
-      contentType: ctx.request.headers['content-type'],
-      method: ctx.request.method,
-      url: ctx.request.url
-    });
+    let requestData = {};
     
-    // Kiểm tra có body không
-    if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
+    try {
+      if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
+        if (ctx.request.rawBody && ctx.request.headers['content-type']?.includes('application/json')) {
+          try {
+            requestData = JSON.parse(ctx.request.rawBody.toString());
+          } catch (parseError) {
+            // Silent parse error
+          }
+        }
+      } else {
+        requestData = ctx.request.body;
+      }
+    } catch (bodyError) {
+      // Silent body access error
+    }
+    
+    if (Object.keys(requestData).length === 0) {
       ctx.status = 400;
-      ctx.body = { error: 'Request body is empty' };
+      ctx.body = { error: 'Request body is empty or could not be parsed' };
       return;
     }
     
-    // Trích xuất dữ liệu từ body một cách an toàn
-    const email = ctx.request.body.email || '';
-    const password = ctx.request.body.password || '';
-    const displayName = ctx.request.body.displayName || '';
-    const phone = ctx.request.body.phone || '';
-    const companyName = ctx.request.body.companyName || '';
-    
-    // Log dữ liệu đã nhận (ngoại trừ password)
-    console.log('Register data received:', { 
-      email, 
-      displayName, 
-      phone, 
-      companyName,
-      hasPassword: !!password
-    });
+    const email = requestData.email || '';
+    const password = requestData.password || '';
+    const displayName = requestData.displayName || '';
+    const phone = requestData.phone || '';
+    const companyName = requestData.companyName || '';
     
     if (!email || !password || !displayName) {
       ctx.status = 400;
@@ -78,21 +79,17 @@ export const register = async (ctx) => {
         uid: userRecord.uid
       };
     } catch (firebaseError) {
-      console.error('Firebase error during registration:', firebaseError);
-      
-      // Xử lý lỗi từ Firebase Auth
+      // Handle Firebase Auth errors silently
       if (firebaseError.code === 'auth/email-already-exists') {
         ctx.status = 409;
         ctx.body = { error: 'Email already exists' };
         return;
       }
       
-      // Các lỗi khác
       ctx.status = 500;
       ctx.body = { error: firebaseError.message || 'Error creating user' };
     }
   } catch (error) {
-    console.error('Unexpected error in register controller:', error);
     ctx.status = 500;
     ctx.body = { error: 'Internal server error during registration' };
   }
@@ -103,16 +100,31 @@ export const register = async (ctx) => {
  */
 export const login = async (ctx) => {
   try {
-    console.log('Login request body:', ctx.request.body);
+    let requestData = {};
     
-    // Validate request body exists
-    if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
-      throw new CustomError('Missing request body', 400);
+    try {
+      if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
+        if (ctx.request.rawBody && ctx.request.headers['content-type']?.includes('application/json')) {
+          try {
+            requestData = JSON.parse(ctx.request.rawBody.toString());
+          } catch (parseError) {
+            // Silent parse error
+          }
+        }
+      } else {
+        requestData = ctx.request.body;
+      }
+    } catch (bodyError) {
+      // Silent body access error
     }
     
-    const { email, password } = ctx.request.body;
+    if (Object.keys(requestData).length === 0) {
+      throw new CustomError('Missing request body or could not be parsed', 400);
+    }
     
-    // Validate required fields
+    const email = requestData.email || '';
+    const password = requestData.password || '';
+    
     if (!email || !password) {
       throw new CustomError('Email and password are required', 400);
     }
@@ -150,8 +162,6 @@ export const login = async (ctx) => {
       }
     };
   } catch (error) {
-    console.error('Login error:', error);
-    
     ctx.status = error.status || 500;
     ctx.body = {
       success: false,
@@ -166,9 +176,6 @@ export const login = async (ctx) => {
  */
 export const logout = async (ctx) => {
   try {
-    // JWT tokens are stateless, so we can't invalidate them server-side
-    // Client should remove the token from local storage
-    
     ctx.body = {
       success: true,
       message: 'Logout successful'
@@ -188,14 +195,9 @@ export const logout = async (ctx) => {
  */
 export const resetPassword = async (ctx) => {
   try {
-    console.log('Reset password request body:', ctx.request.body);
-    
-    // Validate request body exists
-    if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
-      throw new CustomError('Missing request body', 400);
-    }
-    
-    const { email } = ctx.request.body;
+    // Safely extract body data
+    let requestData = ctx.request.body || {};
+    const email = requestData.email || '';
     
     // Validate email
     if (!email) {
@@ -213,8 +215,6 @@ export const resetPassword = async (ctx) => {
       message: 'If your email is registered, you will receive a password reset link'
     };
   } catch (error) {
-    console.error('Reset password error:', error);
-    
     ctx.status = error.status || 500;
     ctx.body = {
       success: false,

@@ -18,10 +18,10 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import SecurityIcon from '@mui/icons-material/Security';
 
 const ProfilePage = () => {
-  console.log('ProfilePage rendering');
+  /* log removed */
   const { userProfile, updateProfile, currentUser } = useAuth();
-  console.log('User profile from auth:', userProfile);
-  console.log('Current user from auth:', currentUser);
+  /* log removed */
+  /* log removed */
   
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,7 +47,7 @@ const ProfilePage = () => {
 
   // Update form data when user profile changes
   useEffect(() => {
-    console.log('userProfile changed:', userProfile);
+    /* log removed */
     if (userProfile) {
       setFormData({
         displayName: userProfile.displayName || '',
@@ -122,7 +122,7 @@ const ProfilePage = () => {
       setSuccess(true);
       setEditing(false);
     } catch (error) {
-      console.error('Failed to update profile:', error);
+      /* error removed */
       setError(error.message || 'Failed to update profile');
     } finally {
       setLoading(false);
@@ -172,7 +172,7 @@ const ProfilePage = () => {
       });
       setChangingPassword(false);
     } catch (error) {
-      console.error('Failed to change password:', error);
+      /* error removed */
       setPasswordError(error.response?.data?.error?.message || 'Failed to change password');
     } finally {
       setLoading(false);

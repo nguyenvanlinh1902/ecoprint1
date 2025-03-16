@@ -117,7 +117,7 @@ const ReportsPage = () => {
       setCustomerData(customerResponse.data.data);
       
     } catch (error) {
-      console.error('Error fetching reports:', error);
+      /* error removed */
       setError('Failed to load reports. Please try again later.');
     } finally {
       setLoading(false);
@@ -157,7 +157,7 @@ const ReportsPage = () => {
       // Use the browser's native download mechanism
       window.open(`/api/admin/reports/export/${type}?${params.toString()}`);
     } catch (error) {
-      console.error('Error exporting report:', error);
+      /* error removed */
       setError('Failed to export report. Please try again later.');
     }
   };

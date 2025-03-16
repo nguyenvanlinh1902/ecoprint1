@@ -78,7 +78,7 @@ const OrdersPage = () => {
       }
       
     } catch (error) {
-      console.error('Error fetching orders:', error);
+      /* error removed */
       setError('Failed to load orders. Please try again later.');
     } finally {
       setLoading(false);

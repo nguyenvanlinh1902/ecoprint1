@@ -204,7 +204,7 @@ const TransactionsPage = () => {
       }, 3000);
 
     } catch (error) {
-      console.error('Error creating deposit:', error);
+      /* error removed */
       setDepositError(
         error.response?.data?.message || 
         'Failed to create deposit request. Please try again later.'
