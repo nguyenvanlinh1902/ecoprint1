@@ -23,7 +23,41 @@ app.use(cors({
   exposeHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
   credentials: true,
 }));
-app.use(bodyParser());
+
+// Cấu hình bodyParser với các tùy chọn chi tiết để tránh lỗi stream
+app.use(bodyParser({
+  enableTypes: ['json', 'form', 'text'],
+  formLimit: '5mb',
+  jsonLimit: '5mb',
+  textLimit: '5mb',
+  strict: false,
+  detectJSON: (ctx) => {
+    return ctx.request.headers['content-type'] && 
+      ctx.request.headers['content-type'].indexOf('application/json') >= 0;
+  },
+  onerror: (err, ctx) => {
+    console.error('Body parser error:', err);
+    ctx.status = 422;
+    ctx.body = {
+      error: 'Unable to process request body',
+      message: err.message
+    };
+  }
+}));
+
+// Thêm middleware để xử lý lỗi request
+app.use(async (ctx, next) => {
+  try {
+    await next();
+  } catch (err) {
+    console.error('Server error:', err);
+    ctx.status = err.status || 500;
+    ctx.body = {
+      error: 'Internal Server Error',
+      message: err.message
+    };
+  }
+});
 
 // Use assets middleware for SPA routing
 app.use(assetsMiddleware());

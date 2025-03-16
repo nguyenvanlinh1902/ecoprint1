@@ -11,7 +11,9 @@ import {
   Grid,
   Stepper,
   Step,
-  StepLabel
+  StepLabel,
+  FormControlLabel,
+  Switch
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 
@@ -30,8 +32,9 @@ const RegisterPage = () => {
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [useApi, setUseApi] = useState(true); // Default to API registration
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, registerViaApi } = useAuth();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -39,6 +42,10 @@ const RegisterPage = () => {
       ...formData,
       [name]: value
     });
+  };
+
+  const handleSwitchChange = (e) => {
+    setUseApi(e.target.checked);
   };
 
   const validateStep1 = () => {
@@ -102,17 +109,55 @@ const RegisterPage = () => {
     setLoading(true);
 
     try {
-      await register(
-        formData.email, 
-        formData.password, 
-        formData.displayName, 
-        formData.companyName, 
-        formData.phone
-      );
-      
-      navigate('/registration-success');
+      // Use either API registration or Firebase registration based on the switch
+      if (useApi) {
+        console.log('Using API registration...');
+        try {
+          const result = await registerViaApi(
+            formData.email, 
+            formData.password, 
+            formData.displayName, 
+            formData.companyName, 
+            formData.phone
+          );
+          
+          // If successful, navigate to success page with message
+          navigate('/registration-success', { 
+            state: { 
+              message: result.message || 'Registration successful. Please wait for admin approval.',
+              isApi: true 
+            } 
+          });
+        } catch (apiError) {
+          console.error('API registration failed:', apiError);
+          setServerError(apiError.message || 'API registration failed. Please try again later.');
+        }
+      } else {
+        console.log('Using Firebase registration...');
+        try {
+          await register(
+            formData.email, 
+            formData.password, 
+            formData.displayName, 
+            formData.companyName, 
+            formData.phone
+          );
+          
+          // If successful, navigate to success page
+          navigate('/registration-success', { 
+            state: { 
+              message: 'Registration successful.',
+              isApi: false 
+            } 
+          });
+        } catch (firebaseError) {
+          console.error('Firebase registration failed:', firebaseError);
+          setServerError(firebaseError.message || 'Firebase registration failed. Please try again later.');
+        }
+      }
     } catch (err) {
-      setServerError(err.message || 'Failed to register');
+      console.error('Unexpected registration error:', err);
+      setServerError(err.message || 'Failed to register. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -133,6 +178,20 @@ const RegisterPage = () => {
           <Typography component="h1" variant="h5" textAlign="center" gutterBottom>
             Create an Account
           </Typography>
+          
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={useApi}
+                  onChange={handleSwitchChange}
+                  name="useApi"
+                  color="primary"
+                />
+              }
+              label={useApi ? "Using API Registration" : "Using Firebase Registration"}
+            />
+          </Box>
           
           <Stepper activeStep={activeStep} sx={{ mb: 4, mt: 2 }}>
             {steps.map((label) => (
@@ -248,17 +307,20 @@ const RegisterPage = () => {
               onClick={handleNext}
               disabled={loading}
             >
-              {activeStep === steps.length - 1 ? (loading ? 'Creating Account...' : 'Create Account') : 'Next'}
+              {activeStep === steps.length - 1 ? (loading ? 'Registering...' : 'Register') : 'Next'}
             </Button>
           </Box>
           
-          <Box sx={{ mt: 3, textAlign: 'center' }}>
-            <Link to="/login" style={{ textDecoration: 'none' }}>
-              <Typography variant="body2" color="primary">
-                Already have an account? Sign In
+          <Grid container justifyContent="center" sx={{ mt: 3 }}>
+            <Grid item>
+              <Typography variant="body2">
+                Already have an account?{' '}
+                <Link to="/login" style={{ textDecoration: 'none' }}>
+                  Sign in
+                </Link>
               </Typography>
-            </Link>
-          </Box>
+            </Grid>
+          </Grid>
         </Paper>
       </Box>
     </Container>

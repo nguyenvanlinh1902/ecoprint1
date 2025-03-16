@@ -24,7 +24,7 @@ console.log('Firebase config loaded:', {
   appId: firebaseConfig.appId ? '✓' : '✗'
 });
 
-// Initialize Firebase
+// Initialize Firebase with fallbacks to prevent crashes
 let app, auth, db, storage;
 
 try {
@@ -32,20 +32,92 @@ try {
   app = initializeApp(firebaseConfig);
   console.log('Firebase app initialized successfully');
   
-  // Initialize Firebase Auth with custom settings
-  auth = getAuth(app);
-  auth.settings.appVerificationDisabledForTesting = true; // Simplify testing
-  console.log('Firebase auth initialized successfully');
+  try {
+    // Initialize Firebase Auth with custom settings
+    auth = getAuth(app);
+    auth.settings = auth.settings || {};
+    auth.settings.appVerificationDisabledForTesting = true; // Simplify testing
+    console.log('Firebase auth initialized successfully');
+  } catch (authError) {
+    console.error('Error initializing Firebase Auth:', authError);
+    // Create a fallback auth object to prevent crashes
+    auth = {
+      currentUser: null,
+      onAuthStateChanged: (callback) => {
+        console.warn('Using mock auth state change handler');
+        callback(null);
+        return () => {}; // Return unsubscribe function
+      },
+      signInWithEmailAndPassword: () => Promise.reject(new Error('Auth not available')),
+      createUserWithEmailAndPassword: () => Promise.reject(new Error('Auth not available')),
+      signOut: () => Promise.resolve(),
+      settings: { appVerificationDisabledForTesting: true }
+    };
+  }
   
-  // Initialize Firestore
-  db = getFirestore(app);
-  console.log('Firestore initialized successfully');
+  try {
+    // Initialize Firestore
+    db = getFirestore(app);
+    console.log('Firestore initialized successfully');
+  } catch (dbError) {
+    console.error('Error initializing Firestore:', dbError);
+    // Create a fallback db object
+    db = {
+      collection: () => ({
+        doc: () => ({
+          get: () => Promise.reject(new Error('Firestore not available')),
+          set: () => Promise.reject(new Error('Firestore not available')),
+          update: () => Promise.reject(new Error('Firestore not available'))
+        })
+      })
+    };
+  }
   
-  // Initialize Storage
-  storage = getStorage(app);
-  console.log('Firebase storage initialized successfully');
+  try {
+    // Initialize Storage
+    storage = getStorage(app);
+    console.log('Firebase storage initialized successfully');
+  } catch (storageError) {
+    console.error('Error initializing Firebase Storage:', storageError);
+    // Create a fallback storage object
+    storage = {
+      ref: () => ({
+        put: () => Promise.reject(new Error('Storage not available')),
+        getDownloadURL: () => Promise.reject(new Error('Storage not available'))
+      })
+    };
+  }
 } catch (error) {
   console.error('Error initializing Firebase:', error);
+  // Create fallback objects for everything
+  app = {};
+  auth = {
+    currentUser: null,
+    onAuthStateChanged: (callback) => {
+      console.warn('Using mock auth state change handler');
+      callback(null);
+      return () => {}; // Return unsubscribe function
+    },
+    signInWithEmailAndPassword: () => Promise.reject(new Error('Auth not available')),
+    createUserWithEmailAndPassword: () => Promise.reject(new Error('Auth not available')),
+    signOut: () => Promise.resolve(),
+    settings: { appVerificationDisabledForTesting: true }
+  };
+  db = {
+    collection: () => ({
+      doc: () => ({
+        get: () => Promise.reject(new Error('Firestore not available')),
+        set: () => Promise.reject(new Error('Firestore not available')),
+        update: () => Promise.reject(new Error('Firestore not available'))
+      })
+    })
+  };
+  storage = {
+    ref: () => ({
+      put: () => Promise.reject(new Error('Storage not available')),
+      getDownloadURL: () => Promise.reject(new Error('Storage not available'))
+    })
+  };
 }
 
 // Emulator support

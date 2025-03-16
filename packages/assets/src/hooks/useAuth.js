@@ -56,6 +56,80 @@ export function AuthProvider({ children }) {
     });
   }, [currentUser, userProfile, loading, provider]);
 
+  // Helper to clean up localStorage items
+  const cleanupLocalStorage = () => {
+    console.log("Cleaning up localStorage auth items");
+    try {
+      localStorage.removeItem('mockAuthUser');
+      localStorage.removeItem('mockAuthProfile');
+      localStorage.removeItem('authToken');
+      if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+        api.defaults.headers.common['Authorization'] = '';
+      }
+    } catch (error) {
+      console.error("Error cleaning localStorage:", error);
+    }
+  };
+
+  // Helper function to restore mock auth
+  const restoreMockAuth = () => {
+    console.log("Attempting to restore mock auth...");
+    try {
+      // Get stored mock auth data
+      const storedUser = localStorage.getItem('mockAuthUser');
+      const storedProfile = localStorage.getItem('mockAuthProfile');
+
+      // Debug what was found
+      console.log("Found mockAuthUser:", storedUser);
+      console.log("Found mockAuthProfile:", storedProfile);
+
+      // Only process if both exist
+      if (storedUser && storedProfile) {
+        try {
+          // Parse data
+          const parsedUser = JSON.parse(storedUser);
+          const parsedProfile = JSON.parse(storedProfile);
+
+          // Add additional debug logs
+          console.log("Parsed user:", parsedUser);
+          console.log("Parsed profile:", parsedProfile);
+
+          // Make sure we have the required fields
+          if (parsedUser && parsedUser.uid && parsedProfile) {
+            console.log("Setting mock auth state with parsed data");
+            // Set the state with parsed data
+            setCurrentUser(parsedUser);
+            setUserProfile(parsedProfile);
+            setProvider('mock');
+            setLoading(false);
+            
+            // Also set token in API headers if available
+            const token = localStorage.getItem('authToken');
+            if (token && api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+              api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            }
+            
+            return true;
+          } else {
+            console.warn("Missing required fields in mock auth data");
+            cleanupLocalStorage(); // Clean invalid data
+            return false;
+          }
+        } catch (parseError) {
+          console.error("Error parsing mock auth data:", parseError);
+          cleanupLocalStorage(); // Clean invalid data
+          return false;
+        }
+      } else {
+        console.log("No mock auth data found in localStorage");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error restoring mock auth:", error);
+      return false;
+    }
+  };
+
   // Listen for auth state changes
   useEffect(() => {
     console.log("Setting up auth listeners...");
@@ -90,7 +164,9 @@ export function AuthProvider({ children }) {
             
             // Get and set token for API calls
             const token = await user.getIdToken();
-            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+              api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            }
             localStorage.setItem('authToken', token);
           } catch (error) {
             console.error('Error fetching user profile:', error);
@@ -99,7 +175,9 @@ export function AuthProvider({ children }) {
         } else {
           console.log("No Firebase user, clearing profile");
           setUserProfile(null);
-          delete api.defaults.headers.common['Authorization'];
+          if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+            delete api.defaults.headers.common['Authorization'];
+          }
           localStorage.removeItem('authToken');
           setProvider(null);
         }
@@ -152,6 +230,72 @@ export function AuthProvider({ children }) {
       } else {
         throw new Error(error.message || 'An error occurred during registration. Please try again.');
       }
+    }
+  };
+
+  // Register a new user using API instead of Firebase directly
+  const registerViaApi = async (email, password, displayName, companyName, phone) => {
+    try {
+      console.log('Attempting to register user via API with email:', email);
+      
+      // Create user data object
+      const userData = {
+        email,
+        password,
+        displayName: displayName || email.split('@')[0],
+        companyName: companyName || '',
+        phone: phone || '',
+      };
+      
+      // Thêm log trước khi gọi API
+      console.log('Sending registration data to API (without password):', {
+        ...userData,
+        password: '********'
+      });
+      
+      try {
+        // Call the API endpoint with timeout để tránh hanging request
+        const response = await api.auth.register(userData);
+        console.log('API registration successful:', response.data);
+        
+        // Return the response data so the calling component can handle redirects
+        return {
+          success: true,
+          message: response.data.message || 'Registration successful. Waiting for admin approval.',
+          uid: response.data.uid
+        };
+      } catch (apiError) {
+        console.error('API call failed:', apiError);
+        
+        // Handle common API errors
+        if (apiError.response) {
+          console.error('API response error:', {
+            status: apiError.response.status,
+            data: apiError.response.data,
+            headers: apiError.response.headers
+          });
+          
+          if (apiError.response.status === 409 || 
+            (apiError.response.data && apiError.response.data.error && 
+              apiError.response.data.error.includes('already exists'))) {
+            throw new Error('This email is already registered. Please use a different email or login.');
+          } else if (apiError.response.data && apiError.response.data.error) {
+            throw new Error(apiError.response.data.error);
+          }
+        }
+        
+        // Nếu không có response thì có thể là lỗi network
+        if (apiError.request && !apiError.response) {
+          console.error('No response received:', apiError.request);
+          throw new Error('No response received from server. Please check your internet connection and try again.');
+        }
+        
+        // Các lỗi khác
+        throw new Error(apiError.message || 'An error occurred during registration. Please try again.');
+      }
+    } catch (error) {
+      console.error('Registration process error:', error);
+      throw error;
     }
   };
 
@@ -216,9 +360,11 @@ export function AuthProvider({ children }) {
     localStorage.setItem('userRole', userData.role);
     localStorage.setItem('authToken', 'mock-token-for-development');
     
-    // Cập nhật API headers
-    if (api.defaults && api.defaults.headers) {
+    // Cập nhật API headers - Thêm kiểm tra để tránh lỗi
+    if (api && api.defaults && api.defaults.headers) {
       api.defaults.headers.common['Authorization'] = `Bearer mock-token-for-development`;
+    } else {
+      console.warn('API object is not fully initialized, cannot set Authorization header');
     }
     
     return mockUser;
@@ -391,45 +537,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Check for mock auth on app load
-  useEffect(() => {
-    const checkMockAuth = () => {
-      const mockUser = localStorage.getItem('mockAuthUser');
-      const mockProfile = localStorage.getItem('mockAuthProfile');
-      
-      if (mockUser && mockProfile) {
-        try {
-          console.log('Restoring mock auth from localStorage');
-          const parsedUser = JSON.parse(mockUser);
-          const parsedProfile = JSON.parse(mockProfile);
-          
-          if (parsedUser && parsedProfile) {
-            setCurrentUser(parsedUser);
-            setUserProfile(parsedProfile);
-            setProvider('mock');
-            console.log('Restored mock authentication session successfully');
-          } else {
-            console.error('Invalid mockUser or mockProfile data in localStorage');
-            cleanupMockAuth();
-          }
-        } catch (error) {
-          console.error('Error restoring mock auth:', error);
-          cleanupMockAuth();
-        }
-      }
-      setLoading(false);
-    };
-    
-    const cleanupMockAuth = () => {
-      localStorage.removeItem('mockAuthUser');
-      localStorage.removeItem('mockAuthProfile');
-      localStorage.removeItem('userRole');
-      localStorage.removeItem('authToken');
-    };
-    
-    checkMockAuth();
-  }, []);
-
   // Sign out
   const signOut = async () => {
     try {
@@ -445,7 +552,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('authToken');
       
       // Xóa token từ API service
-      if (api.clearAuthToken) {
+      if (api && api.clearAuthToken) {
         api.clearAuthToken();
       }
       
@@ -535,6 +642,7 @@ export function AuthProvider({ children }) {
     loading,
     isAdmin: userProfile?.role === 'admin',
     register,
+    registerViaApi,
     login,
     directLogin,
     loginWithGoogle,
@@ -553,75 +661,4 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   return useContext(AuthContext);
-}
-
-const restoreMockAuth = () => {
-  console.log("Attempting to restore mock auth...");
-  try {
-    // Get stored mock auth data
-    const storedUser = localStorage.getItem('mockAuthUser');
-    const storedProfile = localStorage.getItem('mockAuthProfile');
-
-    // Debug what was found
-    console.log("Found mockAuthUser:", storedUser);
-    console.log("Found mockAuthProfile:", storedProfile);
-
-    // Only process if both exist
-    if (storedUser && storedProfile) {
-      try {
-        // Parse data
-        const parsedUser = JSON.parse(storedUser);
-        const parsedProfile = JSON.parse(storedProfile);
-
-        // Add additional debug logs
-        console.log("Parsed user:", parsedUser);
-        console.log("Parsed profile:", parsedProfile);
-
-        // Make sure we have the required fields
-        if (parsedUser && parsedUser.uid && parsedProfile) {
-          console.log("Setting mock auth state with parsed data");
-          // Set the state with parsed data
-          setCurrentUser(parsedUser);
-          setUserProfile(parsedProfile);
-          setProvider('mock');
-          setLoading(false);
-          
-          // Also set token in API headers if available
-          const token = localStorage.getItem('authToken');
-          if (token) {
-            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          }
-          
-          return true;
-        } else {
-          console.warn("Missing required fields in mock auth data");
-          cleanupLocalStorage(); // Clean invalid data
-          return false;
-        }
-      } catch (parseError) {
-        console.error("Error parsing mock auth data:", parseError);
-        cleanupLocalStorage(); // Clean invalid data
-        return false;
-      }
-    } else {
-      console.log("No mock auth data found in localStorage");
-      return false;
-    }
-  } catch (error) {
-    console.error("Error restoring mock auth:", error);
-    return false;
-  }
-};
-
-// Helper to clean up localStorage items
-const cleanupLocalStorage = () => {
-  console.log("Cleaning up localStorage auth items");
-  try {
-    localStorage.removeItem('mockAuthUser');
-    localStorage.removeItem('mockAuthProfile');
-    localStorage.removeItem('authToken');
-    api.defaults.headers.common['Authorization'] = '';
-  } catch (error) {
-    console.error("Error cleaning localStorage:", error);
-  }
-}; 
+} 

@@ -6,14 +6,63 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 console.log('API_BASE_URL:', API_BASE_URL);
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  // Add a timeout to prevent hanging requests
-  timeout: 15000
-});
+// Helper function to validate api client integrity
+const createApiClient = () => {
+  try {
+    const client = axios.create({
+      baseURL: API_BASE_URL,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      // Add a timeout to prevent hanging requests
+      timeout: 15000,
+      // Đảm bảo không gửi stream không đọc được
+      transformRequest: [(data, headers) => {
+        // Nếu data không phải là FormData (cho upload file), thì chuyển đổi thành JSON string
+        if (data && !(data instanceof FormData)) {
+          headers['Content-Type'] = 'application/json';
+          return JSON.stringify(data);
+        }
+        return data;
+      }]
+    });
+    
+    // Initialize headers object if it doesn't exist
+    if (!client.defaults) {
+      client.defaults = {};
+    }
+    
+    if (!client.defaults.headers) {
+      client.defaults.headers = {};
+    }
+    
+    if (!client.defaults.headers.common) {
+      client.defaults.headers.common = {};
+    }
+    
+    return client;
+  } catch (error) {
+    console.error('Error creating API client:', error);
+    // Return a minimal implementation that won't crash
+    return {
+      defaults: {
+        headers: {
+          common: {}
+        }
+      },
+      interceptors: {
+        request: {
+          use: () => {}
+        },
+        response: {
+          use: () => {}
+        }
+      }
+    };
+  }
+};
+
+const api = createApiClient();
 
 // Request interceptor for adding auth token
 api.interceptors.request.use(
@@ -22,9 +71,17 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Thêm logging để debug
+    console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`, {
+      headers: config.headers,
+      body: config.data
+    });
+    
     return config;
   },
   (error) => {
+    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -110,14 +167,22 @@ const setAuthToken = (token) => {
   if (token) {
     localStorage.setItem('authToken', token);
     // Also update the current instance
-    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      console.warn('Cannot set Authorization header: API object not fully initialized');
+    }
   }
 };
 
 const clearAuthToken = () => {
   localStorage.removeItem('authToken');
   // Also clear from current instance
-  delete api.defaults.headers.common['Authorization'];
+  if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+    delete api.defaults.headers.common['Authorization'];
+  } else {
+    console.warn('Cannot clear Authorization header: API object not fully initialized');
+  }
 };
 
 export default {

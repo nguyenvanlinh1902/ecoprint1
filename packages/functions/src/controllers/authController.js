@@ -15,7 +15,34 @@ const TOKEN_EXPIRES_IN = '7d';
  */
 export const register = async (ctx) => {
   try {
-    const { email, password, displayName, phone, companyName } = ctx.request.body;
+    console.log('Register request received:', {
+      contentType: ctx.request.headers['content-type'],
+      method: ctx.request.method,
+      url: ctx.request.url
+    });
+    
+    // Kiểm tra có body không
+    if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
+      ctx.status = 400;
+      ctx.body = { error: 'Request body is empty' };
+      return;
+    }
+    
+    // Trích xuất dữ liệu từ body một cách an toàn
+    const email = ctx.request.body.email || '';
+    const password = ctx.request.body.password || '';
+    const displayName = ctx.request.body.displayName || '';
+    const phone = ctx.request.body.phone || '';
+    const companyName = ctx.request.body.companyName || '';
+    
+    // Log dữ liệu đã nhận (ngoại trừ password)
+    console.log('Register data received:', { 
+      email, 
+      displayName, 
+      phone, 
+      companyName,
+      hasPassword: !!password
+    });
     
     if (!email || !password || !displayName) {
       ctx.status = 400;
@@ -23,35 +50,51 @@ export const register = async (ctx) => {
       return;
     }
     
-    // Create user in Firebase Auth
-    const userRecord = await admin.auth().createUser({
-      email,
-      password,
-      displayName,
-      disabled: false, // User is active but needs admin approval
-    });
-    
-    // Store additional user information in Firestore
-    await db.collection('users').doc(userRecord.uid).set({
-      email,
-      displayName,
-      phone: phone || '',
-      companyName: companyName || '',
-      role: 'user', // Default role
-      status: 'pending', // Needs admin approval
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      balance: 0 // Initial transaction balance
-    });
-    
-    ctx.status = 201;
-    ctx.body = { 
-      message: 'User registered successfully. Waiting for admin approval.',
-      uid: userRecord.uid
-    };
+    try {
+      // Create user in Firebase Auth
+      const userRecord = await admin.auth().createUser({
+        email,
+        password,
+        displayName,
+        disabled: false, // User is active but needs admin approval
+      });
+      
+      // Store additional user information in Firestore
+      await db.collection('users').doc(userRecord.uid).set({
+        email,
+        displayName,
+        phone: phone || '',
+        companyName: companyName || '',
+        role: 'user', // Default role
+        status: 'pending', // Needs admin approval
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        balance: 0 // Initial transaction balance
+      });
+      
+      ctx.status = 201;
+      ctx.body = { 
+        message: 'User registered successfully. Waiting for admin approval.',
+        uid: userRecord.uid
+      };
+    } catch (firebaseError) {
+      console.error('Firebase error during registration:', firebaseError);
+      
+      // Xử lý lỗi từ Firebase Auth
+      if (firebaseError.code === 'auth/email-already-exists') {
+        ctx.status = 409;
+        ctx.body = { error: 'Email already exists' };
+        return;
+      }
+      
+      // Các lỗi khác
+      ctx.status = 500;
+      ctx.body = { error: firebaseError.message || 'Error creating user' };
+    }
   } catch (error) {
+    console.error('Unexpected error in register controller:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { error: 'Internal server error during registration' };
   }
 };
 

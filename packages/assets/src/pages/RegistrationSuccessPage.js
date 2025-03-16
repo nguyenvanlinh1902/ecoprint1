@@ -1,9 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Container, Paper, Typography, Box, Button, Alert } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 
 const RegistrationSuccessPage = () => {
+  const location = useLocation();
+  const { message, isApi } = location.state || { 
+    message: 'Your account has been created and is pending approval.',
+    isApi: true 
+  };
+  
   return (
     <Container maxWidth="sm">
       <Box
@@ -22,13 +28,13 @@ const RegistrationSuccessPage = () => {
           </Typography>
           
           <Alert severity="info" sx={{ my: 2, textAlign: 'left' }}>
-            Your account has been created and is pending approval from our administrators. 
-            You will receive an email notification once your account is approved.
+            {message || 'Your account has been created and is pending approval from our administrators. You will receive an email notification once your account is approved.'}
           </Alert>
           
           <Typography variant="body1" sx={{ mb: 4 }}>
-            Thank you for registering with our platform. Once approved, you'll be able to access
-            all our services and features.
+            {isApi 
+              ? 'Thank you for registering with our platform. Once approved, you\'ll be able to access all our services and features.' 
+              : 'Thank you for registering with our platform. You can now login to access all our services and features.'}
           </Typography>
           
           <Button
