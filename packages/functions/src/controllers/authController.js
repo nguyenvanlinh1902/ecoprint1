@@ -4,10 +4,7 @@ import * as userService from '../services/userService.js';
 import { CustomError } from '../exceptions/customError.js';
 import { admin, db } from '../config/firebase.js';
 import * as functions from 'firebase-functions';
-
-// Secret key for JWT from config
 const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
-// Token expiration time
 const TOKEN_EXPIRES_IN = '7d';
 
 /**
@@ -15,35 +12,18 @@ const TOKEN_EXPIRES_IN = '7d';
  */
 export const register = async (ctx) => {
   try {
-    let requestData = {};
+    console.log('Register endpoint hit - start processing');
     
-    try {
-      if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
-        if (ctx.request.rawBody && ctx.request.headers['content-type']?.includes('application/json')) {
-          try {
-            requestData = JSON.parse(ctx.request.rawBody.toString());
-          } catch (parseError) {
-            // Silent parse error
-          }
-        }
-      } else {
-        requestData = ctx.request.body;
-      }
-    } catch (bodyError) {
-      // Silent body access error
-    }
+    // Get request data directly from ctx.request.body since we've already parsed it
+    const requestData = ctx.request.body;
     
-    if (Object.keys(requestData).length === 0) {
+    if (!requestData || Object.keys(requestData).length === 0) {
       ctx.status = 400;
       ctx.body = { error: 'Request body is empty or could not be parsed' };
       return;
     }
     
-    const email = requestData.email || '';
-    const password = requestData.password || '';
-    const displayName = requestData.displayName || '';
-    const phone = requestData.phone || '';
-    const companyName = requestData.companyName || '';
+    const { email, password, displayName, phone = '', companyName = '' } = requestData;
     
     if (!email || !password || !displayName) {
       ctx.status = 400;
@@ -57,20 +37,20 @@ export const register = async (ctx) => {
         email,
         password,
         displayName,
-        disabled: false, // User is active but needs admin approval
+        disabled: false,
       });
       
       // Store additional user information in Firestore
       await db.collection('users').doc(userRecord.uid).set({
         email,
         displayName,
-        phone: phone || '',
-        companyName: companyName || '',
-        role: 'user', // Default role
-        status: 'pending', // Needs admin approval
+        phone,
+        companyName,
+        role: 'user',
+        status: 'pending',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        balance: 0 // Initial transaction balance
+        balance: 0
       });
       
       ctx.status = 201;
@@ -79,7 +59,8 @@ export const register = async (ctx) => {
         uid: userRecord.uid
       };
     } catch (firebaseError) {
-      // Handle Firebase Auth errors silently
+      console.error('Firebase Auth error:', firebaseError);
+      
       if (firebaseError.code === 'auth/email-already-exists') {
         ctx.status = 409;
         ctx.body = { error: 'Email already exists' };
@@ -90,6 +71,7 @@ export const register = async (ctx) => {
       ctx.body = { error: firebaseError.message || 'Error creating user' };
     }
   } catch (error) {
+    console.error('General error in register function:', error);
     ctx.status = 500;
     ctx.body = { error: 'Internal server error during registration' };
   }

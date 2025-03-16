@@ -6,7 +6,6 @@ import * as orderController from '../controllers/orderController.js';
 import * as transactionController from '../controllers/transactionController.js';
 import * as adminController from '../controllers/adminController.js';
 import * as authMiddleware from '../middleware/authMiddleware.js';
-import { admin } from '../config/firebase.js';
 
 const router = new Router({
   prefix: '/api'
@@ -16,7 +15,8 @@ const router = new Router({
 router.post('/auth/register', authController.register);
 router.post('/auth/login', authController.login);
 router.post('/auth/forgot-password', authController.forgotPassword);
-
+router.post('/auth/reset-password', authController.resetPassword);
+router.get('/auth/verify-token', authMiddleware.authenticate, authController.verifyToken);
 // Auth required routes
 router.get('/auth/me', authMiddleware.verifyToken, authController.getCurrentUser);
 router.patch('/auth/profile', authMiddleware.verifyToken, authController.updateProfile);
