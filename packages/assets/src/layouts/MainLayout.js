@@ -42,6 +42,7 @@ const LogoutIcon = () => <span>🚪</span>;
 const SettingsIcon = () => <span>⚙️</span>;
 const NotificationsIcon = () => <span>🔔</span>;
 const RefreshIcon = () => <span>🔄</span>;
+const FileIcon = () => <span>📂</span>;
 
 const MainLayout = ({ children }) => {
   const { userProfile, signOut, isAdmin } = useAuth();
@@ -183,7 +184,7 @@ const MainLayout = ({ children }) => {
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Products', icon: <CategoryIcon />, path: '/products' },
     { text: 'Orders', icon: <ShoppingCartIcon />, path: '/orders' },
-    { text: 'Create Order', icon: <ReceiptIcon />, path: '/create-order' },
+    { text: 'Import Orders', icon: <FileIcon />, path: '/import-orders' },
     { text: 'Transactions', icon: <AccountBalanceIcon />, path: '/transactions' },
   ];
 

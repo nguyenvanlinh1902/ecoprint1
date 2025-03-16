@@ -27,10 +27,13 @@ import ProductsPage from '../pages/ProductsPage';
 import ProductDetailPage from '../pages/ProductDetailPage';
 import OrdersPage from '../pages/OrdersPage';
 import OrderDetailPage from '../pages/OrderDetailPage';
+import CreateOrderPage from '../pages/CreateOrderPage';
 import ProfilePage from '../pages/ProfilePage';
 import TransactionsPage from '../pages/TransactionsPage';
 import DepositPage from '../pages/DepositPage';
 import NotFoundPage from '../pages/NotFoundPage';
+import ImportDetailPage from '../pages/ImportDetailPage';
+import ImportOrdersPage from '../pages/ImportOrdersPage';
 
 // Auth Guards
 const AuthGuard = ({ children }) => {
@@ -277,14 +280,6 @@ const AppRoutes = () => {
         </AuthGuard>
       } />
       
-      <Route path="/orders/:orderId" element={
-        <AuthGuard>
-          <MainLayout>
-            <OrderDetailPage />
-          </MainLayout>
-        </AuthGuard>
-      } />
-      
       <Route path="/orders" element={
         <AuthGuard>
           <MainLayout>
@@ -293,10 +288,42 @@ const AppRoutes = () => {
         </AuthGuard>
       } />
       
+      <Route path="/orders/create" element={
+        <AuthGuard>
+          <MainLayout>
+            <CreateOrderPage />
+          </MainLayout>
+        </AuthGuard>
+      } />
+      
+      <Route path="/orders/:orderId" element={
+        <AuthGuard>
+          <MainLayout>
+            <OrderDetailPage />
+          </MainLayout>
+        </AuthGuard>
+      } />
+      
       <Route path="/transactions" element={
         <AuthGuard>
           <MainLayout>
             <TransactionsPage />
+          </MainLayout>
+        </AuthGuard>
+      } />
+      
+      <Route path="/import-orders/:importId" element={
+        <AuthGuard>
+          <MainLayout>
+            <ImportDetailPage />
+          </MainLayout>
+        </AuthGuard>
+      } />
+      
+      <Route path="/import-orders" element={
+        <AuthGuard>
+          <MainLayout>
+            <ImportOrdersPage />
           </MainLayout>
         </AuthGuard>
       } />

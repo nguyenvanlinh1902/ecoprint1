@@ -1,5 +1,9 @@
 import { CustomError } from '../exceptions/customError.js';
 import { admin, db, storage } from '../config/firebase.js';
+import * as xlsx from 'xlsx';
+import { Readable } from 'stream';
+import multer from '@koa/multer';
+import { v4 as uuidv4 } from 'uuid';
 
 // Mock services khi chúng ta chưa implement productService
 const productService = {
@@ -320,6 +324,256 @@ const uploadProductImage = async (ctx) => {
   }
 };
 
+/**
+ * Tạo và trả về template Excel để import sản phẩm
+ */
+export const getProductImportTemplate = async (ctx) => {
+  try {
+    // Lấy danh sách danh mục để có thể tham chiếu trong template
+    const categoriesSnapshot = await db.collection('categories').get();
+    const categories = [];
+    categoriesSnapshot.forEach(doc => {
+      categories.push({
+        id: doc.id,
+        name: doc.data().name
+      });
+    });
+    
+    // Chuẩn bị dữ liệu mẫu
+    const sampleData = [
+      {
+        name: 'Sample Product 1',
+        description: 'This is a sample product description',
+        sku: 'SAMPLE-001',
+        price: 19.99,
+        category_id: categories.length > 0 ? categories[0].id : '',
+        category_name: categories.length > 0 ? categories[0].name : '',
+        stock: 100,
+        status: 'active',
+        features: 'Feature 1, Feature 2, Feature 3',
+        specifications: 'Color: Red, Size: Large, Weight: 500g'
+      },
+      {
+        name: 'Sample Product 2',
+        description: 'Another sample product description',
+        sku: 'SAMPLE-002',
+        price: 29.99,
+        category_id: categories.length > 0 ? categories[0].id : '',
+        category_name: categories.length > 0 ? categories[0].name : '',
+        stock: 50,
+        status: 'active',
+        features: 'Feature A, Feature B',
+        specifications: 'Color: Blue, Size: Medium'
+      }
+    ];
+    
+    // Tạo workbook và worksheet
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(sampleData);
+    
+    // Thêm hướng dẫn
+    const instructions = [
+      ['Product Import Template'],
+      ['Instructions:'],
+      ['1. Do not modify the header row or column structure'],
+      ['2. The "category_id" field must match an existing category ID'],
+      ['3. The "features" field should be comma-separated values'],
+      ['4. The "specifications" field should be in format "key1: value1, key2: value2"'],
+      ['5. Status should be either "active" or "inactive"'],
+      [''],
+      ['Available Categories:']
+    ];
+    
+    const categoriesList = categories.map(cat => [`${cat.name} (ID: ${cat.id})`]);
+    const instructionsWs = xlsx.utils.aoa_to_sheet([...instructions, ...categoriesList]);
+    
+    // Thêm worksheet vào workbook
+    xlsx.utils.book_append_sheet(wb, instructionsWs, 'Instructions');
+    xlsx.utils.book_append_sheet(wb, ws, 'Products');
+    
+    // Tạo buffer Excel
+    const excelBuffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    
+    // Set headers and trả về file Excel
+    ctx.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    ctx.set('Content-Disposition', 'attachment; filename=product_import_template.xlsx');
+    ctx.body = excelBuffer;
+    
+  } catch (error) {
+    console.error('Error generating template:', error);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to generate import template' };
+  }
+};
+
+// Khởi tạo multer storage để xử lý file upload
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024 // Giới hạn file 5MB
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv'
+    ];
+    
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only Excel and CSV files are allowed.'));
+    }
+  }
+});
+
+// Middleware để xử lý file upload trước khi import
+export const importProductsMiddleware = upload.single('file');
+
+/**
+ * Import sản phẩm từ file Excel
+ */
+export const importProducts = async (ctx) => {
+  try {
+    if (!ctx.request.file) {
+      ctx.status = 400;
+      ctx.body = { error: 'No file uploaded' };
+      return;
+    }
+    
+    // Đọc file Excel
+    const workbook = xlsx.read(ctx.request.file.buffer);
+    const worksheet = workbook.Sheets[workbook.SheetNames[1]]; // Products sheet
+    const products = xlsx.utils.sheet_to_json(worksheet);
+    
+    if (!products || products.length === 0) {
+      ctx.status = 400;
+      ctx.body = { error: 'No products found in the file' };
+      return;
+    }
+    
+    // Lấy danh sách danh mục để kiểm tra tính hợp lệ
+    const categoriesSnapshot = await db.collection('categories').get();
+    const categories = {};
+    categoriesSnapshot.forEach(doc => {
+      categories[doc.id] = doc.data().name;
+    });
+    
+    const batch = db.batch();
+    const results = {
+      total: products.length,
+      success: 0,
+      failed: 0,
+      errors: []
+    };
+    
+    // Xử lý từng sản phẩm
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i];
+      const rowNum = i + 2; // +2 vì header và 1-indexed
+      
+      try {
+        // Validate dữ liệu sản phẩm
+        if (!product.name) {
+          throw new Error('Product name is required');
+        }
+        
+        if (!product.sku) {
+          throw new Error('SKU is required');
+        }
+        
+        if (!product.price || isNaN(parseFloat(product.price)) || parseFloat(product.price) < 0) {
+          throw new Error('Invalid price');
+        }
+        
+        if (product.category_id && !categories[product.category_id]) {
+          throw new Error(`Invalid category ID: ${product.category_id}`);
+        }
+        
+        // Kiểm tra SKU đã tồn tại chưa
+        const existingProducts = await db.collection('products')
+          .where('sku', '==', product.sku)
+          .get();
+          
+        let productRef;
+        let isUpdate = false;
+        
+        if (!existingProducts.empty) {
+          // Cập nhật sản phẩm hiện có
+          productRef = existingProducts.docs[0].ref;
+          isUpdate = true;
+        } else {
+          // Tạo mới sản phẩm
+          productRef = db.collection('products').doc();
+        }
+        
+        // Xử lý features (chuyển từ chuỗi sang mảng)
+        let features = [];
+        if (product.features) {
+          features = product.features.split(',').map(f => f.trim()).filter(f => f);
+        }
+        
+        // Xử lý specifications (chuyển từ chuỗi sang object)
+        let specifications = {};
+        if (product.specifications) {
+          const specParts = product.specifications.split(',');
+          specParts.forEach(part => {
+            const [key, value] = part.split(':').map(p => p.trim());
+            if (key && value) {
+              specifications[key] = value;
+            }
+          });
+        }
+        
+        // Chuẩn bị dữ liệu sản phẩm
+        const productData = {
+          name: product.name,
+          description: product.description || '',
+          sku: product.sku,
+          price: parseFloat(product.price),
+          categoryId: product.category_id || '',
+          stock: parseInt(product.stock) || 0,
+          status: product.status === 'inactive' ? 'inactive' : 'active',
+          features,
+          specifications,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        
+        if (!isUpdate) {
+          productData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+        }
+        
+        // Thêm vào batch
+        batch.set(productRef, productData, { merge: isUpdate });
+        results.success++;
+        
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          row: rowNum,
+          message: `Failed to import product: ${product.name || 'Unknown product'}`,
+          details: error.message
+        });
+      }
+    }
+    
+    // Nếu có ít nhất một sản phẩm thành công, thực hiện batch write
+    if (results.success > 0) {
+      await batch.commit();
+    }
+    
+    ctx.body = results;
+    
+  } catch (error) {
+    console.error('Error importing products:', error);
+    ctx.status = 500;
+    ctx.body = { 
+      error: 'Failed to import products',
+      details: error.message
+    };
+  }
+};
+
 export default {
   createProduct,
   updateProduct,
@@ -328,5 +582,8 @@ export default {
   getProduct,
   createCategory,
   getAllCategories,
-  uploadProductImage
+  uploadProductImage,
+  getProductImportTemplate,
+  importProductsMiddleware,
+  importProducts
 }; 

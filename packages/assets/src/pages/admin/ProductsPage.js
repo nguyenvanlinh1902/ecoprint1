@@ -7,7 +7,7 @@ import {
   Select, MenuItem, Chip, Dialog, DialogActions, DialogContent,
   DialogContentText, DialogTitle, CircularProgress, TablePagination,
   Alert, Divider, Tabs, Tab, FormControlLabel, Switch, List, ListItem,
-  ListItemText
+  ListItemText, Link
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -18,7 +18,9 @@ import {
   ArrowBack as ArrowBackIcon,
   CloudUpload as UploadIcon,
   Filter as FilterIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Download as DownloadIcon,
+  FileUpload as FileUploadIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 import StatusBadge from '../../components/StatusBadge';
@@ -55,6 +57,19 @@ const ProductsPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Import Dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState(false);
+  const [importResult, setImportResult] = useState({
+    total: 0,
+    success: 0,
+    failed: 0,
+    errors: []
+  });
 
   // New Product Form state
   const [formData, setFormData] = useState({
@@ -413,7 +428,7 @@ const ProductsPage = () => {
   };
   
   const handleAddNewProduct = () => {
-    navigate('/admin/products/create');
+    navigate('/admin/products/new');
   };
   
   const handleBackToList = () => {
@@ -446,6 +461,100 @@ const ProductsPage = () => {
       setActiveTab(0);
     }
   }, [productId, isViewMode]);
+
+  // Import Products Dialog handling
+  const handleImportDialogOpen = () => {
+    setImportDialogOpen(true);
+    setImportFile(null);
+    setImportError('');
+    setImportSuccess(false);
+    setImportResult({
+      total: 0,
+      success: 0,
+      failed: 0,
+      errors: []
+    });
+  };
+
+  const handleImportDialogClose = () => {
+    setImportDialogOpen(false);
+    if (importSuccess) {
+      // Refresh product list after successful import
+      fetchProducts();
+    }
+  };
+
+  const handleImportFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file type
+      const fileExt = file.name.split('.').pop().toLowerCase();
+      if (fileExt !== 'xlsx' && fileExt !== 'xls' && fileExt !== 'csv') {
+        setImportError('Please upload a valid Excel or CSV file');
+        return;
+      }
+      setImportFile(file);
+      setImportError('');
+    }
+  };
+
+  const downloadTemplateFile = async () => {
+    try {
+      const response = await api.get('/api/admin/products/template', {
+        responseType: 'blob'
+      });
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'product_import_template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error downloading template:', error);
+      setImportError('Failed to download template. Please try again.');
+    }
+  };
+
+  const handleImportProducts = async () => {
+    if (!importFile) {
+      setImportError('Please select a file to import');
+      return;
+    }
+
+    setImporting(true);
+    setImportError('');
+    setImportSuccess(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+
+      const response = await api.post('/api/admin/products/import', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      setImportResult({
+        total: response.data.total || 0,
+        success: response.data.success || 0,
+        failed: response.data.failed || 0,
+        errors: response.data.errors || []
+      });
+
+      if (response.data.success > 0) {
+        setImportSuccess(true);
+      }
+    } catch (error) {
+      console.error('Error importing products:', error);
+      setImportError(error.response?.data?.message || 'Failed to import products. Please try again.');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -537,6 +646,15 @@ const ProductsPage = () => {
           </Paper>
 
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Button 
+              variant="outlined" 
+              color="primary" 
+              startIcon={<FileUploadIcon />}
+              onClick={handleImportDialogOpen}
+              sx={{ mr: 2 }}
+            >
+              Import Products
+            </Button>
             <Button 
               variant="contained" 
               color="primary" 
@@ -1010,6 +1128,117 @@ const ProductsPage = () => {
           </form>
         </Paper>
       )}
+
+      {/* Import Products Dialog */}
+      <Dialog
+        open={importDialogOpen}
+        onClose={handleImportDialogClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Import Products</DialogTitle>
+        <DialogContent>
+          {importError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {importError}
+            </Alert>
+          )}
+          
+          {importSuccess && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              Products imported successfully! {importResult.success} of {importResult.total} products imported.
+            </Alert>
+          )}
+          
+          <DialogContentText sx={{ mb: 2 }}>
+            Please download the template file, fill in your product details, and upload it back to import products in bulk.
+          </DialogContentText>
+          
+          <Box sx={{ mb: 3 }}>
+            <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={downloadTemplateFile}
+            >
+              Download Template
+            </Button>
+          </Box>
+          
+          <Box 
+            sx={{ 
+              border: '1px dashed #ccc',
+              borderRadius: 1,
+              p: 3,
+              mb: 3,
+              textAlign: 'center',
+              cursor: 'pointer'
+            }}
+            onClick={() => document.getElementById('import-file-input').click()}
+          >
+            <input
+              id="import-file-input"
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={handleImportFileChange}
+              style={{ display: 'none' }}
+            />
+            <FileUploadIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
+            <Typography variant="body1" gutterBottom>
+              Click to browse or drag and drop your file
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Supported formats: Excel (.xlsx, .xls) or CSV (.csv)
+            </Typography>
+            {importFile && (
+              <Box sx={{ mt: 2 }}>
+                <Chip 
+                  label={importFile.name} 
+                  color="primary" 
+                  onDelete={() => setImportFile(null)} 
+                />
+              </Box>
+            )}
+          </Box>
+          
+          {importResult.failed > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" color="error" gutterBottom>
+                {importResult.failed} records failed to import:
+              </Typography>
+              <List dense>
+                {importResult.errors.slice(0, 5).map((error, index) => (
+                  <ListItem key={index}>
+                    <ListItemText 
+                      primary={`Row ${error.row}: ${error.message}`} 
+                      secondary={error.details} 
+                    />
+                  </ListItem>
+                ))}
+                {importResult.errors.length > 5 && (
+                  <ListItem>
+                    <ListItemText 
+                      primary={`... and ${importResult.errors.length - 5} more errors`} 
+                    />
+                  </ListItem>
+                )}
+              </List>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleImportDialogClose}>
+            {importSuccess ? 'Close' : 'Cancel'}
+          </Button>
+          <Button 
+            variant="contained" 
+            onClick={handleImportProducts} 
+            disabled={!importFile || importing}
+            startIcon={importing ? <CircularProgress size={20} /> : null}
+          >
+            {importing ? 'Importing...' : 'Import Products'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
