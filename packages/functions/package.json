@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Firebase Functions for EcoPrint",
   "type": "module",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
