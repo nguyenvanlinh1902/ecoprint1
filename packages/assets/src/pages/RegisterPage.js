@@ -8,19 +8,12 @@ import {
   Container, 
   Box, 
   Alert, 
-  Grid,
-  Stepper,
-  Step,
-  StepLabel,
-  FormControlLabel,
-  Switch
+  Grid
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
-
-const steps = ['Account Information', 'Company Information'];
+import { validateInput, stripHTML } from '../helpers/validation';
 
 const RegisterPage = () => {
-  const [activeStep, setActiveStep] = useState(0);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -32,9 +25,8 @@ const RegisterPage = () => {
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [useApi, setUseApi] = useState(true); // Default to API registration
   const navigate = useNavigate();
-  const { register, registerViaApi } = useAuth();
+  const { registerViaApi } = useAuth();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -44,120 +36,60 @@ const RegisterPage = () => {
     });
   };
 
-  const handleSwitchChange = (e) => {
-    setUseApi(e.target.checked);
+  const validate = () => {
+    const validationErrors = validateInput(formData);
+    
+    // Additional custom validations
+    if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
+      validationErrors.email = 'Email is invalid';
+    }
+    
+    if (formData.password && formData.password.length < 6) {
+      validationErrors.password = 'Password must be at least 6 characters';
+    }
+    
+    if (formData.confirmPassword && formData.password !== formData.confirmPassword) {
+      validationErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setErrors(validationErrors);
+    return Object.keys(validationErrors).length === 0;
   };
 
-  const validateStep1 = () => {
-    const newErrors = {};
-    
-    if (!formData.email) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Email is invalid';
-    }
-    
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-    }
-    
-    if (!formData.confirmPassword) {
-      newErrors.confirmPassword = 'Please confirm your password';
-    } else if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-    
-    if (!formData.displayName) {
-      newErrors.displayName = 'Full name is required';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
 
-  const validateStep2 = () => {
-    const newErrors = {};
-    
-    if (!formData.companyName) {
-      newErrors.companyName = 'Company name is required';
-    }
-    
-    if (!formData.phone) {
-      newErrors.phone = 'Phone number is required';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (activeStep === 0 && validateStep1()) {
-      setActiveStep(1);
-    } else if (activeStep === 1 && validateStep2()) {
-      handleSubmit();
-    }
-  };
-
-  const handleBack = () => {
-    setActiveStep((prevStep) => prevStep - 1);
-  };
-
-  const handleSubmit = async () => {
     setServerError('');
     setLoading(true);
 
     try {
-      // Use either API registration or Firebase registration based on the switch
-      if (useApi) {
-        /* log removed */
-        try {
-          const result = await registerViaApi(
-            formData.email, 
-            formData.password, 
-            formData.displayName, 
-            formData.companyName, 
-            formData.phone
-          );
-          
-          // If successful, navigate to success page with message
-          navigate('/registration-success', { 
-            state: { 
-              message: result.message || 'Registration successful. Please wait for admin approval.',
-              isApi: true 
-            } 
-          });
-        } catch (apiError) {
-          /* error removed */
-          setServerError(apiError.message || 'API registration failed. Please try again later.');
+      // Sanitize input data
+      const sanitizedData = {
+        email: stripHTML(formData.email),
+        password: stripHTML(formData.password),
+        displayName: stripHTML(formData.displayName),
+        companyName: stripHTML(formData.companyName),
+        phone: stripHTML(formData.phone)
+      };
+
+      const result = await registerViaApi(
+        sanitizedData.email, 
+        sanitizedData.password, 
+        sanitizedData.displayName, 
+        sanitizedData.companyName, 
+        sanitizedData.phone
+      );
+      
+      // If successful, navigate to success page with message
+      navigate('/registration-success', { 
+        state: { 
+          message: result.message || 'Registration successful. Please wait for admin approval.',
+          isApi: true 
         }
-      } else {
-        /* log removed */
-        try {
-          await register(
-            formData.email, 
-            formData.password, 
-            formData.displayName, 
-            formData.companyName, 
-            formData.phone
-          );
-          
-          // If successful, navigate to success page
-          navigate('/registration-success', { 
-            state: { 
-              message: 'Registration successful.',
-              isApi: false 
-            } 
-          });
-        } catch (firebaseError) {
-          /* error removed */
-          setServerError(firebaseError.message || 'Firebase registration failed. Please try again later.');
-        }
-      }
-    } catch (err) {
-      /* error removed */
-      setServerError(err.message || 'Failed to register. Please try again later.');
+      });
+    } catch (error) {
+      setServerError(error.message || 'Registration failed. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -179,148 +111,114 @@ const RegisterPage = () => {
             Create an Account
           </Typography>
           
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={useApi}
-                  onChange={handleSwitchChange}
-                  name="useApi"
-                  color="primary"
-                />
-              }
-              label={useApi ? "Using API Registration" : "Using Firebase Registration"}
-            />
-          </Box>
-          
-          <Stepper activeStep={activeStep} sx={{ mb: 4, mt: 2 }}>
-            {steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-          
           {serverError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {serverError}
             </Alert>
           )}
           
-          {activeStep === 0 ? (
-            <Box component="form" noValidate>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                id="email"
-                label="Email Address"
-                name="email"
-                autoComplete="email"
-                value={formData.email}
-                onChange={handleChange}
-                error={!!errors.email}
-                helperText={errors.email}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
-                id="password"
-                autoComplete="new-password"
-                value={formData.password}
-                onChange={handleChange}
-                error={!!errors.password}
-                helperText={errors.password}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="confirmPassword"
-                label="Confirm Password"
-                type="password"
-                id="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                error={!!errors.confirmPassword}
-                helperText={errors.confirmPassword}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="displayName"
-                label="Full Name"
-                id="displayName"
-                autoComplete="name"
-                value={formData.displayName}
-                onChange={handleChange}
-                error={!!errors.displayName}
-                helperText={errors.displayName}
-              />
-            </Box>
-          ) : (
-            <Box component="form" noValidate>
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="companyName"
-                label="Company Name"
-                id="companyName"
-                autoComplete="organization"
-                value={formData.companyName}
-                onChange={handleChange}
-                error={!!errors.companyName}
-                helperText={errors.companyName}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="phone"
-                label="Phone Number"
-                id="phone"
-                autoComplete="tel"
-                value={formData.phone}
-                onChange={handleChange}
-                error={!!errors.phone}
-                helperText={errors.phone}
-              />
-            </Box>
-          )}
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+          <Box component="form" noValidate onSubmit={handleSubmit}>
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              id="email"
+              label="Email Address"
+              name="email"
+              autoComplete="email"
+              value={formData.email}
+              onChange={handleChange}
+              error={!!errors.email}
+              helperText={errors.email}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="password"
+              label="Password"
+              type="password"
+              id="password"
+              autoComplete="new-password"
+              value={formData.password}
+              onChange={handleChange}
+              error={!!errors.password}
+              helperText={errors.password}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="confirmPassword"
+              label="Confirm Password"
+              type="password"
+              id="confirmPassword"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              error={!!errors.confirmPassword}
+              helperText={errors.confirmPassword}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="displayName"
+              label="Full Name"
+              id="displayName"
+              autoComplete="name"
+              value={formData.displayName}
+              onChange={handleChange}
+              error={!!errors.displayName}
+              helperText={errors.displayName}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="companyName"
+              label="Company Name"
+              id="companyName"
+              autoComplete="organization"
+              value={formData.companyName}
+              onChange={handleChange}
+              error={!!errors.companyName}
+              helperText={errors.companyName}
+            />
+            <TextField
+              margin="normal"
+              required
+              fullWidth
+              name="phone"
+              label="Phone Number"
+              id="phone"
+              autoComplete="tel"
+              value={formData.phone}
+              onChange={handleChange}
+              error={!!errors.phone}
+              helperText={errors.phone}
+            />
+            
             <Button
-              disabled={activeStep === 0}
-              onClick={handleBack}
-              variant="outlined"
-            >
-              Back
-            </Button>
-            <Button
+              type="submit"
+              fullWidth
               variant="contained"
-              onClick={handleNext}
+              sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {activeStep === steps.length - 1 ? (loading ? 'Registering...' : 'Register') : 'Next'}
+              {loading ? 'Registering...' : 'Register'}
             </Button>
-          </Box>
-          
-          <Grid container justifyContent="center" sx={{ mt: 3 }}>
-            <Grid item>
-              <Typography variant="body2">
-                Already have an account?{' '}
-                <Link to="/login" style={{ textDecoration: 'none' }}>
-                  Sign in
-                </Link>
-              </Typography>
+            
+            <Grid container justifyContent="center">
+              <Grid item>
+                <Typography variant="body2">
+                  Already have an account?{' '}
+                  <Link to="/login" style={{ textDecoration: 'none' }}>
+                    Sign in
+                  </Link>
+                </Typography>
+              </Grid>
             </Grid>
-          </Grid>
+          </Box>
         </Paper>
       </Box>
     </Container>

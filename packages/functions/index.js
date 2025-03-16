@@ -7,20 +7,16 @@ import apiRoutes from './src/routes/apiRoutes.js';
 import authRoutes from './src/routes/authRoutes.js';
 import assetsMiddleware from './src/middleware/assetsMiddleware.js';
 
-// Initialize Firebase Admin only if no apps exist
 if (getApps().length === 0) {
   initializeApp();
 }
 
-// Create Koa app
 const app = new Koa();
 
-// Add error handling middleware first
 app.use(async (ctx, next) => {
   try {
     await next();
   } catch (err) {
-    // Silent error handling
     ctx.status = err.status || 500;
     ctx.body = {
       error: 'Internal Server Error',

@@ -325,40 +325,126 @@ const getUserProfile = async (ctx) => {
   }
 };
 
-const updateProfile = async (ctx) => {
+/**
+ * Update user profile
+ */
+export const updateProfile = async (ctx) => {
   try {
-    const { uid } = ctx.state.user;
-    const { displayName, phone, companyName } = ctx.request.body;
+    const { user } = ctx.state;
     
-    // Update auth display name if provided
-    if (displayName) {
-      await admin.auth().updateUser(uid, { displayName });
+    if (!user || !user.uid) {
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'User not authenticated'
+      };
+      return;
     }
     
-    // Update profile in Firestore
-    const updateData = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    const updateData = ctx.request.body;
+    
+    // Validate update data
+    if (!updateData || Object.keys(updateData).length === 0) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'No update data provided'
+      };
+      return;
+    }
+    
+    // Update user profile in Firestore
+    await userService.updateUser(user.uid, updateData);
+    
+    ctx.body = {
+      success: true,
+      message: 'Profile updated successfully'
     };
-    
-    if (displayName) updateData.displayName = displayName;
-    if (phone) updateData.phone = phone;
-    if (companyName) updateData.companyName = companyName;
-    
-    await db.collection('users').doc(uid).update(updateData);
-    
-    ctx.status = 200;
-    ctx.body = { message: 'Profile updated successfully' };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to update profile'
+    };
   }
 };
 
-export default {
-  register,
-  approveUser,
-  rejectUser,
-  getAllUsers,
-  getUserProfile,
-  updateProfile
+/**
+ * Handles forgot password requests
+ * Sends password reset instructions to the user's email
+ */
+export const forgotPassword = async (ctx) => {
+  try {
+    const { email } = ctx.request.body;
+
+    if (!email) {
+      throw new CustomError('Email is required', 400);
+    }
+
+    // Check if user exists
+    const user = await userService.getUserByEmail(email);
+    if (!user) {
+      // For security reasons, don't reveal that the email doesn't exist
+      // Just return success even if we didn't send an email
+      ctx.body = {
+        success: true,
+        message: 'If your email exists in our system, you will receive reset instructions'
+      };
+      return;
+    }
+
+    // In a real implementation, you would:
+    // 1. Generate a reset token
+    // 2. Store it in the database with an expiration
+    // 3. Send an email with a link containing the token
+
+    // For now, we'll just simulate success
+    console.log(`Password reset requested for: ${email}`);
+
+    ctx.body = {
+      success: true,
+      message: 'If your email exists in our system, you will receive reset instructions'
+    };
+  } catch (error) {
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to process forgot password request'
+    };
+  }
+};
+
+/**
+ * Get current user profile
+ */
+export const getCurrentUser = async (ctx) => {
+  try {
+    // User will be set by the verifyToken middleware
+    const { user } = ctx.state;
+    
+    if (!user || !user.uid) {
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'User not authenticated'
+      };
+      return;
+    }
+    
+    // Get user profile from Firestore
+    const userProfile = await userService.getUserById(user.uid);
+    
+    ctx.body = {
+      success: true,
+      data: {
+        user: userProfile
+      }
+    };
+  } catch (error) {
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to get current user'
+    };
+  }
 }; 

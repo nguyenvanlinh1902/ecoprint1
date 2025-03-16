@@ -110,7 +110,7 @@ export const authorize = (roles = []) => {
 };
 
 // Verify Firebase token
-const verifyToken = async (ctx, next) => {
+export const verifyToken = async (ctx, next) => {
   try {
     const authHeader = ctx.request.headers.authorization;
     
@@ -159,7 +159,7 @@ const verifyToken = async (ctx, next) => {
 };
 
 // Check if user is admin
-const isAdmin = async (ctx, next) => {
+export const isAdmin = async (ctx, next) => {
   try {
     if (!ctx.state.user) {
       ctx.status = 401;
@@ -178,9 +178,4 @@ const isAdmin = async (ctx, next) => {
     ctx.status = 500;
     ctx.body = { error: error.message };
   }
-};
-
-export default {
-  verifyToken,
-  isAdmin
 }; 

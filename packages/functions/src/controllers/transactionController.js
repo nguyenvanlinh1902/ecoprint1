@@ -24,7 +24,7 @@ export const updateTransactionStatus = async (ctx) => {
 };
 
 // Transaction controller for managing payment and transactions
-const requestDeposit = async (ctx) => {
+export const requestDeposit = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { amount, bankName, transferDate, reference } = ctx.request.body;
@@ -69,8 +69,10 @@ const requestDeposit = async (ctx) => {
   }
 };
 
-// Upload receipt for deposit
-const uploadReceipt = async (ctx) => {
+/**
+ * Upload receipt for a deposit transaction
+ */
+export const uploadReceipt = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { transactionId } = ctx.params;
@@ -133,8 +135,10 @@ const uploadReceipt = async (ctx) => {
   }
 };
 
-// Approve deposit (admin only)
-const approveDeposit = async (ctx) => {
+/**
+ * Approve deposit (admin only)
+ */
+export const approveDeposit = async (ctx) => {
   try {
     const { transactionId } = ctx.params;
     
@@ -188,8 +192,10 @@ const approveDeposit = async (ctx) => {
   }
 };
 
-// Reject deposit (admin only)
-const rejectDeposit = async (ctx) => {
+/**
+ * Reject deposit (admin only)
+ */
+export const rejectDeposit = async (ctx) => {
   try {
     const { transactionId } = ctx.params;
     const { reason } = ctx.request.body;
@@ -226,8 +232,10 @@ const rejectDeposit = async (ctx) => {
   }
 };
 
-// Pay for an order with account balance
-const payOrder = async (ctx) => {
+/**
+ * Pay for an order from user balance
+ */
+export const payOrder = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { orderId } = ctx.params;
@@ -315,8 +323,10 @@ const payOrder = async (ctx) => {
   }
 };
 
-// Get user's transactions
-const getUserTransactions = async (ctx) => {
+/**
+ * Get all transactions for the current user
+ */
+export const getUserTransactions = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { type, status, limit = 20, page = 1 } = ctx.query;
@@ -376,8 +386,10 @@ const getUserTransactions = async (ctx) => {
   }
 };
 
-// Get all transactions (admin only)
-const getAllTransactions = async (ctx) => {
+/**
+ * Get all transactions (admin only)
+ */
+export const getAllTransactions = async (ctx) => {
   try {
     const { userId, type, status, startDate, endDate, limit = 20, page = 1 } = ctx.query;
     
@@ -445,12 +457,13 @@ const getAllTransactions = async (ctx) => {
   }
 };
 
-export default {
-  requestDeposit,
-  uploadReceipt,
-  approveDeposit,
-  rejectDeposit,
-  payOrder,
-  getUserTransactions,
-  getAllTransactions
-}; 
+// Remove default export since we're using named exports
+// export default {
+//   requestDeposit,
+//   uploadReceipt,
+//   approveDeposit,
+//   rejectDeposit,
+//   payOrder,
+//   getUserTransactions,
+//   getAllTransactions
+// }; 

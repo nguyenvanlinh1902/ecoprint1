@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * Tạo đơn hàng mới
  */
-const createOrder = async (ctx) => {
+export const createOrder = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { 
@@ -448,9 +448,9 @@ export const confirmBatchImport = async (ctx) => {
 };
 
 /**
- * Lấy danh sách đơn hàng của người dùng hiện tại hoặc tất cả (admin)
+ * Get all orders for admin
  */
-const getAllOrders = async (ctx) => {
+export const getAllOrders = async (ctx) => {
   try {
     const { status, userId, startDate, endDate, limit = 20, page = 1 } = ctx.query;
     
@@ -513,8 +513,10 @@ const getAllOrders = async (ctx) => {
   }
 };
 
-// Get user's orders
-const getUserOrders = async (ctx) => {
+/**
+ * Get orders for the current authenticated user
+ */
+export const getUserOrders = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
     const { status, limit = 20, page = 1 } = ctx.query;
@@ -575,9 +577,9 @@ export const getOrderDetails = async (ctx) => {
 };
 
 /**
- * Cập nhật trạng thái đơn hàng (Admin only)
+ * Update the status of an order
  */
-const updateOrderStatus = async (ctx) => {
+export const updateOrderStatus = async (ctx) => {
   try {
     const { orderId } = ctx.params;
     const { status } = ctx.request.body;
@@ -619,8 +621,10 @@ const updateOrderStatus = async (ctx) => {
   }
 };
 
-// Cancel order (user can only cancel pending orders)
-const cancelOrder = async (ctx) => {
+/**
+ * Cancel an order
+ */
+export const cancelOrder = async (ctx) => {
   try {
     const { orderId } = ctx.params;
     const { uid } = ctx.state.user;
@@ -672,15 +676,19 @@ const cancelOrder = async (ctx) => {
   }
 };
 
-export default {
-  createOrder,
-  getAllOrders,
-  getUserOrders,
-  getOrderDetails,
-  updateOrderStatus,
-  cancelOrder,
-  importOrders,
-  uploadCsvMiddleware,
-  getBatchImportOrders,
-  confirmBatchImport
+/**
+ * Get order details by ID
+ * Route: GET /orders/:orderId
+ */
+export const getOrderById = async (ctx) => {
+  try {
+    // This function maps to getOrderDetails which is what we have implementation for
+    return await getOrderDetails(ctx);
+  } catch (error) {
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to fetch order details'
+    };
+  }
 }; 

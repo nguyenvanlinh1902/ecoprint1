@@ -238,8 +238,10 @@ export const deleteProduct = async (ctx) => {
   }
 };
 
-// Create or update product categories
-const createCategory = async (ctx) => {
+/**
+ * Create or update product categories
+ */
+export const createCategory = async (ctx) => {
   try {
     const { name, parentId } = ctx.request.body;
     
@@ -268,8 +270,10 @@ const createCategory = async (ctx) => {
   }
 };
 
-// Get all categories
-const getAllCategories = async (ctx) => {
+/**
+ * Get all categories
+ */
+export const getAllCategories = async (ctx) => {
   try {
     const categoriesSnapshot = await db.collection('categories').get();
     const categories = [];
@@ -289,8 +293,10 @@ const getAllCategories = async (ctx) => {
   }
 };
 
-// Handle product image upload
-const uploadProductImage = async (ctx) => {
+/**
+ * Handle product image upload
+ */
+export const uploadProductImage = async (ctx) => {
   try {
     if (!ctx.request.files || !ctx.request.files.image) {
       ctx.status = 400;
@@ -574,16 +580,36 @@ export const importProducts = async (ctx) => {
   }
 };
 
-export default {
-  createProduct,
-  updateProduct,
-  deleteProduct,
-  getAllProducts,
-  getProduct,
-  createCategory,
-  getAllCategories,
-  uploadProductImage,
-  getProductImportTemplate,
-  importProductsMiddleware,
-  importProducts
+/**
+ * Get all products (public)
+ * Route: GET /products
+ */
+export const getProducts = async (ctx) => {
+  try {
+    // Reuse the getAllProducts functionality with proper naming for route
+    return await getAllProducts(ctx);
+  } catch (error) {
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to fetch products'
+    };
+  }
+};
+
+/**
+ * Get product by ID (public)
+ * Route: GET /products/:productId
+ */
+export const getProductById = async (ctx) => {
+  try {
+    // Reuse the getProduct functionality with proper naming for route
+    return await getProduct(ctx);
+  } catch (error) {
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to fetch product'
+    };
+  }
 }; 
