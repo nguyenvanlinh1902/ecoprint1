@@ -85,11 +85,24 @@ const TransactionsPage = () => {
   const fetchTransactionDetails = async (id) => {
     try {
       setLoadingDetails(true);
-      const response = await api.get(`/api/admin/transactions/${id}`);
-      setSelectedTransaction(response.data.data);
+      
+      // Sử dụng endpoint admin đã được cấu hình
+      const response = await api.admin.getTransactionById(id);
+      
+      // Kiểm tra cấu trúc dữ liệu trả về
+      if (response.data && response.data.data) {
+        setSelectedTransaction(response.data.data);
+      } else if (response.data) {
+        // Cấu trúc dữ liệu đơn giản hơn
+        setSelectedTransaction(response.data);
+      } else {
+        // Fallback
+        console.error('Unexpected API response structure:', response);
+        setError('Định dạng dữ liệu không đúng. Vui lòng liên hệ quản trị viên.');
+      }
     } catch (error) {
-      /* error removed */
-      setError('Failed to load transaction details. Please try again later.');
+      console.error('Error fetching transaction details:', error);
+      setError('Không thể tải chi tiết giao dịch. Vui lòng thử lại sau.');
     } finally {
       setLoadingDetails(false);
     }
@@ -98,44 +111,59 @@ const TransactionsPage = () => {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
+      setError('');
       
-      // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', page);
-      params.append('limit', 10); // Transactions per page
+      // Xây dựng tham số truy vấn
+      const params = {
+        page,
+        limit: 10
+      };
       
       if (type) {
-        params.append('type', type);
+        params.type = type;
       }
       
       if (status) {
-        params.append('status', status);
+        params.status = status;
       }
       
       if (search) {
-        params.append('search', search);
+        params.search = search;
       }
       
       if (userId) {
-        params.append('userId', userId);
+        params.userId = userId;
       }
       
       if (dateRange.startDate) {
-        params.append('startDate', dateRange.startDate);
+        params.startDate = dateRange.startDate;
       }
       
       if (dateRange.endDate) {
-        params.append('endDate', dateRange.endDate);
+        params.endDate = dateRange.endDate;
       }
       
-      const response = await api.get(`/api/admin/transactions?${params.toString()}`);
+      // Sử dụng endpoint admin đã được cấu hình
+      const response = await api.admin.getAllTransactions(params);
       
-      setTransactions(response.data.data.transactions || []);
-      setTotalPages(response.data.data.totalPages || 1);
-      
+      // Kiểm tra cấu trúc dữ liệu trả về
+      if (response.data && response.data.data) {
+        setTransactions(response.data.data.transactions || []);
+        setTotalPages(response.data.data.totalPages || 1);
+      } else if (response.data) {
+        // Cấu trúc dữ liệu đơn giản hơn
+        setTransactions(response.data.transactions || []);
+        setTotalPages(response.data.totalPages || 1);
+      } else {
+        // Fallback
+        setTransactions([]);
+        setTotalPages(1);
+        console.error('Unexpected API response structure:', response);
+        setError('Định dạng dữ liệu không đúng. Vui lòng liên hệ quản trị viên.');
+      }
     } catch (error) {
-      /* error removed */
-      setError('Failed to load transactions. Please try again later.');
+      console.error('Error fetching transactions:', error);
+      setError('Không thể tải danh sách giao dịch. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }

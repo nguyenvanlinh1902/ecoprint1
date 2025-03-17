@@ -1,413 +1,188 @@
-import React, { useEffect } from "react";
-import { Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
+import React, { lazy, useEffect } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import Loadable from '../components/Loadable';
+import { useAuth } from "../hooks/useAuth";
 import useHistory from "../hooks/useHistory";
-import AdminRouter from "./adminRoutes";
-import AuthLayout from "../layouts/AuthLayout";
-import MainLayout from "../layouts/MainLayout";
-import { useAuth, useRouteProtection } from "../hooks";
 import { Box, CircularProgress } from "@mui/material";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
+import { CONFIG } from "../config/env";
 
-// Auth Pages
-import LoginPage from "../pages/LoginPage";
-import RegisterPage from "../pages/RegisterPage";
-import ForgotPasswordPage from "../pages/ForgotPasswordPage";
-import ResetPasswordPage from "../pages/ResetPasswordPage";
+// Lazy load router components
+const UserRouter = Loadable(lazy(() => import('./userRouter')));
+const AdminRouter = Loadable(lazy(() => import('./adminRouter')));
 
-// User Pages
-import DashboardPage from "../pages/DashboardPage";
-import ProductsPage from "../pages/ProductsPage";
-import ProductDetailPage from "../pages/ProductDetailPage";
-import OrdersPage from "../pages/OrdersPage";
-import OrderDetailPage from "../pages/OrderDetailPage";
-import CreateOrderPage from "../pages/CreateOrderPage";
-import ProfilePage from "../pages/ProfilePage";
-import TransactionsPage from "../pages/TransactionsPage";
-import DepositPage from "../pages/DepositPage";
-import NotFoundPage from "../pages/NotFoundPage";
-import ImportDetailPage from "../pages/ImportDetailPage";
-import ImportOrdersPage from "../pages/ImportOrdersPage";
+// Lazy load auth-related pages
+const AuthLayout = Loadable(lazy(() => import('../layouts/AuthLayout')));
+const LoginPage = Loadable(lazy(() => import('../pages/LoginPage')));
+const RegisterPage = Loadable(lazy(() => import('../pages/RegisterPage')));
+const ForgotPasswordPage = Loadable(lazy(() => import('../pages/ForgotPasswordPage')));
+const ResetPasswordPage = Loadable(lazy(() => import('../pages/ResetPasswordPage')));
+const VerifyEmailPage = Loadable(lazy(() => import('../pages/VerifyEmailPage')));
+const NotFoundPage = Loadable(lazy(() => import('../pages/NotFoundPage')));
+const MaintenancePage = Loadable(lazy(() => import('../pages/MaintenancePage')));
 
 // Auth Guards
-const AuthGuard = ({ children }) => {
-  // Silent auth checking - no logs
+export const AuthGuard = ({ children }) => {
   const { currentUser, userProfile, loading } = useAuth();
   const location = useLocation();
   const history = useHistory();
-
-  // Tracking state for debugging (commented out)
-  // useEffect(() => {
-  //   //   console.log('AuthGuard state:', {
-  //     loading,
-  //     currentUser: currentUser ? true : false,
-  //     userProfile: userProfile ? true : false,
-  //     path: location.pathname
-  //   });
-  // }, [loading, currentUser, userProfile, location]);
 
   useEffect(() => {
     // Store the current path for redirection after login
-    if (!loading && !currentUser && location.pathname !== "/login") {
-      /* log removed */
-      sessionStorage.setItem(
-        "intendedPath",
-        location.pathname + location.search,
-      );
+    if (!loading && !currentUser) {
+      localStorage.setItem('returnUrl', location.pathname);
     }
   }, [loading, currentUser, location]);
 
-  // Debug current auth state
-  /* log removed */
-
+  // Show loading indicator while auth state is being determined
   if (loading) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <CircularProgress />
       </Box>
     );
   }
 
+  // Redirect to login if not authenticated
   if (!currentUser) {
-    /* log removed */
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/auth/login" state={{ from: location }} replace />;
   }
 
-  // Kiểm tra nếu userProfile không tồn tại nhưng currentUser có
-  if (currentUser && !userProfile) {
-    /* log removed */
-    // Attempt to sign out the user before redirecting
-    try {
-      signOut(auth).catch((err) => {
-        /* error removed */
-      });
-    } catch (error) {
-      /* error removed */
-    }
-
-    // Xóa token khỏi localStorage để đảm bảo user sẽ đăng nhập lại
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("mockAuthUser");
-    localStorage.removeItem("mockAuthProfile");
-
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  // Redirect to email verification page if email not verified (when required)
+  if (currentUser && !currentUser.emailVerified && CONFIG.REQUIRE_EMAIL_VERIFICATION) {
+    return <Navigate to="/auth/verify-email" replace />;
   }
 
-  const isAdmin = userProfile?.role === "admin";
-
-  if (isAdmin && !location.pathname.startsWith("/admin")) {
-    /* log removed */
-    return <Navigate to="/admin/dashboard" replace />;
+  // Handle the case where we have a user but no profile data
+  if (currentUser && !userProfile && !loading) {
+    // If the user has no profile, sign them out and redirect to login
+    signOut(auth).then(() => {
+      console.error("User has no profile data. Signing out.");
+    }).catch((error) => {
+      console.error("Error signing out:", error);
+    });
+    
+    return <Navigate to="/auth/login" replace />;
   }
 
-  /* log removed */
-  return children;
+  // If all checks pass, render the children components
+  return <>{children}</>;
 };
 
-const AdminGuard = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
-  const location = useLocation();
-
+// Admin Role Guard
+export const AdminGuard = ({ children }) => {
+  const { userProfile, loading } = useAuth();
+  
+  // Show loading indicator while checking role
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
-
-  if (!currentUser) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  const isAdmin = userProfile?.role === "admin";
-
-  if (!isAdmin) {
+  
+  // Check if user has admin role
+  if (userProfile?.role !== 'admin') {
     return <Navigate to="/dashboard" replace />;
   }
-
-  return children;
+  
+  return <>{children}</>;
 };
 
-const GuestGuard = ({ children }) => {
-  // Silent guest access checking - no logs
-  const { currentUser, userProfile, loading } = useAuth();
+// Guest Guard (prevents authenticated users from accessing login/register pages)
+export const GuestGuard = ({ children }) => {
+  const { currentUser, loading } = useAuth();
   const location = useLocation();
-  const history = useHistory();
-
-  // Tracking state for debugging (commented out)
-  // useEffect(() => {
-  //   //   console.log('GuestGuard state:', {
-  //     loading,
-  //     currentUser: currentUser ? true : false,
-  //     userProfile: userProfile ? true : false
-  //   });
-  // }, [loading, currentUser, userProfile]);
-
+  const from = location.state?.from?.pathname || '/dashboard';
+  
+  // Show loading indicator while auth state is being determined
   if (loading) {
     return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <CircularProgress />
       </Box>
     );
   }
-
+  
+  // Redirect to dashboard if already authenticated
   if (currentUser) {
-    // Kiểm tra nếu userProfile không tồn tại nhưng currentUser có
-    if (!userProfile) {
-      /* log removed */
-      try {
-        // Attempt to sign out silently since profile is missing
-        signOut(auth).catch((err) => {
-          /* error removed */
-        });
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("mockAuthUser");
-        localStorage.removeItem("mockAuthProfile");
-      } catch (error) {
-        /* error removed */
-      }
-      return children;
-    }
-
-    const isAdmin = userProfile?.role === "admin";
-    /* log removed */
-    return (
-      <Navigate to={isAdmin ? "/admin/dashboard" : "/dashboard"} replace />
-    );
+    return <Navigate to={from} replace />;
   }
-
-  /* log removed */
-  return children;
+  
+  return <>{children}</>;
 };
 
+// Root redirect handler
 const RootRedirect = () => {
   const { currentUser, userProfile, loading } = useAuth();
-
+  
+  // Show loading indicator while auth state is being determined
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
-
+  
+  // Redirect based on auth status and role
   if (!currentUser) {
-    /* log removed */
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/auth/login" replace />;
   }
-
-  // Kiểm tra nếu userProfile không tồn tại nhưng currentUser có
-  if (currentUser && !userProfile) {
-    /* log removed */
-    return <Navigate to="/login" replace />;
+  
+  if (userProfile?.role === 'admin') {
+    return <Navigate to="/admin/dashboard" replace />;
   }
-
-  const isAdmin = userProfile?.role === "admin";
-  /* log removed */
-  return <Navigate to={isAdmin ? "/admin/dashboard" : "/dashboard"} replace />;
+  
+  return <Navigate to="/dashboard" replace />;
 };
 
+// Main router component
 const AppRouter = () => {
-  return <AppRoutes />;
-};
-
-// Separate component to use hooks inside Router
-const AppRoutes = () => {
-  // Enable global route protection
-  useRouteProtection();
-
   return (
     <Routes>
-      {/* Root Route */}
+      {/* Root path redirect */}
       <Route path="/" element={<RootRedirect />} />
-
-      {/* Guest Routes */}
-      <Route
-        path="/login"
-        element={
+      
+      {/* Auth routes */}
+      <Route path="/auth/*" element={
+        <GuestGuard>
           <AuthLayout>
-            <GuestGuard>
-              <LoginPage />
-            </GuestGuard>
+            <Routes>
+              <Route path="login" element={<LoginPage />} />
+              <Route path="register" element={<RegisterPage />} />
+              <Route path="forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="reset-password" element={<ResetPasswordPage />} />
+              <Route path="verify-email" element={<VerifyEmailPage />} />
+              <Route path="*" element={<Navigate to="/auth/login" replace />} />
+            </Routes>
           </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/register"
-        element={
-          <AuthLayout>
-            <GuestGuard>
-              <RegisterPage />
-            </GuestGuard>
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/forgot-password"
-        element={
-          <AuthLayout>
-            <GuestGuard>
-              <ForgotPasswordPage />
-            </GuestGuard>
-          </AuthLayout>
-        }
-      />
-
-      <Route
-        path="/reset-password"
-        element={
-          <AuthLayout>
-            <GuestGuard>
-              <ResetPasswordPage />
-            </GuestGuard>
-          </AuthLayout>
-        }
-      />
-
-      {/* Admin Routes */}
-      <Route
-        path="/admin/*"
-        element={
+        </GuestGuard>
+      } />
+      
+      {/* Admin routes */}
+      <Route path="/admin/*" element={
+        <AuthGuard>
           <AdminGuard>
             <AdminRouter />
           </AdminGuard>
-        }
-      />
-
-      {/* User Routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <DashboardPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      {/* Other protected routes */}
-      <Route
-        path="/profile"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <ProfilePage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/products/:productId"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <ProductDetailPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/products"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <ProductsPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/orders"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <OrdersPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/orders/create"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <CreateOrderPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/orders/:orderId"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <OrderDetailPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/transactions"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <TransactionsPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/import-orders/:importId"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <ImportDetailPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/import-orders"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <ImportOrdersPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      <Route
-        path="/deposit"
-        element={
-          <AuthGuard>
-            <MainLayout>
-              <DepositPage />
-            </MainLayout>
-          </AuthGuard>
-        }
-      />
-
-      {/* 404 Page */}
-      <Route path="*" element={<NotFoundPage />} />
+        </AuthGuard>
+      } />
+      
+      {/* All user routes */}
+      <Route path="/*" element={
+        <AuthGuard>
+          <UserRouter />
+        </AuthGuard>
+      } />
+      
+      {/* Maintenance page */}
+      <Route path="/maintenance" element={<MaintenancePage />} />
+      
+      {/* Not found page */}
+      <Route path="/404" element={<NotFoundPage />} />
     </Routes>
   );
 };

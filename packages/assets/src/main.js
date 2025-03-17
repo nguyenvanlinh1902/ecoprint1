@@ -7,7 +7,7 @@ import App from './App';
 import { AuthProvider } from './hooks/useAuth';
 import './styles/index.css';
 
-// Tạo theme mặc định
+// Create default theme
 const theme = createTheme({
   palette: {
     primary: {
@@ -19,7 +19,7 @@ const theme = createTheme({
   },
 });
 
-// Sử dụng createRoot thay vì ReactDOM.render
+// Use createRoot instead of ReactDOM.render
 const container = document.getElementById('root');
 const root = createRoot(container);
 

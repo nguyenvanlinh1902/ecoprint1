@@ -1,7 +1,6 @@
 import axios from 'axios';
 
-// For development environment, use the Vite proxy configured in vite.config.js
-// For production, it will use the environment variable or fall back to /api
+// Đảm bảo rằng đường dẫn API gốc được thiết lập đúng
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 /* log removed */
@@ -132,7 +131,7 @@ const orders = {
   getAll: (params) => api.get('/orders', { params }),
   getById: (id) => api.get(`/orders/${id}`),
   cancel: (id) => api.put(`/orders/${id}/cancel`),
-  updateStatus: (id, status) => api.put(`/admin/orders/${id}/status`, { status })
+  updateStatus: (id, status) => api.put(`/orders/${id}/status`, { status })
 };
 
 // Transactions API
@@ -151,11 +150,32 @@ const transactions = {
 
 // Admin API
 const admin = {
+  // Users management
   getUsers: (params) => api.get('/admin/users', { params }),
+  getUserById: (uid) => api.get(`/admin/users/${uid}`),
   approveUser: (uid) => api.put(`/admin/users/${uid}/approve`),
   rejectUser: (uid) => api.put(`/admin/users/${uid}/reject`),
+  updateUserStatus: (uid, status) => api.put(`/admin/users/${uid}/status`, { status }),
+  
+  // Orders management
   getAllOrders: (params) => api.get('/admin/orders', { params }),
-  getAllTransactions: (params) => api.get('/admin/transactions', { params })
+  getOrderById: (id) => api.get(`/admin/orders/${id}`),
+  updateOrderStatus: (id, status) => api.put(`/admin/orders/${id}/status`, { status }),
+  
+  // Transactions management
+  getAllTransactions: (params) => api.get('/admin/transactions', { params }),
+  getTransactionById: (id) => api.get(`/admin/transactions/${id}`),
+  approveTransaction: (id) => api.put(`/admin/transactions/${id}/approve`),
+  rejectTransaction: (id, reason) => api.put(`/admin/transactions/${id}/reject`, { reason }),
+  
+  // Products management
+  getAllProducts: (params) => api.get('/admin/products', { params }),
+  createProduct: (data) => api.post('/admin/products', data),
+  updateProduct: (id, data) => api.put(`/admin/products/${id}`, data),
+  deleteProduct: (id) => api.delete(`/admin/products/${id}`),
+  
+  // Dashboard
+  getDashboardStats: () => api.get('/admin/dashboard')
 };
 
 // Helper to set auth token (used by auth hooks)

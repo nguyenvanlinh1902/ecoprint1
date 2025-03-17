@@ -180,6 +180,7 @@ const MainLayout = ({ children }) => {
     );
   }
 
+  // Menu dành cho người dùng thường
   const userMenuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Products', icon: <CategoryIcon />, path: '/products' },
@@ -188,14 +189,38 @@ const MainLayout = ({ children }) => {
     { text: 'Transactions', icon: <AccountBalanceIcon />, path: '/transactions' },
   ];
 
-  const adminMenuItems = [
-    { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
-    { text: 'Products', icon: <CategoryIcon />, path: '/admin/products' },
-    { text: 'Orders', icon: <ShoppingCartIcon />, path: '/admin/orders' },
-    { text: 'Transactions', icon: <AccountBalanceIcon />, path: '/admin/transactions' },
+  // Menu dành cho admin khi vào trang admin
+  const adminNavItems = [
+    { text: 'Admin Dashboard', icon: <DashboardIcon />, path: '/admin/dashboard' },
+    { text: 'Manage Users', icon: <PeopleIcon />, path: '/admin/users' },
+    { text: 'Manage Products', icon: <CategoryIcon />, path: '/admin/products' },
+    { text: 'Manage Orders', icon: <ShoppingCartIcon />, path: '/admin/orders' },
+    { text: 'Manage Transactions', icon: <AccountBalanceIcon />, path: '/admin/transactions' },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/admin/settings' },
   ];
 
-  const menuItems = isAdmin ? [...userMenuItems, { divider: true }, ...adminMenuItems] : userMenuItems;
+  // Nếu đường dẫn hiện tại bắt đầu bằng /admin, hiển thị menu admin
+  const isAdminPage = location.pathname.startsWith('/admin');
+  
+  // Xác định menu hiển thị dựa trên vai trò và trang hiện tại
+  let menuItems;
+  
+  if (isAdmin && isAdminPage) {
+    // Admin đang xem trang admin
+    menuItems = [...adminNavItems];
+  } else {
+    // User thường hoặc admin đang xem trang user
+    menuItems = [...userMenuItems];
+  }
+
+  // Thêm nút chuyển đổi giữa giao diện admin/user nếu người dùng là admin
+  const switchInterface = () => {
+    if (isAdminPage) {
+      navigate('/dashboard');
+    } else {
+      navigate('/admin/dashboard');
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -215,6 +240,9 @@ const MainLayout = ({ children }) => {
               duration: theme.transitions.duration.enteringScreen,
             }),
           }),
+          ...(isAdminPage && {
+            backgroundColor: 'secondary.main', // Đổi màu khi ở trang admin
+          }),
         }}
       >
         <Toolbar>
@@ -229,8 +257,19 @@ const MainLayout = ({ children }) => {
           </IconButton>
           
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            EcoPrint
+            {isAdminPage ? 'EcoPrint Admin' : 'EcoPrint'}
           </Typography>
+
+          {/* Nút chuyển đổi giao diện cho admin */}
+          {isAdmin && (
+            <Button 
+              color="inherit" 
+              onClick={switchInterface}
+              sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}
+            >
+              {isAdminPage ? 'Switch to User View' : 'Switch to Admin View'}
+            </Button>
+          )}
 
           {/* Notifications */}
           <IconButton color="inherit" onClick={handleNotificationsMenuOpen}>
@@ -382,7 +421,7 @@ const MainLayout = ({ children }) => {
               <Typography 
                 sx={{ 
                   fontWeight: 'bold', 
-                  color: 'primary.main',
+                  color: isAdminPage ? 'secondary.main' : 'primary.main',
                   fontSize: '24px'
                 }}
               >
@@ -420,7 +459,7 @@ const MainLayout = ({ children }) => {
                     minWidth: 0,
                     mr: open ? 3 : 'auto',
                     justifyContent: 'center',
-                    color: location.pathname === item.path ? 'primary.main' : 'inherit',
+                    color: location.pathname === item.path ? (isAdminPage ? 'secondary.main' : 'primary.main') : 'inherit',
                   }}
                 >
                   {item.icon}
@@ -429,7 +468,7 @@ const MainLayout = ({ children }) => {
                   <ListItemText 
                     primary={item.text} 
                     primaryTypographyProps={{
-                      color: location.pathname === item.path ? 'primary' : 'inherit',
+                      color: location.pathname === item.path ? (isAdminPage ? 'secondary' : 'primary') : 'inherit',
                     }}
                   />
                 )}
@@ -447,6 +486,18 @@ const MainLayout = ({ children }) => {
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
               v1.0.0
             </Typography>
+            {isAdmin && (
+              <Typography variant="caption" sx={{ 
+                display: 'block', 
+                mt: 0.5, 
+                bgcolor: isAdminPage ? 'secondary.light' : 'primary.light',
+                color: isAdminPage ? 'secondary.contrastText' : 'primary.contrastText',
+                borderRadius: 1,
+                p: 0.5
+              }}>
+                {isAdminPage ? 'ADMIN MODE' : 'USER MODE'}
+              </Typography>
+            )}
           </Box>
         )}
       </Drawer>

@@ -42,11 +42,24 @@ const DashboardPage = () => {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/api/admin/dashboard');
-        setDashboardData(response.data.data);
+        
+        // Sử dụng endpoint admin đã được cấu hình
+        const response = await api.admin.getDashboardStats();
+        
+        // Kiểm tra cấu trúc dữ liệu trả về
+        if (response.data && response.data.data) {
+          setDashboardData(response.data.data);
+        } else if (response.data) {
+          // Cấu trúc dữ liệu đơn giản hơn
+          setDashboardData(response.data);
+        } else {
+          // Fallback
+          console.error('Unexpected API response structure:', response);
+          setError('Định dạng dữ liệu không đúng. Vui lòng liên hệ quản trị viên.');
+        }
       } catch (error) {
-        /* error removed */
-        setError('Failed to load dashboard data. Please try again later.');
+        console.error('Error fetching dashboard data:', error);
+        setError('Không thể tải dữ liệu dashboard. Vui lòng thử lại sau.');
       } finally {
         setLoading(false);
       }

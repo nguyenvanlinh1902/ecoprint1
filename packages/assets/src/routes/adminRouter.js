@@ -1,19 +1,20 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import AdminLayout from '../layouts/AdminLayout';
+import Loadable from '../components/Loadable';
 
-// Admin Components
-import AdminDashboardPage from '../pages/admin/DashboardPage';
-import AdminUsersPage from '../pages/admin/UsersPage';
-import AdminUserDetailPage from '../pages/admin/UserDetailPage';
-import AdminProductsPage from '../pages/admin/ProductsPage';
-import AdminProductFormPage from '../pages/admin/ProductFormPage';
-import AdminOrdersPage from '../pages/admin/OrdersPage';
-import AdminOrderDetailPage from '../pages/admin/OrderDetailPage';
-import AdminTransactionsPage from '../pages/admin/TransactionsPage';
-import AdminSettingsPage from '../pages/admin/SettingsPage';
-import AdminReportsPage from '../pages/admin/ReportsPage';
-import AdminTransactionDetailPage from '../pages/admin/TransactionDetailPage';
+// Lazy load admin pages for better performance
+const AdminDashboardPage = Loadable(lazy(() => import('../pages/admin/DashboardPage')));
+const AdminUsersPage = Loadable(lazy(() => import('../pages/admin/UsersPage')));
+const AdminUserDetailPage = Loadable(lazy(() => import('../pages/admin/UserDetailPage')));
+const AdminProductsPage = Loadable(lazy(() => import('../pages/admin/ProductsPage')));
+const AdminProductFormPage = Loadable(lazy(() => import('../pages/admin/ProductFormPage')));
+const AdminOrdersPage = Loadable(lazy(() => import('../pages/admin/OrdersPage')));
+const AdminOrderDetailPage = Loadable(lazy(() => import('../pages/admin/OrderDetailPage')));
+const AdminTransactionsPage = Loadable(lazy(() => import('../pages/admin/TransactionsPage')));
+const AdminTransactionDetailPage = Loadable(lazy(() => import('../pages/admin/TransactionDetailPage')));
+const AdminSettingsPage = Loadable(lazy(() => import('../pages/admin/SettingsPage')));
+const AdminReportsPage = Loadable(lazy(() => import('../pages/admin/ReportsPage')));
 
 /**
  * Admin router component

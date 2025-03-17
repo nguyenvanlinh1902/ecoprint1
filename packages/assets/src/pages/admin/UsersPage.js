@@ -43,26 +43,40 @@ const UsersPage = () => {
       setLoading(true);
       
       // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', page);
-      params.append('limit', 10); // Users per page
+      const params = {
+        page, 
+        limit: 10 // Users per page
+      };
       
       if (status) {
-        params.append('status', status);
+        params.status = status;
       }
       
       if (search) {
-        params.append('search', search);
+        params.search = search;
       }
       
-      const response = await api.get(`/api/admin/users?${params.toString()}`);
+      // Sử dụng admin API endpoint từ service đã cấu hình
+      const response = await api.admin.getUsers(params);
       
-      setUsers(response.data.data.users || []);
-      setTotalPages(response.data.data.totalPages || 1);
+      // Kiểm tra cấu trúc dữ liệu trả về
+      if (response.data && response.data.data) {
+        setUsers(response.data.data.users || []);
+        setTotalPages(response.data.data.totalPages || 1);
+      } else if (response.data) {
+        // Cấu trúc dữ liệu đơn giản hơn
+        setUsers(response.data.users || []);
+        setTotalPages(response.data.totalPages || 1);
+      } else {
+        // Fallback
+        setUsers([]);
+        setTotalPages(1);
+        console.error('Unexpected API response structure:', response);
+      }
       
     } catch (error) {
-      /* error removed */
-      setError('Failed to load users. Please try again later.');
+      console.error('Error fetching users:', error);
+      setError('Không thể tải danh sách người dùng. Vui lòng thử lại sau.');
     } finally {
       setLoading(false);
     }
@@ -78,6 +92,7 @@ const UsersPage = () => {
   
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    setPage(1); // Reset về trang 1 khi tìm kiếm
     fetchUsers();
   };
   
