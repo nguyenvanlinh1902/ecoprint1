@@ -1,30 +1,54 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import React, {useEffect, useState} from 'react';
+import {useLocation, useNavigate, useParams} from 'react-router-dom';
 import {
-  Typography, Box, Paper, Grid, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Button, IconButton,
-  TextField, InputAdornment, FormControl, InputLabel, 
-  Select, MenuItem, Chip, Dialog, DialogActions, DialogContent,
-  DialogContentText, DialogTitle, CircularProgress, TablePagination,
-  Alert, Divider, Tabs, Tab, FormControlLabel, Switch, List, ListItem,
-  ListItemText, Link
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  IconButton,
+  InputAdornment,
+  InputLabel,
+  List,
+  ListItem,
+  ListItemText,
+  MenuItem,
+  Paper,
+  Select,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Typography
 } from '@mui/material';
 import {
-  Search as SearchIcon,
-  Visibility as VisibilityIcon,
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   Add as AddIcon,
   ArrowBack as ArrowBackIcon,
-  CloudUpload as UploadIcon,
-  Filter as FilterIcon,
   Clear as ClearIcon,
+  CloudUpload as UploadIcon,
+  Delete as DeleteIcon,
   Download as DownloadIcon,
-  FileUpload as FileUploadIcon
+  Edit as EditIcon,
+  FileUpload as FileUploadIcon,
+  Filter as FilterIcon,
+  Search as SearchIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
-import StatusBadge from '../../components/StatusBadge';
-import { formatCurrency } from '../../helpers/formatters';
 
 const ProductsPage = () => {
   const navigate = useNavigate();
@@ -139,7 +163,8 @@ const ProductsPage = () => {
       setLoading(false);
     }
   };
-  
+  api.products.getAll()
+
   const fetchProducts = async () => {
     try {
       setLoading(true);

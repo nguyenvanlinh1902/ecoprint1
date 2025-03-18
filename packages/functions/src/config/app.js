@@ -14,9 +14,14 @@ const appConfig = {
     allowedOrigins: [
       'http://localhost:3001',
       'http://localhost:9099',
+      'http://localhost:5001',
       // Add production origins here
     ],
     credentials: true,
+    methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
+    maxAge: 86400 // 24 hours
   },
   
   // Authentication settings

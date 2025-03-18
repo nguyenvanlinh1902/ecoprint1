@@ -30,31 +30,25 @@ app.use(createErrorHandler());
 
 // CORS configuration
 app.use(cors({
-  origin: (ctx) => {
-    const allowedOrigins = ['http://localhost:3001', 'http://localhost:9099'];
-    const requestOrigin = ctx.request.header.origin;
-    if (allowedOrigins.includes(requestOrigin)) {
-      return requestOrigin;
-    }
-    return false;
-  },
+  origin: '*',
   allowMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposeHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
-  credentials: appConfig.cors.credentials,
+  credentials: true,
+  maxAge: 86400
 }));
 
 // Custom body parser for Firebase Functions
 app.use(async (ctx, next) => {
   console.log(`Request received: ${ctx.method} ${ctx.url}`);
-  
+
   // Only parse the body for methods that typically have one
   if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
     try {
       // Firebase Functions already parses the body and attaches it to the request
       if (ctx.req.body) {
         ctx.request.body = ctx.req.body;
-      } 
+      }
       // If not available, try to get it from rawBody
       else if (ctx.req.rawBody) {
         try {
@@ -73,7 +67,7 @@ app.use(async (ctx, next) => {
       ctx.request.body = {};
     }
   }
-  
+
   await next();
 });
 

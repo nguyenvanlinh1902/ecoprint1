@@ -7,9 +7,7 @@ import * as transactionController from '../controllers/transactionController.js'
 import * as adminController from '../controllers/adminController.js';
 import * as authMiddleware from '../middleware/authMiddleware.js';
 
-const router = new Router({
-  prefix: '/api'
-});
+const router = new Router();
 
 // Public routes
 router.post('/auth/register', authController.register);

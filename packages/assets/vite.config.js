@@ -13,7 +13,27 @@ const proxyConfig = {
   '/api': {
     target: backendBaseUrl,
     changeOrigin: true,
-    rewrite: (path) => path.replace(/^\/api/, '')
+    secure: true,
+    rewrite: (path) => path.replace(/^\/api/, '/api'), // Giữ nguyên /api prefix
+    configure: (proxy, options) => {
+      proxy.on('error', (err, req, res) => {
+        console.log('proxy error', err);
+      });
+      proxy.on('proxyReq', (proxyReq, req, res) => {
+        // Thêm headers CORS
+        proxyReq.setHeader('Access-Control-Allow-Origin', '*');
+        proxyReq.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,POST,DELETE,PATCH,OPTIONS');
+        proxyReq.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        console.log('Sending Request to the Target:', req.method, req.url);
+      });
+      proxy.on('proxyRes', (proxyRes, req, res) => {
+        // Thêm headers CORS vào response
+        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+        proxyRes.headers['Access-Control-Allow-Methods'] = 'GET,HEAD,PUT,POST,DELETE,PATCH,OPTIONS';
+        proxyRes.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With';
+        console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+      });
+    }
   }
 };
 
