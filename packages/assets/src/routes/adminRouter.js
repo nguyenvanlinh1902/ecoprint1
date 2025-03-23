@@ -1,20 +1,20 @@
 import React, { lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import AdminLayout from '../layouts/AdminLayout';
-import Loadable from '../components/Loadable';
+import AdminLayout from '../layouts/AdminLayout.js';
+import Loadable from '../components/Loadable.js';
 
 // Lazy load admin pages for better performance
-const AdminDashboardPage = Loadable(lazy(() => import('../pages/admin/DashboardPage')));
-const AdminUsersPage = Loadable(lazy(() => import('../pages/admin/UsersPage')));
-const AdminUserDetailPage = Loadable(lazy(() => import('../pages/admin/UserDetailPage')));
-const AdminProductsPage = Loadable(lazy(() => import('../pages/admin/ProductsPage')));
-const AdminProductFormPage = Loadable(lazy(() => import('../pages/admin/ProductFormPage')));
-const AdminOrdersPage = Loadable(lazy(() => import('../pages/admin/OrdersPage')));
-const AdminOrderDetailPage = Loadable(lazy(() => import('../pages/admin/OrderDetailPage')));
-const AdminTransactionsPage = Loadable(lazy(() => import('../pages/admin/TransactionsPage')));
-const AdminTransactionDetailPage = Loadable(lazy(() => import('../pages/admin/TransactionDetailPage')));
-const AdminSettingsPage = Loadable(lazy(() => import('../pages/admin/SettingsPage')));
-const AdminReportsPage = Loadable(lazy(() => import('../pages/admin/ReportsPage')));
+const AdminDashboardPage = Loadable(lazy(() => import('../pages/admin/DashboardPage.js')));
+const AdminUsersPage = Loadable(lazy(() => import('../pages/admin/UsersPage.js')));
+const AdminUserDetailPage = Loadable(lazy(() => import('../pages/admin/UserDetailPage.js')));
+const AdminProductsPage = Loadable(lazy(() => import('../pages/admin/ProductsPage.js')));
+const AdminProductFormPage = Loadable(lazy(() => import('../pages/admin/ProductFormPage.js')));
+const AdminOrdersPage = Loadable(lazy(() => import('../pages/admin/OrdersPage.js')));
+const AdminOrderDetailPage = Loadable(lazy(() => import('../pages/admin/OrderDetailPage.js')));
+const AdminTransactionsPage = Loadable(lazy(() => import('../pages/admin/TransactionsPage.js')));
+const AdminTransactionDetailPage = Loadable(lazy(() => import('../pages/admin/TransactionDetailPage.js')));
+const AdminSettingsPage = Loadable(lazy(() => import('../pages/admin/SettingsPage.js')));
+const AdminReportsPage = Loadable(lazy(() => import('../pages/admin/ReportsPage.js')));
 
 /**
  * Admin router component

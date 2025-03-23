@@ -4,6 +4,7 @@ import * as xlsx from 'xlsx';
 import { Readable } from 'stream';
 import multer from '@koa/multer';
 import { v4 as uuidv4 } from 'uuid';
+import * as categoryService from '../services/categoryService.js';
 
 // Mock services khi chúng ta chưa implement productService
 const productService = {
@@ -20,276 +21,404 @@ const productService = {
  */
 export const createProduct = async (ctx) => {
   try {
-    const { 
-      name, 
-      description, 
-      price, 
-      sku, 
-      categoryId, 
-      stock, 
-      images = []
-    } = ctx.request.body;
+    console.log('[ProductController] Creating new product');
+    console.log('[ProductController] Request body:', ctx.req.body);
     
-    // Validate required fields
-    if (!name || !price || !sku || !categoryId) {
+    if (!ctx.req.body) {
       ctx.status = 400;
-      ctx.body = { error: 'Missing required fields' };
+      ctx.body = { 
+        success: false,
+        error: 'No product data provided',
+        message: 'Please provide product data' 
+      };
       return;
     }
     
-    // Check if SKU already exists
-    const skuCheck = await db.collection('products')
-      .where('sku', '==', sku)
-      .get();
-      
-    if (!skuCheck.empty) {
+    const productData = ctx.req.body;
+    
+    // Input validation
+    if (!productData.name) {
       ctx.status = 400;
-      ctx.body = { error: 'Product with this SKU already exists' };
+      ctx.body = { 
+        success: false,
+        error: 'Missing required fields',
+        message: 'Product name is required' 
+      };
       return;
     }
     
-    // Create product in Firestore
-    const productRef = db.collection('products').doc();
-    await productRef.set({
-      name,
-      description: description || '',
-      price: Number(price),
-      sku,
-      categoryId,
-      stock: Number(stock) || 0,
-      images,
-      status: 'active',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // Create product using the product service
+    const newProduct = await productService.createProduct(productData);
+    console.log('[ProductController] Product created successfully:', newProduct.id);
     
     ctx.status = 201;
-    ctx.body = { 
-      message: 'Product created successfully',
-      productId: productRef.id
+    ctx.body = {
+      success: true,
+      product: newProduct,
+      message: 'Product created successfully'
     };
   } catch (error) {
+    console.error('[ProductController] Error creating product:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to create product' 
+    };
   }
 };
 
 /**
- * Cập nhật thông tin sản phẩm (Admin only)
+ * Update an existing product
+ * @param {Object} ctx - Koa context
  */
 export const updateProduct = async (ctx) => {
   try {
-    const { productId } = ctx.params;
-    const { 
-      name, 
-      description, 
-      price, 
-      sku, 
-      categoryId, 
-      stock, 
-      images,
-      status
-    } = ctx.request.body;
+    const { id } = ctx.params;
+    console.log('[ProductController] Updating product:', id);
+    console.log('[ProductController] Request body:', ctx.req.body);
     
-    // Verify product exists
-    const productDoc = await db.collection('products').doc(productId).get();
-    
-    if (!productDoc.exists) {
-      ctx.status = 404;
-      ctx.body = { error: 'Product not found' };
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing product ID',
+        message: 'Product ID is required' 
+      };
       return;
     }
     
-    // Prepare update data
-    const updateData = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
+    if (!ctx.req.body) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'No update data provided',
+        message: 'Please provide data to update' 
+      };
+      return;
+    }
     
-    if (name) updateData.name = name;
-    if (description !== undefined) updateData.description = description;
-    if (price) updateData.price = Number(price);
-    if (sku) updateData.sku = sku;
-    if (categoryId) updateData.categoryId = categoryId;
-    if (stock !== undefined) updateData.stock = Number(stock);
-    if (images) updateData.images = images;
-    if (status) updateData.status = status;
-    
-    // Update product in Firestore
-    await db.collection('products').doc(productId).update(updateData);
+    // Update product using the product service
+    const updatedProduct = await productService.updateProduct(id, ctx.req.body);
+    console.log('[ProductController] Product updated successfully:', id);
     
     ctx.status = 200;
-    ctx.body = { message: 'Product updated successfully' };
+    ctx.body = {
+      success: true,
+      product: updatedProduct,
+      message: 'Product updated successfully'
+    };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { error: error.message };
+    console.error('[ProductController] Error updating product:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: error.status === 404 ? 'Product not found' : 'Failed to update product' 
+    };
   }
 };
 
 /**
- * Lấy thông tin chi tiết sản phẩm
+ * Get product by ID (Admin route)
  */
 export const getProduct = async (ctx) => {
   try {
+    console.log('[ProductController] Getting product by ID (admin):', ctx.params.productId);
     const { productId } = ctx.params;
     
-    const product = await productService.getProductById(productId);
-    
-    if (!product) {
-      throw new CustomError('Không tìm thấy sản phẩm', 404);
+    // Check if product exists
+    const productDoc = await db.collection('products').doc(productId).get();
+    if (!productDoc.exists) {
+      console.log('[ProductController] Product not found:', productId);
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        message: 'Product not found'
+      };
+      return;
     }
     
+    // Get product data
+    const productData = productDoc.data();
+    const product = {
+      id: productDoc.id,
+      ...productData,
+      createdAt: productData.createdAt ? productData.createdAt.toDate() : null,
+      updatedAt: productData.updatedAt ? productData.updatedAt.toDate() : null
+    };
+    
+    // Get category name if categoryId exists
+    if (productData.categoryId) {
+      try {
+        const categoryDoc = await db.collection('categories').doc(productData.categoryId).get();
+        if (categoryDoc.exists) {
+          product.categoryName = categoryDoc.data().name || 'Unknown';
+        }
+      } catch (categoryError) {
+        console.error('[ProductController] Error fetching category:', categoryError);
+        // Don't fail the whole request if category lookup fails
+      }
+    }
+    
+    console.log('[ProductController] Product found (admin route):', product.name);
+    
+    ctx.status = 200;
     ctx.body = {
       success: true,
       data: product
     };
   } catch (error) {
-    ctx.status = error.status || 500;
+    console.error('[ProductController] Error getting product (admin):', error);
+    ctx.status = 500;
     ctx.body = {
       success: false,
-      message: error.message || 'Lỗi khi lấy thông tin sản phẩm',
-      data: null
+      message: 'Failed to fetch product',
+      error: error.message
     };
   }
 };
 
 /**
- * Lấy danh sách tất cả sản phẩm
+ * Get all products with optional filtering, sorting and pagination
+ * @param {Object} ctx - Koa context
  */
 export const getAllProducts = async (ctx) => {
   try {
-    const { category, search, limit = 20, page = 1 } = ctx.query;
+    console.log('[ProductController] Fetching all products');
+    console.log('[ProductController] Query params:', ctx.req.query);
     
-    let query = db.collection('products');
+    const { 
+      category, 
+      minPrice, 
+      maxPrice, 
+      sort = 'createdAt', 
+      order = 'desc', 
+      limit = 20, 
+      page = 1,
+      search = '',
+      status
+    } = ctx.req.query;
     
-    // Apply category filter
-    if (category) {
-      query = query.where('categoryId', '==', category);
+    // Convert parameters to appropriate types
+    const options = {
+      category,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      sort,
+      order,
+      limit: Number(limit),
+      offset: (Number(page) - 1) * Number(limit),
+      search,
+      status
+    };
+    
+    // Get products using the product service
+    const result = await productService.getAllProducts(options);
+    
+    // Ensure result has expected structure
+    if (!result || !result.products) {
+      console.log('[ProductController] No products found or unexpected result format');
+      ctx.status = 200;
+      ctx.body = {
+        success: true,
+        products: [],
+        pagination: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0
+        }
+      };
+      return;
     }
     
-    // Get total count for pagination
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
-    
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    query = query.orderBy('createdAt', 'desc')
-      .limit(parseInt(limit))
-      .offset(offset);
-      
-    const productsSnapshot = await query.get();
-    const products = [];
-    
-    productsSnapshot.forEach(doc => {
-      const productData = doc.data();
-      
-      // Apply search filter if needed (client-side)
-      if (search && !productData.name.toLowerCase().includes(search.toLowerCase())) {
-        return;
-      }
-      
-      products.push({
-        id: doc.id,
-        ...productData,
-        createdAt: productData.createdAt ? productData.createdAt.toDate() : null,
-        updatedAt: productData.updatedAt ? productData.updatedAt.toDate() : null
-      });
-    });
+    console.log(`[ProductController] Successfully fetched ${result.products.length} products`);
     
     ctx.status = 200;
-    ctx.body = { 
-      products,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+    ctx.body = {
+      success: true,
+      ...result
     };
   } catch (error) {
+    console.error('[ProductController] Error fetching products:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to fetch products' 
+    };
   }
 };
 
 /**
- * Xóa sản phẩm (Admin only)
+ * Delete a product
+ * @param {Object} ctx - Koa context
  */
 export const deleteProduct = async (ctx) => {
   try {
-    const { productId } = ctx.params;
+    const { id } = ctx.req.params;
+    console.log('[ProductController] Deleting product:', id);
     
-    // Verify product exists
-    const productDoc = await db.collection('products').doc(productId).get();
-    
-    if (!productDoc.exists) {
-      ctx.status = 404;
-      ctx.body = { error: 'Product not found' };
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing product ID',
+        message: 'Product ID is required' 
+      };
       return;
     }
     
-    // Delete product from Firestore
-    await db.collection('products').doc(productId).delete();
+    // Delete product using the product service
+    await productService.deleteProduct(id);
+    console.log('[ProductController] Product deleted successfully:', id);
     
     ctx.status = 200;
-    ctx.body = { message: 'Product deleted successfully' };
+    ctx.body = {
+      success: true,
+      message: 'Product deleted successfully'
+    };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { error: error.message };
+    console.error('[ProductController] Error deleting product:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: error.status === 404 ? 'Product not found' : 'Failed to delete product' 
+    };
   }
 };
 
 /**
- * Create or update product categories
+ * Create a new category
+ * @param {Object} ctx - Koa context
  */
 export const createCategory = async (ctx) => {
   try {
-    const { name, parentId } = ctx.request.body;
+    console.log('[ProductController] Creating new category');
+    console.log('[ProductController] Request body:', ctx.req.body);
     
-    if (!name) {
+    if (!ctx.req.body) {
       ctx.status = 400;
-      ctx.body = { error: 'Category name is required' };
+      ctx.body = { 
+        success: false,
+        error: 'No category data provided',
+        message: 'Please provide category data' 
+      };
       return;
     }
     
-    const categoryRef = db.collection('categories').doc();
-    await categoryRef.set({
-      name,
-      parentId: parentId || null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    const categoryData = ctx.req.body;
+    
+    // Input validation
+    if (!categoryData.name) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing required fields',
+        message: 'Category name is required' 
+      };
+      return;
+    }
+    
+    // Create category using the category service
+    const newCategory = await categoryService.createCategory(categoryData);
+    console.log('[ProductController] Category created successfully:', newCategory);
     
     ctx.status = 201;
-    ctx.body = { 
-      message: 'Category created successfully',
-      categoryId: categoryRef.id
+    ctx.body = {
+      success: true,
+      category: newCategory,
+      message: 'Category created successfully'
     };
   } catch (error) {
+    console.error('[ProductController] Error creating category:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to create category' 
+    };
   }
 };
 
 /**
  * Get all categories
+ * @param {Object} ctx - Koa context
  */
 export const getAllCategories = async (ctx) => {
   try {
-    const categoriesSnapshot = await db.collection('categories').get();
-    const categories = [];
+    console.log('[ProductController] Fetching all categories');
     
-    categoriesSnapshot.forEach(doc => {
-      categories.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
+    // Get categories using the categoryService
+    const categories = await categoryService.getAllCategories();
+    console.log(`[ProductController] Successfully fetched ${categories.length} categories`);
     
     ctx.status = 200;
-    ctx.body = { categories };
+    ctx.body = {
+      success: true,
+      categories
+    };
   } catch (error) {
+    console.error('[ProductController] Error fetching categories:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to fetch categories' 
+    };
+  }
+};
+
+/**
+ * Get a category by ID
+ * @param {Object} ctx - Koa context
+ */
+export const getCategoryById = async (ctx) => {
+  try {
+    const { id } = ctx.req.params;
+    console.log('[ProductController] Fetching category by ID:', id);
+    
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing category ID',
+        message: 'Category ID is required' 
+      };
+      return;
+    }
+    
+    // Get category using the category service
+    const category = await categoryService.getCategoryById(id);
+    
+    if (!category) {
+      console.log('[ProductController] Category not found, ID:', id);
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        error: 'Category not found',
+        message: 'The requested category does not exist' 
+      };
+      return;
+    }
+    
+    console.log('[ProductController] Category found:', category.name);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      category
+    };
+  } catch (error) {
+    console.error('[ProductController] Error fetching category by ID:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to fetch category' 
+    };
   }
 };
 
@@ -298,35 +427,87 @@ export const getAllCategories = async (ctx) => {
  */
 export const uploadProductImage = async (ctx) => {
   try {
-    if (!ctx.request.files || !ctx.request.files.image) {
+    console.log('[ProductController] Processing image upload request');
+    
+    // Log available request properties for debugging
+    console.log('[ProductController] Request files structure:', ctx.req.files ? Object.keys(ctx.req.files) : 'No files');
+    
+    // Check if we have files attached to the request
+    if (!ctx.req.files || !ctx.req.files.image || !ctx.req.files.image.length) {
+      console.error('[ProductController] No image file found in request');
       ctx.status = 400;
-      ctx.body = { error: 'No image file uploaded' };
+      ctx.body = { 
+        success: false,
+        error: 'No image file uploaded',
+        message: 'Please select an image file to upload' 
+      };
       return;
     }
     
-    const file = ctx.request.files.image;
-    const fileName = `products/${Date.now()}_${file.name}`;
+    const file = ctx.req.files.image[0];
+    console.log('[ProductController] Processing file:', file.originalname, file.mimetype, file.size);
+    
+    // Validate file type
+    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validImageTypes.includes(file.mimetype)) {
+      console.error('[ProductController] Invalid file type:', file.mimetype);
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Invalid file type',
+        message: 'Please upload a valid image file (JPEG, PNG, GIF, WEBP)' 
+      };
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      console.error('[ProductController] File too large:', file.size);
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'File too large',
+        message: 'Image file size must be less than 5MB' 
+      };
+      return;
+    }
+    
+    // Generate a unique filename
+    const fileName = `products/${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`;
     
     // Upload file to Firebase Storage
     const bucket = admin.storage().bucket();
-    const fileBuffer = file.data;
+    
+    console.log('[ProductController] Uploading file to Firebase Storage:', fileName);
     
     const fileUpload = bucket.file(fileName);
-    await fileUpload.save(fileBuffer, {
+    await fileUpload.save(file.buffer, {
       metadata: {
         contentType: file.mimetype
       }
     });
     
-    // Get public URL
+    // Make the file publicly accessible
     await fileUpload.makePublic();
+    
+    // Get public URL
     const imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    console.log('[ProductController] File uploaded successfully, URL:', imageUrl);
     
     ctx.status = 200;
-    ctx.body = { imageUrl };
+    ctx.body = { 
+      success: true,
+      imageUrl,
+      message: 'Image uploaded successfully'
+    };
   } catch (error) {
+    console.error('[ProductController] Error uploading image:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: 'Failed to upload image due to server error'
+    };
   }
 };
 
@@ -586,30 +767,157 @@ export const importProducts = async (ctx) => {
  */
 export const getProducts = async (ctx) => {
   try {
+    console.log('[ProductController] Public products endpoint called');
     // Reuse the getAllProducts functionality with proper naming for route
     return await getAllProducts(ctx);
   } catch (error) {
-    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    console.error('[ProductController] Error in public products endpoint:', error);
+    ctx.status = 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to fetch products'
+      error: error.message || 'Unknown error',
+      message: 'Failed to fetch products'
     };
   }
 };
 
 /**
- * Get product by ID (public)
- * Route: GET /products/:productId
+ * Update category
+ * @param {Object} ctx - Koa context
+ */
+export const updateCategory = async (ctx) => {
+  try {
+    const { id } = ctx.req.params;
+    console.log('[ProductController] Updating category:', id);
+    console.log('[ProductController] Request body:', ctx.req.body);
+    
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing category ID',
+        message: 'Category ID is required' 
+      };
+      return;
+    }
+    
+    if (!ctx.req.body) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'No update data provided',
+        message: 'Please provide data to update' 
+      };
+      return;
+    }
+    
+    // Update category using the category service
+    const updatedCategory = await categoryService.updateCategory(id, ctx.req.body);
+    console.log('[ProductController] Category updated successfully:', id);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      category: updatedCategory,
+      message: 'Category updated successfully'
+    };
+  } catch (error) {
+    console.error('[ProductController] Error updating category:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: error.status === 404 ? 'Category not found' : 'Failed to update category' 
+    };
+  }
+};
+
+/**
+ * Delete a category
+ * @param {Object} ctx - Koa context
+ */
+export const deleteCategory = async (ctx) => {
+  try {
+    const { id } = ctx.req.params;
+    console.log('[ProductController] Deleting category:', id);
+    
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing category ID',
+        message: 'Category ID is required' 
+      };
+      return;
+    }
+    
+    // Delete category using the category service
+    await categoryService.deleteCategory(id);
+    console.log('[ProductController] Category deleted successfully:', id);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'Category deleted successfully'
+    };
+  } catch (error) {
+    console.error('[ProductController] Error deleting category:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
+      success: false,
+      error: error.message,
+      message: error.status === 404 ? 'Category not found' : 'Failed to delete category' 
+    };
+  }
+};
+
+/**
+ * Get a single product by ID
+ * @param {Object} ctx - Koa context
  */
 export const getProductById = async (ctx) => {
   try {
-    // Reuse the getProduct functionality with proper naming for route
-    return await getProduct(ctx);
-  } catch (error) {
-    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    const { id } = ctx.req.params;
+    console.log('[ProductController] Fetching product by ID:', id);
+    
+    if (!id) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing product ID',
+        message: 'Product ID is required' 
+      };
+      return;
+    }
+    
+    // Get product using the product service
+    const product = await productService.getProductById(id);
+    
+    if (!product) {
+      console.log('[ProductController] Product not found, ID:', id);
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        error: 'Product not found',
+        message: 'The requested product does not exist' 
+      };
+      return;
+    }
+    
+    console.log('[ProductController] Product found:', id);
+    
+    ctx.status = 200;
     ctx.body = {
+      success: true,
+      product
+    };
+  } catch (error) {
+    console.error('[ProductController] Error fetching product by ID:', error);
+    ctx.status = error.status || 500;
+    ctx.body = { 
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to fetch product'
+      error: error.message,
+      message: 'Failed to fetch product' 
     };
   }
 }; 

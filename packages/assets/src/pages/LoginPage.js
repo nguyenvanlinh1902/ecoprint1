@@ -11,41 +11,8 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login, directLogin, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { redirectToLastVisitedPath } = useSessionStorage();
-
-  // Helper function to set predefined credentials
-  const setCredentials = (type) => {
-    if (type === 'admin') {
-      setEmail('admin');
-      setPassword('admin123');
-    } else if (type === 'user') {
-      setEmail('user');
-      setPassword('user123');
-    }
-  };
-
-  // Hàm xử lý đăng nhập nhanh
-  const handleDirectLogin = (type) => {
-    setLoading(true);
-    setError('');
-
-    try {
-      // Gọi hàm đăng nhập trực tiếp từ useAuth hook
-      const user = directLogin(type);
-      
-      // Điều hướng người dùng dựa trên vai trò
-      if (type === 'admin') {
-        navigate('/admin/dashboard');
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (error) {
-      setError(error.message || 'Quick login failed. Please try with credentials.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,11 +26,16 @@ const LoginPage = () => {
     setLoading(true);
     
     try {
-      await login(email, password);
+      // Đăng nhập thông thường - hệ thống sẽ tự động kiểm tra quyền
+      const result = await login(email, password);
+      console.log('Login successful, user data:', result);
       redirectToLastVisitedPath();
     } catch (error) {
-      if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
-        setError('Network connection error. Please check your internet or try using quick login.');
+      console.error('Login error:', error);
+      if (error.friendlyMessage) {
+        setError(error.friendlyMessage);
+      } else if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
+        setError('Network connection error. Please check your internet connection.');
       } else {
         setError(error.message || 'Failed to sign in. Please check your credentials.');
       }
@@ -81,8 +53,11 @@ const LoginPage = () => {
       await loginWithGoogle();
       redirectToLastVisitedPath();
     } catch (error) {
+      console.error('Google login error:', error);
       // Check if it's a 404 error
-      if (error.message && error.message.includes('404')) {
+      if (error.friendlyMessage) {
+        setError(error.friendlyMessage);
+      } else if (error.message && error.message.includes('404')) {
         setError('Firebase API not available. This might be due to network issues or firewall restrictions. Please try email/password login.');
       } else if (error.message && error.message.includes('popup blocked')) {
         setError('Google login popup was blocked. Please allow popups for this site and try again.');
@@ -106,7 +81,7 @@ const LoginPage = () => {
       >
         <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
           <Typography component="h1" variant="h5" textAlign="center" gutterBottom>
-            Sign In
+            Login
           </Typography>
           
           {error && (
@@ -141,81 +116,40 @@ const LoginPage = () => {
               onChange={(e) => setPassword(e.target.value)}
             />
             
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Signing In...' : 'Sign In'}
-            </Button>
-            
-            <Button
-              fullWidth
-              variant="outlined"
-              startIcon={<GoogleIcon />}
-              onClick={handleGoogleLogin}
-              sx={{ mb: 2 }}
-              disabled={loading}
-            >
-              Sign In with Google
-            </Button>
-            
-            <Divider sx={{ my: 2 }}>Quick Login Options</Divider>
-            
-            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-              <Button 
-                variant="outlined" 
-                color="primary" 
+            <Stack spacing={2} sx={{ mt: 3 }}>
+              <Button
+                type="submit"
                 fullWidth
-                onClick={() => setCredentials('admin')}
+                variant="contained"
+                disabled={loading}
               >
-                Admin
+                {loading ? 'Signing in...' : 'Sign In'}
               </Button>
-              <Button 
-                variant="outlined" 
-                color="secondary" 
+              
+              <Divider sx={{ my: 2 }}>or</Divider>
+              
+              <Button
                 fullWidth
-                onClick={() => setCredentials('user')}
+                variant="outlined"
+                startIcon={<GoogleIcon />}
+                onClick={handleGoogleLogin}
+                disabled={loading}
               >
-                User
+                Sign in with Google
               </Button>
             </Stack>
             
-            <Stack direction="row" spacing={2}>
-              <Button 
-                variant="contained" 
-                color="primary" 
-                fullWidth
-                onClick={() => handleDirectLogin('admin')}
-                disabled={loading}
-              >
-                Admin Login
-              </Button>
-              <Button 
-                variant="contained" 
-                color="secondary" 
-                fullWidth
-                onClick={() => handleDirectLogin('user')}
-                disabled={loading}
-              >
-                User Login
-              </Button>
-            </Stack>
-            
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Typography variant="body2">
-                Don't have an account?{' '}
-                <Link to="/register" style={{ textDecoration: 'none' }}>
-                  Sign Up
-                </Link>
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                <Link to="/forgot-password" style={{ textDecoration: 'none' }}>
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
+              <Link to="/auth/forgot-password" style={{ textDecoration: 'none' }}>
+                <Typography variant="body2" color="primary">
                   Forgot password?
-                </Link>
-              </Typography>
+                </Typography>
+              </Link>
+              <Link to="/auth/register" style={{ textDecoration: 'none' }}>
+                <Typography variant="body2" color="primary">
+                  Don't have an account? Register
+                </Typography>
+              </Link>
             </Box>
           </Box>
         </Paper>

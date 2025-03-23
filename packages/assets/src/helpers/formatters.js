@@ -22,6 +22,8 @@ export const formatCurrency = (value, currency = 'USD', locale = 'en-US') => {
  * @returns {string} Formatted date string
  */
 export const formatDate = (date, options = {}, locale = 'en-US') => {
+  if (!date) return 'N/A';
+  
   const defaultOptions = {
     year: 'numeric',
     month: 'short',
@@ -29,7 +31,26 @@ export const formatDate = (date, options = {}, locale = 'en-US') => {
     ...options,
   };
   
-  return new Intl.DateTimeFormat(locale, defaultOptions).format(new Date(date));
+  try {
+    // Kiểm tra nếu là timestamp từ Firestore
+    if (date && typeof date === 'object' && date.toDate) {
+      return new Intl.DateTimeFormat(locale, defaultOptions).format(date.toDate());
+    }
+    
+    // Chuyển đổi thành Date object nếu là chuỗi hoặc số
+    const dateObj = new Date(date);
+    
+    // Kiểm tra xem ngày có hợp lệ không
+    if (isNaN(dateObj.getTime())) {
+      console.warn('Invalid date value:', date);
+      return 'N/A';
+    }
+    
+    return new Intl.DateTimeFormat(locale, defaultOptions).format(dateObj);
+  } catch (error) {
+    console.error('Error formatting date:', error, date);
+    return 'N/A';
+  }
 };
 
 /**
@@ -98,16 +119,39 @@ export const formatPhone = (phone) => {
 export const formatDateTime = (timestamp) => {
   if (!timestamp) return 'N/A';
   
-  // If timestamp is a Firebase Timestamp object
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(date);
+  try {
+    // Kiểm tra nếu là timestamp từ Firestore
+    if (timestamp && typeof timestamp === 'object' && timestamp.toDate) {
+      const date = timestamp.toDate();
+      return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).format(date);
+    }
+    
+    // Chuyển đổi thành Date object nếu là chuỗi hoặc số
+    const date = new Date(timestamp);
+    
+    // Kiểm tra xem ngày có hợp lệ không
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid datetime value:', timestamp);
+      return 'N/A';
+    }
+    
+    return new Intl.DateTimeFormat('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).format(date);
+  } catch (error) {
+    console.error('Error formatting datetime:', error, timestamp);
+    return 'N/A';
+  }
 };
 
 // Format phone number: (123) 456-7890

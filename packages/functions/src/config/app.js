@@ -13,7 +13,6 @@ const appConfig = {
   cors: {
     allowedOrigins: [
       'http://localhost:3001',
-      'http://localhost:9099',
       'http://localhost:5001',
       // Add production origins here
     ],

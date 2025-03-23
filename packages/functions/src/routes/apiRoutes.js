@@ -10,7 +10,10 @@ import * as authMiddleware from '../middleware/authMiddleware.js';
 const router = new Router();
 
 // Public routes
-router.post('/auth/register', authController.register);
+router.post('/auth/register', async (ctx) => {
+  console.log('Register route called with body:', ctx.req.body);
+  await authController.register(ctx);
+});
 router.post('/auth/login', authController.login);
 router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/reset-password', authController.resetPassword);
@@ -21,6 +24,7 @@ router.patch('/auth/profile', authMiddleware.verifyToken, authController.updateP
 
 // Products routes
 router.get('/products', productController.getProducts);
+router.post('/products/upload-image', authMiddleware.verifyToken, productController.uploadProductImage);
 router.get('/products/:productId', productController.getProductById);
 router.post('/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
 router.put('/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
@@ -43,7 +47,28 @@ router.post('/transactions/:transactionId/upload-receipt', authMiddleware.verify
 router.get('/transactions', authMiddleware.verifyToken, transactionController.getUserTransactions);
 router.post('/orders/:orderId/pay', authMiddleware.verifyToken, transactionController.payOrder);
 
-// Admin Dashboard endpoint - Using proper controller now
+// Admin routes
 router.get('/admin/dashboard', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getDashboard);
+router.get('/admin/users', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUsers);
+router.get('/admin/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserById);
+router.get('/admin/users/:userId/orders', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserOrders);
+router.get('/admin/users/:userId/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserTransactions);
+router.post('/admin/users/:userId/approve', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.approveUser);
+router.post('/admin/users/:userId/reject', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.rejectUser);
+router.put('/admin/users/:userId/status', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.updateUserStatus);
+router.put('/admin/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.updateUser);
+
+// Admin product routes
+router.get('/admin/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.getAllProducts);
+router.get('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.getProduct);
+router.post('/admin/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
+router.put('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
+router.delete('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteProduct);
+
+// Categories
+router.get('/categories', productController.getAllCategories);
+router.post('/categories', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createCategory);
+router.put('/admin/categories/:categoryId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateCategory);
+router.delete('/admin/categories/:categoryId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteCategory);
 
 export default router; 

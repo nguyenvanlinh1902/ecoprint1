@@ -5,7 +5,7 @@ import {
   TableContainer, TableHead, TableRow, Button, IconButton,
   TextField, InputAdornment, FormControl, InputLabel, 
   Select, MenuItem, Chip, Dialog, DialogActions, DialogContent,
-  DialogContentText, DialogTitle, CircularProgress, Pagination
+  DialogContentText, DialogTitle, CircularProgress, Pagination, Alert
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -23,6 +23,7 @@ const UsersPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   
   // Pagination
   const [page, setPage] = useState(1);
@@ -116,32 +117,48 @@ const UsersPage = () => {
     if (!selectedUser) return;
     
     setActionLoading(true);
+    setError('');
     
     try {
+      console.log(`Performing ${dialogAction} on user:`, selectedUser.id);
+      
       switch (dialogAction) {
         case 'approve':
-          await api.post(`/api/admin/users/${selectedUser.id}/approve`);
+          await api.admin.approveUser(selectedUser.id);
           break;
         case 'reject':
-          await api.post(`/api/admin/users/${selectedUser.id}/reject`);
+          await api.admin.rejectUser(selectedUser.id);
           break;
         case 'activate':
-          await api.post(`/api/admin/users/${selectedUser.id}/activate`);
+          await api.admin.updateUserStatus(selectedUser.id, 'active');
           break;
         case 'deactivate':
-          await api.post(`/api/admin/users/${selectedUser.id}/deactivate`);
+          await api.admin.updateUserStatus(selectedUser.id, 'inactive');
           break;
         default:
           break;
       }
       
+      // Set success message
+      const actionText = dialogAction === 'approve' ? 'approved' : 
+                        dialogAction === 'reject' ? 'rejected' :
+                        dialogAction === 'activate' ? 'activated' : 'deactivated';
+      
       // Refresh user list
-      fetchUsers();
+      await fetchUsers();
       handleDialogClose();
       
+      // Show success message
+      setSuccess(`User ${selectedUser.companyName || 'selected'} was successfully ${actionText}.`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess('');
+      }, 3000);
+      
     } catch (error) {
-      /* error removed */
-      setError(`Failed to ${dialogAction} user. Please try again later.`);
+      console.error(`Error ${dialogAction} user:`, error);
+      setError(`Failed to ${dialogAction} user. ${error.response?.data?.message || 'Please try again later.'}`);
     } finally {
       setActionLoading(false);
     }
@@ -184,6 +201,20 @@ const UsersPage = () => {
       <Typography variant="h4" sx={{ mb: 3 }}>
         Users Management
       </Typography>
+      
+      {/* Success message */}
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          {success}
+        </Alert>
+      )}
+      
+      {/* Error message */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
       
       {/* Filters */}
       <Paper sx={{ p: 3, mb: 3 }}>

@@ -92,26 +92,44 @@ const UserDetailPage = () => {
     const fetchUserDetails = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/api/admin/users/${userId}`);
-        setUser(response.data.data);
-        setUserProfile({
-          name: response.data.data.name || '',
-          email: response.data.data.email || '',
-          phone: response.data.data.phone || '',
-          companyName: response.data.data.companyName || '',
-          companyAddress: response.data.data.companyAddress || '',
-          companyVat: response.data.data.companyVat || '',
-          role: response.data.data.role || 'user'
-        });
+        setError(''); // Xóa lỗi cũ nếu có
+        
+        console.log('Fetching user details for userId:', userId);
+        // Sử dụng admin.getUserById từ api client thay vì gọi trực tiếp
+        const response = await api.admin.getUserById(userId);
+        
+        console.log('User details response:', response);
+        
+        if (response.data && response.data.success && response.data.data) {
+          const userData = response.data.data;
+          setUser(userData);
+          setUserProfile({
+            name: userData.name || userData.displayName || '',
+            email: userData.email || '',
+            phone: userData.phone || '',
+            companyName: userData.companyName || '',
+            companyAddress: userData.companyAddress || '',
+            companyVat: userData.companyVat || '',
+            role: userData.role || 'user'
+          });
+        } else {
+          // Xử lý khi API trả về success: false
+          throw new Error(response.data?.message || 'Failed to load user data');
+        }
       } catch (error) {
-        /* error removed */
-        setError('Failed to load user details. Please try again later.');
+        console.error('Error fetching user details:', error);
+        setError(error.response?.data?.message || error.message || 'Failed to load user details. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
     
-    fetchUserDetails();
+    if (userId) {
+      fetchUserDetails();
+    } else {
+      setError('User ID is missing or invalid');
+      setLoading(false);
+    }
   }, [userId]);
   
   useEffect(() => {
@@ -125,10 +143,19 @@ const UserDetailPage = () => {
   const fetchRecentOrders = async () => {
     try {
       setOrdersLoading(true);
-      const response = await api.get(`/api/admin/users/${userId}/orders?limit=5`);
-      setRecentOrders(response.data.data.orders || []);
+      // Sử dụng phương thức từ api.admin 
+      const response = await api.admin.getUserOrders(userId, { limit: 5 });
+      
+      if (response.data && response.data.success) {
+        setRecentOrders(response.data.data || []);
+      } else {
+        console.warn('No orders data found or unexpected response format');
+        setRecentOrders([]);
+      }
     } catch (error) {
-      /* error removed */
+      console.error('Error fetching user orders:', error);
+      // Không hiển thị lỗi cho người dùng, chỉ ghi log
+      setRecentOrders([]);
     } finally {
       setOrdersLoading(false);
     }
@@ -137,10 +164,19 @@ const UserDetailPage = () => {
   const fetchTransactions = async () => {
     try {
       setTransactionsLoading(true);
-      const response = await api.get(`/api/admin/users/${userId}/transactions?limit=5`);
-      setTransactions(response.data.data.transactions || []);
+      // Sử dụng phương thức từ api.admin
+      const response = await api.admin.getUserTransactions(userId, { limit: 5 });
+      
+      if (response.data && response.data.success) {
+        setTransactions(response.data.data || []);
+      } else {
+        console.warn('No transactions data found or unexpected response format');
+        setTransactions([]);
+      }
     } catch (error) {
-      /* error removed */
+      console.error('Error fetching user transactions:', error);
+      // Không hiển thị lỗi cho người dùng, chỉ ghi log
+      setTransactions([]);
     } finally {
       setTransactionsLoading(false);
     }
@@ -162,13 +198,22 @@ const UserDetailPage = () => {
     try {
       setError('');
       setSuccess('');
-      const response = await api.put(`/api/admin/users/${userId}`, userProfile);
-      setUser(response.data.data);
-      setEditMode(false);
-      setSuccess('User profile updated successfully');
+      
+      console.log('Updating user profile for userId:', userId, 'with data:', userProfile);
+      
+      // Sử dụng phương thức từ api client
+      const response = await api.admin.updateUser(userId, userProfile);
+      
+      if (response.data && response.data.success) {
+        setUser(prev => ({...prev, ...userProfile}));
+        setEditMode(false);
+        setSuccess('User profile updated successfully');
+      } else {
+        throw new Error(response.data?.message || 'Failed to update user profile');
+      }
     } catch (error) {
-      /* error removed */
-      setError('Failed to update user profile. Please try again.');
+      console.error('Error updating user profile:', error);
+      setError(error.response?.data?.message || error.message || 'Failed to update user profile. Please try again.');
     }
   };
   

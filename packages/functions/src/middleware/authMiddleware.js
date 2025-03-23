@@ -122,36 +122,78 @@ export const verifyToken = async (ctx, next) => {
     
     const token = authHeader.split('Bearer ')[1];
     
-    // Verify token with Firebase
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    
-    // Get user from Firestore to check status and roles
-    const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-    
-    if (!userDoc.exists) {
-      ctx.status = 403;
-      ctx.body = { error: 'User data not found' };
-      return;
+    try {
+      // First try to verify JWT token
+      const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Get user from Firestore
+      const userDoc = await db.collection('users').doc(decoded.id).get();
+      
+      if (!userDoc.exists) {
+        ctx.status = 403;
+        ctx.body = { error: 'User data not found' };
+        return;
+      }
+      
+      const userData = userDoc.data();
+      
+      // Check if user is active
+      if (userData.status !== 'active') {
+        ctx.status = 403;
+        ctx.body = { error: 'Account is not active' };
+        return;
+      }
+      
+      // Store user info in context state
+      ctx.state.user = {
+        uid: decoded.id,
+        id: decoded.id,
+        email: decoded.email || userData.email,
+        role: decoded.role || userData.role,
+        displayName: userData.displayName
+      };
+      
+      return next();
+    } catch (jwtError) {
+      // If JWT verification fails, try Firebase token
+      try {
+        // Verify token with Firebase
+        const decodedToken = await admin.auth().verifyIdToken(token);
+        
+        // Get user from Firestore to check status and roles
+        const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+        
+        if (!userDoc.exists) {
+          ctx.status = 403;
+          ctx.body = { error: 'User data not found' };
+          return;
+        }
+        
+        const userData = userDoc.data();
+        
+        // Check if user is active
+        if (userData.status !== 'active') {
+          ctx.status = 403;
+          ctx.body = { error: 'Account is not active' };
+          return;
+        }
+        
+        // Store user info in context state
+        ctx.state.user = {
+          uid: decodedToken.uid,
+          id: decodedToken.uid,
+          email: decodedToken.email,
+          role: userData.role,
+          displayName: userData.displayName
+        };
+        
+        return next();
+      } catch (firebaseError) {
+        ctx.status = 401;
+        ctx.body = { error: 'Unauthorized - Invalid token' };
+        return;
+      }
     }
-    
-    const userData = userDoc.data();
-    
-    // Check if user is active
-    if (userData.status !== 'active') {
-      ctx.status = 403;
-      ctx.body = { error: 'Account is not active' };
-      return;
-    }
-    
-    // Store user info in context state
-    ctx.state.user = {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      role: userData.role,
-      displayName: userData.displayName
-    };
-    
-    return next();
   } catch (error) {
     ctx.status = 401;
     ctx.body = { error: 'Unauthorized - Invalid token' };

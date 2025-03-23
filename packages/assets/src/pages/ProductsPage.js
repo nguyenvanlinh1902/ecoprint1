@@ -31,33 +31,58 @@ const ProductsPage = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
+        setError('');
         
         // Build query parameters
-        const params = new URLSearchParams();
-        params.append('page', page);
-        params.append('limit', 12); // Products per page
+        const params = {
+          page: page,
+          limit: 12 // Products per page
+        };
         
         if (search) {
-          params.append('search', search);
+          params.search = search;
         }
         
         if (category) {
-          params.append('category', category);
+          params.category = category;
         }
         
-        const response = await api.get(`/api/products?${params.toString()}`);
-        setProducts(response.data.data.products || []);
-        setTotalPages(response.data.data.totalPages || 1);
+        console.log('Fetching products with params:', params);
+        const response = await api.products.getAll(params);
         
-        // Extract unique categories for filter
-        const allProducts = response.data.data.products || [];
-        const uniqueCategories = [...new Set(allProducts.map(product => product.category))].filter(Boolean);
-        setCategories(uniqueCategories);
+        if (response.data && response.data.success) {
+          console.log('Products fetched successfully:', response.data.data);
+          setProducts(response.data.data.products || []);
+          setTotalPages(response.data.data.pagination?.totalPages || 1);
+          
+          // Fetch categories for filter
+          await fetchCategories();
+        } else {
+          console.error('Unexpected API response format:', response);
+          setError('Unable to load products. Please try again.');
+          setProducts([]);
+        }
       } catch (error) {
-        /* error removed */
+        console.error('Error fetching products:', error);
         setError('Failed to load products. Please try again later.');
+        setProducts([]);
       } finally {
         setLoading(false);
+      }
+    };
+
+    // Separate function to fetch categories
+    const fetchCategories = async () => {
+      try {
+        const categoriesResponse = await api.products.getCategories();
+        if (categoriesResponse.data && categoriesResponse.data.success) {
+          const categoriesData = categoriesResponse.data.data || [];
+          setCategories(categoriesData);
+        } else {
+          console.warn('Failed to load categories');
+        }
+      } catch (error) {
+        console.error('Error fetching categories:', error);
       }
     };
 
@@ -179,7 +204,7 @@ const ProductsPage = () => {
               <CardMedia
                 component="img"
                 height="200"
-                image={product.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image'}
+                image={product.images && product.images.length > 0 ? product.images[0] : 'https://via.placeholder.com/300x200?text=No+Image'}
                 alt={product.name}
               />
               <CardContent sx={{ flexGrow: 1 }}>
@@ -188,7 +213,7 @@ const ProductsPage = () => {
                     {product.name}
                   </Typography>
                   <Chip 
-                    label={product.category || 'General'} 
+                    label={product.categoryName || 'General'} 
                     size="small" 
                     color="primary" 
                     variant="outlined" 
@@ -199,7 +224,7 @@ const ProductsPage = () => {
                   {product.description?.length > 100 ? '...' : ''}
                 </Typography>
                 <Typography variant="h6" color="primary">
-                  {formatCurrency(product.basePrice)}
+                  {formatCurrency(product.price || 0)}
                 </Typography>
               </CardContent>
               <CardActions sx={{ mt: 'auto' }}>

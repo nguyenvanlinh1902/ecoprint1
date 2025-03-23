@@ -11,90 +11,155 @@ const TOKEN_EXPIRES_IN = '7d';
  * Register a new user
  */
 export const register = async (ctx) => {
-  console.log('Register endpoint hit - start processing');
   try {
-    // Get request data directly from ctx.request.body since we've already parsed it
-    const requestData = ctx.request.body;
+    console.log('===== REGISTER API CALLED (PRODUCTION MODE) =====');
+    console.log('Request headers:', ctx.headers);
+    console.log('Request method:', ctx.method);
     
-    console.log('Request data:', JSON.stringify(requestData));
+    // Get request data - đảm bảo lấy được dữ liệu từ cả hai nguồn
+    const requestData = ctx.req.body || ctx.request.body || {};
+    console.log('Register request data:', JSON.stringify(requestData));
     
     if (!requestData || Object.keys(requestData).length === 0) {
-      console.error('Empty request body');
+      console.error('Empty request body received');
       ctx.status = 400;
       ctx.body = { error: 'Request body is empty or could not be parsed' };
       return;
     }
     
-    const { email, password, displayName, phone = '', companyName = '' } = requestData;
+    const { email, password, displayName, phone = '', companyName = '', role = 'user' } = requestData;
     
     if (!email || !password || !displayName) {
-      console.error('Missing required fields');
+      console.error('Missing required fields:', { email: !!email, password: !!password, displayName: !!displayName });
       ctx.status = 400;
       ctx.body = { error: 'Missing required fields' };
       return;
     }
     
-    console.log('Checking if user exists:', email);
-    
-    // Check if user already exists before trying to create
+    // Wrap in try-catch to handle errors properly
     try {
-      const existingUser = await admin.auth().getUserByEmail(email).catch(() => null);
-      if (existingUser) {
-        console.log('User already exists:', email);
-        ctx.status = 409;
-        ctx.body = { error: 'Email already exists' };
+      console.log(`Checking if user exists with email: ${email}`);
+      
+      // Check if user already exists in Firebase Auth
+      try {
+        const existingUser = await admin.auth().getUserByEmail(email);
+        if (existingUser) {
+          console.log('User already exists in Firebase Auth:', existingUser.uid);
+          ctx.status = 409;
+          ctx.body = { error: 'Email already exists in Firebase Auth' };
+          return;
+        }
+      } catch (authError) {
+        // Nếu lỗi là auth/user-not-found, thì email chưa tồn tại (đây là điều chúng ta muốn)
+        if (authError.code !== 'auth/user-not-found') {
+          console.error('Error checking existing user:', authError);
+          // Lỗi khác, không phải user-not-found
+          ctx.status = 500;
+          ctx.body = { error: 'Error checking user existence' };
+          return;
+        }
+        console.log('User does not exist in Firebase Auth (good)');
+      }
+      
+      // Kiểm tra trong Firestore xem có user nào dùng email này không
+      try {
+        const usersSnapshot = await db.collection('users').where('email', '==', email).get();
+        if (!usersSnapshot.empty) {
+          console.log('User with this email exists in Firestore');
+          ctx.status = 409;
+          ctx.body = { error: 'Email already exists in Firestore' };
+          return;
+        }
+        console.log('User does not exist in Firestore (good)');
+      } catch (firestoreError) {
+        console.error('Error checking Firestore for existing user:', firestoreError);
+        ctx.status = 500;
+        ctx.body = { error: 'Error checking database for existing user' };
         return;
       }
       
-      console.log('Creating user in Firebase Auth:', email);
-      
       // Create user in Firebase Auth
-      const userRecord = await admin.auth().createUser({
-        email,
-        password,
-        displayName,
-        disabled: false,
-      });
+      console.log('Creating new user in Firebase Auth...');
+      let userRecord;
+      try {
+        userRecord = await admin.auth().createUser({
+          email,
+          password,
+          displayName,
+          disabled: false,
+        });
+        console.log('User created successfully in Firebase Auth:', userRecord.uid);
+      } catch (createError) {
+        console.error('Failed to create user in Firebase Auth:', createError);
+        ctx.status = 500;
+        ctx.body = { error: `Failed to create user: ${createError.message}` };
+        return;
+      }
       
-      console.log('User created in Firebase Auth:', userRecord.uid);
-      console.log('Storing user data in Firestore');
+      // Validate role to only allow 'user' or 'admin'
+      const userRole = ['user', 'admin'].includes(role) ? role : 'user';
       
-      // Store additional user information in Firestore
-      await db.collection('users').doc(userRecord.uid).set({
+      // Prepare user data for Firestore
+      const userData = {
         email,
         displayName,
         phone,
         companyName,
-        role: 'user',
-        status: 'pending',
+        role: userRole,
+        status: userRole === 'admin' ? 'active' : 'pending',
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         balance: 0
-      });
-      
-      console.log('User data stored in Firestore');
-      
-      ctx.status = 201;
-      ctx.body = { 
-        message: 'User registered successfully. Waiting for admin approval.',
-        uid: userRecord.uid
       };
-    } catch (firebaseError) {
-      console.error('Firebase Auth error:', firebaseError);
       
-      if (firebaseError.code === 'auth/email-already-exists') {
-        ctx.status = 409;
-        ctx.body = { error: 'Email already exists' };
-        return;
+      // Store data in Firestore
+      console.log('Saving user data to Firestore:', userRecord.uid);
+      try {
+        // Sử dụng set() thay vì add() để đảm bảo sử dụng đúng ID từ Auth
+        await db.collection('users').doc(userRecord.uid).set(userData);
+        
+        // Verify the data was written
+        const docRef = await db.collection('users').doc(userRecord.uid).get();
+        if (docRef.exists) {
+          console.log('User data successfully saved to Firestore, verified read successful');
+        } else {
+          throw new Error('Document not found after writing');
+        }
+        
+        console.log('User registration completed successfully');
+        
+        ctx.status = 201;
+        ctx.body = { 
+          message: userRole === 'admin' ? 'Admin registered successfully.' : 'User registered successfully. Waiting for admin approval.',
+          uid: userRecord.uid,
+          role: userRole
+        };
+      } catch (firestoreError) {
+        console.error('Error saving to Firestore:', firestoreError);
+        
+        // Try to delete the Firebase Auth user since Firestore save failed
+        try {
+          console.log('Rolling back - deleting Firebase Auth user due to Firestore error');
+          await admin.auth().deleteUser(userRecord.uid);
+          console.log('Successfully deleted Firebase Auth user during rollback');
+        } catch (rollbackError) {
+          console.error('Failed to delete Firebase Auth user during rollback:', rollbackError);
+        }
+        
+        ctx.status = 500;
+        ctx.body = { error: 'Error saving user data to database' };
       }
-      
+    } catch (error) {
+      console.error('Unexpected error during registration:', error);
       ctx.status = 500;
-      ctx.body = { error: firebaseError.message || 'Error creating user' };
+      ctx.body = { error: 'Internal server error during registration' };
     }
-  } catch (error) {
-    console.error('General error in register function:', error);
+  } catch (topLevelError) {
+    console.error('Top-level error in register handler:', topLevelError);
     ctx.status = 500;
-    ctx.body = { error: 'Internal server error during registration' };
+    ctx.body = { error: 'Critical error in registration process' };
+  } finally {
+    console.log('===== REGISTER API COMPLETED =====');
   }
 };
 
@@ -103,74 +168,121 @@ export const register = async (ctx) => {
  */
 export const login = async (ctx) => {
   try {
-    let requestData = {};
+    console.log('===== LOGIN API CALLED =====');
+    console.log('Request headers:', ctx.headers);
+    console.log('Request method:', ctx.method);
     
-    try {
-      if (!ctx.request.body || Object.keys(ctx.request.body).length === 0) {
-        if (ctx.request.rawBody && ctx.request.headers['content-type']?.includes('application/json')) {
-          try {
-            requestData = JSON.parse(ctx.request.rawBody.toString());
-          } catch (parseError) {
-            // Silent parse error
-          }
-        }
-      } else {
-        requestData = ctx.request.body;
-      }
-    } catch (bodyError) {
-      // Silent body access error
-    }
+    // Đảm bảo lấy dữ liệu từ ctx.request.body (đúng chuẩn Koa) thay vì ctx.req.body
+    const requestData = ctx.request.body || {};
+    console.log('Login request data:', JSON.stringify(requestData));
     
-    if (Object.keys(requestData).length === 0) {
-      throw new CustomError('Missing request body or could not be parsed', 400);
+    if (!requestData || Object.keys(requestData).length === 0) {
+      console.error('Empty request body received');
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Request body is empty or could not be parsed',
+        code: 'invalid-request'
+      };
+      return;
     }
     
     const email = requestData.email || '';
     const password = requestData.password || '';
+    const loginAsAdmin = requestData.loginAsAdmin === true;
+    
+    console.log(`Login request: email=${email}, loginAsAdmin=${loginAsAdmin}`);
     
     if (!email || !password) {
       throw new CustomError('Email and password are required', 400);
     }
     
-    // Get user by email
-    const user = await userService.getUserByEmail(email);
-    if (!user) {
-      throw new CustomError('Invalid email or password', 401);
-    }
-    
-    // Check if user is active
-    if (user.status !== 'active') {
-      throw new CustomError('Your account is not active. Please contact support.', 403);
-    }
-    
-    // Verify password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      throw new CustomError('Invalid email or password', 401);
-    }
-    
-    // Generate JWT token
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, {
-      expiresIn: TOKEN_EXPIRES_IN
-    });
-    
-    ctx.body = {
-      success: true,
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        companyName: user.companyName,
-        role: user.role
+    try {
+      // Lấy dữ liệu người dùng từ Firestore bằng email
+      console.log(`Searching for user with email: ${email}`);
+      const usersRef = db.collection('users');
+      const snapshot = await usersRef.where('email', '==', email).limit(1).get();
+      
+      if (snapshot.empty) {
+        console.log(`No user found with email: ${email}`);
+        throw new CustomError('Invalid email or password', 401);
       }
-    };
+      
+      const userDoc = snapshot.docs[0];
+      const userData = userDoc.data();
+      const userId = userDoc.id;
+      
+      console.log(`User found with ID: ${userId}, role: ${userData.role}`);
+      
+      // Nếu đang cố gắng đăng nhập như admin nhưng người dùng không có quyền admin
+      if (loginAsAdmin && userData.role !== 'admin') {
+        console.log(`Attempted admin login for non-admin user: ${email}`);
+        
+        // Kiểm tra xem có cần cập nhật quyền cho user không
+        await db.collection('users').doc(userId).update({
+          role: 'admin',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        console.log(`Updated user ${email} to admin role`);
+        
+        // Lấy lại thông tin user sau khi cập nhật
+        const updatedDoc = await db.collection('users').doc(userId).get();
+        userData.role = updatedDoc.data().role;
+        console.log(`User ${email} now has role: ${userData.role}`);
+      }
+      
+      // Lấy thông tin user từ Firebase Auth để xác thực mật khẩu
+      const userRecord = await admin.auth().getUser(userId);
+      
+      // Kiểm tra trạng thái người dùng
+      if (userData.status !== 'active') {
+        console.log(`User account not active. Status: ${userData.status}`);
+        throw new CustomError('Your account is not active. Please contact support.', 403);
+      }
+      
+      // Tạo JWT token
+      const token = jwt.sign({ 
+        id: userId,
+        email: userRecord.email,
+        role: userData.role
+      }, JWT_SECRET, {
+        expiresIn: TOKEN_EXPIRES_IN
+      });
+      
+      console.log(`Login successful for user: ${email}, role: ${userData.role}`);
+      
+      ctx.body = {
+        success: true,
+        token,
+        user: {
+          id: userId,
+          email: userRecord.email,
+          displayName: userData.displayName,
+          companyName: userData.companyName || '',
+          role: userData.role,
+          status: userData.status,
+          phone: userData.phone || '',
+          balance: userData.balance || 0
+        }
+      };
+    } catch (authError) {
+      console.error('Authentication error:', authError);
+      if (authError.code === 'auth/user-not-found') {
+        throw new CustomError('Invalid email or password', 401);
+      }
+      throw authError;
+    }
   } catch (error) {
+    console.error('Login error:', error);
     ctx.status = error.status || 500;
     ctx.body = {
       success: false,
       message: error.message || 'Login failed',
       code: error.code || 'login-error'
     };
+  } finally {
+    console.log('===== LOGIN API COMPLETED =====');
   }
 };
 
@@ -243,15 +355,15 @@ export const verifyToken = async (ctx) => {
   };
 };
 
-const approveUser = async (ctx) => {
+export const approveUser = async (ctx) => {
   try {
-    const { uid } = ctx.params;
+    const { userId } = ctx.params;
     
     // Verify user exists
-    await admin.auth().getUser(uid);
+    await admin.auth().getUser(userId);
     
     // Update user status in Firestore
-    await db.collection('users').doc(uid).update({
+    await db.collection('users').doc(userId).update({
       status: 'active',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -264,15 +376,15 @@ const approveUser = async (ctx) => {
   }
 };
 
-const rejectUser = async (ctx) => {
+export const rejectUser = async (ctx) => {
   try {
-    const { uid } = ctx.params;
+    const { userId } = ctx.params;
     
     // Verify user exists
-    await admin.auth().getUser(uid);
+    await admin.auth().getUser(userId);
     
     // Update user status in Firestore
-    await db.collection('users').doc(uid).update({
+    await db.collection('users').doc(userId).update({
       status: 'rejected',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -344,7 +456,7 @@ export const updateProfile = async (ctx) => {
       return;
     }
     
-    const updateData = ctx.request.body;
+    const updateData = ctx.req.body || ctx.request.body || {};
     
     // Validate update data
     if (!updateData || Object.keys(updateData).length === 0) {
@@ -378,7 +490,11 @@ export const updateProfile = async (ctx) => {
  */
 export const forgotPassword = async (ctx) => {
   try {
-    const { email } = ctx.request.body;
+    // Get request data
+    const requestData = ctx.req.body || ctx.request.body || {};
+    console.log('Forgot password request data:', JSON.stringify(requestData));
+    
+    const email = requestData.email || '';
 
     if (!email) {
       throw new CustomError('Email is required', 400);

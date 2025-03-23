@@ -8,7 +8,7 @@ const ForgotPasswordPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { resetPassword } = useAuth();
+  const { resetPassword, resetPasswordViaApi } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,9 +22,19 @@ const ForgotPasswordPage = () => {
     }
 
     try {
-      await resetPassword(email);
-      setSuccess(true);
+      // First try the API method
+      try {
+        console.log('Attempting password reset via API for:', email);
+        await resetPasswordViaApi(email);
+        setSuccess(true);
+      } catch (apiError) {
+        console.log('API reset failed, trying Firebase:', apiError);
+        // If API fails, fallback to Firebase
+        await resetPassword(email);
+        setSuccess(true);
+      }
     } catch (err) {
+      console.error('Password reset error:', err);
       setError(err.message || 'Failed to send password reset email');
     } finally {
       setLoading(false);
@@ -62,7 +72,7 @@ const ForgotPasswordPage = () => {
               </Typography>
               <Button
                 component={Link}
-                to="/login"
+                to="/auth/login"
                 fullWidth
                 variant="contained"
                 sx={{ mt: 2 }}
@@ -98,7 +108,7 @@ const ForgotPasswordPage = () => {
               </Button>
               
               <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Link to="/login" style={{ textDecoration: 'none' }}>
+                <Link to="/auth/login" style={{ textDecoration: 'none' }}>
                   <Typography variant="body2" color="primary">
                     Remember your password? Sign In
                   </Typography>

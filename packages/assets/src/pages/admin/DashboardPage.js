@@ -43,8 +43,8 @@ const DashboardPage = () => {
       try {
         setLoading(true);
         
-        // Sử dụng endpoint admin đã được cấu hình
-        const response = await api.admin.getDashboardStats();
+        // Use the correct API function name
+        const response = await api.admin.getDashboard();
         
         // Kiểm tra cấu trúc dữ liệu trả về
         if (response.data && response.data.data) {
@@ -101,12 +101,12 @@ const DashboardPage = () => {
                 Total Users
               </Typography>
               <Typography variant="h4">
-                {stats.totalUsers}
+                {stats?.totalUsers || 0}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                 <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
                   <IncreaseIcon fontSize="small" />
-                  {stats.newUsers} new
+                  {stats?.newUsers || 0} new
                 </Typography>
               </Box>
             </CardContent>
@@ -120,7 +120,7 @@ const DashboardPage = () => {
                 Products
               </Typography>
               <Typography variant="h4">
-                {stats.totalProducts}
+                {stats?.totalProducts || 0}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                 <Button 
@@ -142,15 +142,15 @@ const DashboardPage = () => {
                 Orders
               </Typography>
               <Typography variant="h4">
-                {stats.totalOrders}
+                {stats?.totalOrders || 0}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-                <Typography variant="body2" color={stats.newOrders > 0 ? 'success.main' : 'text.secondary'} sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="body2" color={stats?.newOrders > 0 ? 'success.main' : 'text.secondary'} sx={{ display: 'flex', alignItems: 'center' }}>
                   <NewIcon fontSize="small" sx={{ mr: 0.5 }} />
-                  {stats.newOrders} new
+                  {stats?.newOrders || 0} new
                 </Typography>
                 <Typography variant="body2" color="warning.main">
-                  {stats.pendingOrders} pending
+                  {stats?.pendingOrders || 0} pending
                 </Typography>
               </Box>
             </CardContent>
@@ -164,18 +164,18 @@ const DashboardPage = () => {
                 Revenue
               </Typography>
               <Typography variant="h4">
-                {formatCurrency(stats.totalRevenue)}
+                {formatCurrency(stats?.totalRevenue || 0)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                {stats.revenueChange >= 0 ? (
+                {(stats?.revenueChange || 0) >= 0 ? (
                   <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
                     <IncreaseIcon fontSize="small" />
-                    {stats.revenueChange}% vs last month
+                    {stats?.revenueChange || 0}% vs last month
                   </Typography>
                 ) : (
                   <Typography variant="body2" color="error.main" sx={{ display: 'flex', alignItems: 'center' }}>
                     <DecreaseIcon fontSize="small" />
-                    {Math.abs(stats.revenueChange)}% vs last month
+                    {Math.abs(stats?.revenueChange || 0)}% vs last month
                   </Typography>
                 )}
               </Box>
@@ -215,22 +215,31 @@ const DashboardPage = () => {
                 </TableHead>
                 <TableBody>
                   {recentOrders.map((order) => (
-                    <TableRow key={order.id} hover>
+                    <TableRow key={order.id || `order-${Math.random()}`} hover>
                       <TableCell>
                         <Link to={`/admin/orders/${order.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
                           <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
-                            {order.id.substring(0, 8)}...
+                            {order.id ? (order.id.substring(0, 8) + '...') : 'N/A'}
                           </Typography>
                         </Link>
                       </TableCell>
                       <TableCell>{order.user?.companyName || 'N/A'}</TableCell>
-                      <TableCell align="right">{formatCurrency(order.totalPrice)}</TableCell>
+                      <TableCell align="right">{formatCurrency(order.totalPrice || 0)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={order.status} />
+                        <StatusBadge status={order.status || 'unknown'} />
                       </TableCell>
                       <TableCell>{formatDate(order.createdAt)}</TableCell>
                     </TableRow>
                   ))}
+                  {recentOrders.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          No recent orders
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -246,14 +255,14 @@ const DashboardPage = () => {
             
             <List dense>
               {recentUsers.map((user) => (
-                <React.Fragment key={user.id}>
+                <React.Fragment key={user.id || `user-${Math.random()}`}>
                   <ListItem>
                     <ListItemIcon>
                       <UsersIcon />
                     </ListItemIcon>
                     <ListItemText
-                      primary={user.companyName}
-                      secondary={`${user.email} • Joined ${formatDate(user.createdAt)}`}
+                      primary={user.companyName || user.displayName || 'Unknown User'}
+                      secondary={`${user.email || 'No Email'} • Joined ${formatDate(user.createdAt)}`}
                     />
                     <Button 
                       component={Link} 
@@ -266,6 +275,14 @@ const DashboardPage = () => {
                   <Divider variant="inset" component="li" />
                 </React.Fragment>
               ))}
+              {recentUsers.length === 0 && (
+                <ListItem>
+                  <ListItemText
+                    primary="No recent users"
+                    secondary="New users will appear here"
+                  />
+                </ListItem>
+              )}
             </List>
             
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>

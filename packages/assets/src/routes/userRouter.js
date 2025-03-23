@@ -1,46 +1,48 @@
 import React, { lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import Loadable from '../components/Loadable';
-import MainLayout from '../layouts/MainLayout';
+import { Routes, Route } from 'react-router-dom';
+import MainLayout from '../layouts/MainLayout.js';
+import Loadable from '../components/Loadable.js';
 
-// Lazy load user pages for better performance
-const DashboardPage = Loadable(lazy(() => import('../pages/DashboardPage')));
-const ProductsPage = Loadable(lazy(() => import('../pages/ProductsPage')));
-const ProductDetailPage = Loadable(lazy(() => import('../pages/ProductDetailPage')));
-const OrdersPage = Loadable(lazy(() => import('../pages/OrdersPage')));
-const OrderDetailPage = Loadable(lazy(() => import('../pages/OrderDetailPage')));
-const ImportOrdersPage = Loadable(lazy(() => import('../pages/ImportOrdersPage')));
-const ImportDetailPage = Loadable(lazy(() => import('../pages/ImportDetailPage')));
-const DepositPage = Loadable(lazy(() => import('../pages/DepositPage')));
-const TransactionsPage = Loadable(lazy(() => import('../pages/TransactionsPage')));
-const ProfilePage = Loadable(lazy(() => import('../pages/ProfilePage')));
-const NotFoundPage = Loadable(lazy(() => import('../pages/NotFoundPage')));
+// Lazy load pages for better performance
+const DashboardPage = Loadable(lazy(() => import('../pages/DashboardPage.js')));
+const ProfilePage = Loadable(lazy(() => import('../pages/ProfilePage.js')));
+const ProductsPage = Loadable(lazy(() => import('../pages/ProductsPage.js')));
+const ProductDetailPage = Loadable(lazy(() => import('../pages/ProductDetailPage.js')));
+const OrdersPage = Loadable(lazy(() => import('../pages/OrdersPage.js')));
+const OrderDetailPage = Loadable(lazy(() => import('../pages/OrderDetailPage.js')));
+const CreateOrderPage = Loadable(lazy(() => import('../pages/CreateOrderPage.js')));
+const ImportOrdersPage = Loadable(lazy(() => import('../pages/ImportOrdersPage.js')));
+const ImportDetailPage = Loadable(lazy(() => import('../pages/ImportDetailPage.js')));
+const DepositPage = Loadable(lazy(() => import('../pages/DepositPage.js')));
+const TransactionsPage = Loadable(lazy(() => import('../pages/TransactionsPage.js')));
+const NotFoundPage = Loadable(lazy(() => import('../pages/NotFoundPage.js')));
 
 /**
- * User Router Component
+ * User router component
  * 
- * This component handles all routes for regular users including:
+ * This component handles all routes for the regular user section including:
  * - Dashboard
+ * - Profile
  * - Products browsing
  * - Orders management
- * - Import orders
- * - Financial operations (deposit, transactions)
- * - User profile
+ * - Transactions and deposits
  */
 const UserRouter = () => {
   return (
     <MainLayout>
       <Routes>
-        <Route index element={<DashboardPage />} />
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="products/:productId" element={<ProductDetailPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/:orderId" element={<OrderDetailPage />} />
+        <Route path="orders/create" element={<CreateOrderPage />} />
         <Route path="import-orders" element={<ImportOrdersPage />} />
         <Route path="import-orders/:importId" element={<ImportDetailPage />} />
         <Route path="deposit" element={<DepositPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
-        <Route path="profile" element={<ProfilePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </MainLayout>

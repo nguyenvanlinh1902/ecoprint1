@@ -31,53 +31,121 @@ app.use(createErrorHandler());
 
 // CORS configuration
 app.use(cors({
-  origin: (ctx) => {
-    const requestOrigin = ctx.request.header.origin;
-    if (appConfig.cors.allowedOrigins.includes(requestOrigin)) {
-      return requestOrigin;
-    }
-    return false;
-  },
+  origin: '*',
   allowMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposeHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
-  credentials: appConfig.cors.credentials,
+  credentials: true,
+  maxAge: 86400
 }));
+
+console.log('Auth handler initialized - ready to handle requests');
+console.log('CORS configured with open access - allowing all origins');
+console.log('Auth handler will connect to PRODUCTION Firestore');
 
 // Custom JSON body parser middleware
 app.use(async (ctx, next) => {
-  console.log('test')
+  console.log(`Auth handler received: ${ctx.method} ${ctx.url}`);
 
   if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
     try {
-      console.log('test')
-      const body = await new Promise((resolve, reject) => {
-        let data = '';
-        ctx.req.on('data', chunk => {
-          data += chunk;
-        });
-        ctx.req.on('end', () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            reject(new Error('Invalid JSON'));
-          }
-        });
-        ctx.req.on('error', reject);
-      });
-      ctx.request.body = body;
+      // Nếu đã có body từ ctx.request.body (Koa standard), sử dụng nó
+      if (ctx.request && ctx.request.body && Object.keys(ctx.request.body).length > 0) {
+        console.log('Using existing body from ctx.request.body');
+        ctx.req.body = ctx.request.body;
+      } 
+      // Nếu đã có body từ Firebase Functions (ctx.req.body), sử dụng nó
+      else if (ctx.req && ctx.req.body && Object.keys(ctx.req.body).length > 0) {
+        console.log('Using existing body from ctx.req.body');
+        ctx.request.body = ctx.req.body;
+      } 
+      // Nếu có rawBody, parse nó
+      else if (ctx.req && ctx.req.rawBody) {
+        try {
+          console.log('Parsing body from rawBody');
+          const rawBody = ctx.req.rawBody.toString();
+          console.log('Raw body:', rawBody);
+          const parsedBody = JSON.parse(rawBody);
+          ctx.req.body = parsedBody;
+          ctx.request.body = parsedBody;
+        } catch (e) {
+          console.error('Error parsing raw body:', e);
+          ctx.req.body = {};
+          ctx.request.body = {};
+        }
+      } 
+      // Nếu không có gì, đọc stream (cẩn thận)
+      else {
+        try {
+          console.log('Reading body from request stream');
+          const body = await readRequestBody(ctx.req);
+          ctx.req.body = body;
+          ctx.request.body = body;
+        } catch (err) {
+          console.error('Failed to read body stream:', err);
+          ctx.req.body = {};
+          ctx.request.body = {};
+        }
+      }
+      
+      // Log body cho debugging
+      console.log('Auth request body after parsing:', JSON.stringify(ctx.request.body || ctx.req.body || {}));
+      
+      // Đảm bảo cả hai ctx.request.body và ctx.req.body đều có dữ liệu giống nhau
+      if (ctx.request && ctx.request.body) {
+        ctx.req.body = ctx.request.body;
+      } else if (ctx.req && ctx.req.body) {
+        ctx.request.body = ctx.req.body;
+      }
     } catch (err) {
-      ctx.throw(400, err.message);
+      console.error('Body parsing error in auth handler:', err);
+      ctx.req.body = {};
+      ctx.request.body = {};
     }
   }
+  
   await next();
 });
+
+// Helper function to read request body
+function readRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    
+    req.on('data', (chunk) => {
+      chunks.push(chunk);
+    });
+    
+    req.on('end', () => {
+      if (chunks.length === 0) {
+        return resolve({});
+      }
+      
+      const bodyString = Buffer.concat(chunks).toString();
+      try {
+        const body = bodyString ? JSON.parse(bodyString) : {};
+        resolve(body);
+      } catch (e) {
+        console.error('Error parsing JSON:', e);
+        resolve({});
+      }
+    });
+    
+    req.on('error', (err) => {
+      console.error('Error reading request:', err);
+      resolve({});
+    });
+    
+    // Set timeout to avoid hanging
+    setTimeout(() => resolve({}), 3000);
+  });
+}
 
 // Auth routes
 const router = new Router();
 
 router.post('/register', async (ctx) => {
-  const { email, password } = ctx.request.body;
+  const { email, password } = ctx.req.body;
 
   if (!email || !password) {
     ctx.status = 400;

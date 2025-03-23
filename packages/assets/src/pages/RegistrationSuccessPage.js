@@ -39,7 +39,7 @@ const RegistrationSuccessPage = () => {
           
           <Button
             component={Link}
-            to="/login"
+            to="/auth/login"
             variant="contained"
             fullWidth
             sx={{ mt: 2 }}

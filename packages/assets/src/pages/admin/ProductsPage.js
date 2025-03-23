@@ -70,6 +70,16 @@ const ProductsPage = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
   
+  // Category modal state
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
+  const [categoryError, setCategoryError] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState(false);
+  const [categoryDeleteDialogOpen, setCategoryDeleteDialogOpen] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
+  
   // Filter state
   const [filters, setFilters] = useState({
     search: '',
@@ -137,54 +147,82 @@ const ProductsPage = () => {
   const loadProductData = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/api/admin/products/${productId}`);
+      console.log('Loading product data for ID:', productId);
+      const response = await api.admin.getProduct(productId);
       
-      if (response.data) {
-        const product = response.data;
+      if (response.data && response.data.success) {
+        const product = response.data.data;
+        console.log('Product data loaded:', product);
         
         // Format data to match form structure
         setFormData({
           name: product.name || '',
           description: product.description || '',
-          price: product.price || '',
-          category: product.category?.id || '',
+          price: product.price?.toString() || '',
+          sku: product.sku || '',
+          category: product.categoryId || '',
           status: product.status || 'active',
           features: product.features || [],
           specifications: product.specifications || {},
           deliveryOptions: product.deliveryOptions || [],
-          imageUrl: product.imageUrl || '',
+          imageUrl: product.images && product.images.length > 0 ? product.images[0] : '',
           imageFile: null
         });
+      } else {
+        console.error('Failed to load product data:', response);
+        setFormError('Failed to load product data. Invalid response format.');
       }
     } catch (error) {
-      /* error removed */
-      setFormError('Failed to load product data');
+      console.error('Error loading product data:', error);
+      setFormError('Failed to load product data: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
   };
-  api.products.getAll()
 
   const fetchProducts = async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
+      console.log('Fetching products with page:', page + 1, 'limit:', rowsPerPage);
+      const response = await api.admin.getAllProducts({
+        page: page + 1,
+        limit: rowsPerPage
+      });
       
-      const params = new URLSearchParams();
-      params.append('page', page + 1);
-      params.append('limit', rowsPerPage);
+      console.log('Products response:', response);
       
-      if (filters.search) params.append('search', filters.search);
-      if (filters.category) params.append('category', filters.category);
-      if (filters.status) params.append('status', filters.status);
-      
-      const response = await api.get(`/api/admin/products?${params.toString()}`);
-      
-      setProducts(response.data.data || []);
-      setTotal(response.data.total || 0);
-      setError('');
+      if (response && response.data && response.data.success) {
+        const productsData = response.data.products || [];
+        const paginationData = response.data.pagination || { 
+          total: 0, 
+          page: 1, 
+          totalPages: 1 
+        };
+        
+        // Ensure products is always an array
+        if (!Array.isArray(productsData)) {
+          console.error('Products data is not an array:', productsData);
+          setProducts([]);
+        } else {
+          console.log(`Loaded ${productsData.length} products`);
+          setProducts(productsData);
+        }
+        
+        setTotal(paginationData.total || 0);
+        setError('');
+      } else {
+        console.error('Failed to fetch products:', response);
+        setError('Failed to load products. Please try again.');
+        setProducts([]);
+      }
     } catch (error) {
-      /* error removed */
-      setError('Failed to fetch products. Please try again.');
+      console.error('Error fetching products:', error);
+      setError(
+        error.response?.data?.message || 
+        'Error fetching products: ' + (error.message || 'Unknown error')
+      );
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -192,10 +230,20 @@ const ProductsPage = () => {
   
   const fetchCategories = async () => {
     try {
-      const response = await api.get('/api/categories');
-      setCategories(response.data.data || []);
+      console.log('Fetching product categories');
+      // Sử dụng api.products.getCategories thay vì gọi trực tiếp
+      const response = await api.products.getCategories();
+      
+      if (response.data && response.data.success) {
+        setCategories(response.data.data || []);
+      } else {
+        console.warn('No categories found or unexpected response format');
+        setCategories([]);
+      }
     } catch (error) {
-      /* error removed */
+      console.error("Error fetching categories:", error);
+      // Không hiển thị lỗi cho người dùng, chỉ ghi log
+      setCategories([]);
     }
   };
   
@@ -452,7 +500,7 @@ const ProductsPage = () => {
     navigate(`/admin/products/${id}/edit`);
   };
   
-  const handleAddNewProduct = () => {
+  const handleAddProduct = () => {
     navigate('/admin/products/new');
   };
   
@@ -581,11 +629,175 @@ const ProductsPage = () => {
     }
   };
 
+  // Category management functions
+  const handleOpenCategoryModal = (category = null) => {
+    if (category) {
+      setEditingCategory(category);
+      setCategoryFormData({
+        name: category.name || '',
+        description: category.description || ''
+      });
+    } else {
+      setEditingCategory(null);
+      setCategoryFormData({
+        name: '',
+        description: ''
+      });
+    }
+    setCategoryError('');
+    setCategoryModalOpen(true);
+  };
+
+  const handleCloseCategoryModal = () => {
+    setCategoryModalOpen(false);
+    setCategoryFormData({ name: '', description: '' });
+    setCategoryError('');
+    setEditingCategory(null);
+  };
+
+  const handleCategoryInputChange = (e) => {
+    const { name, value } = e.target;
+    setCategoryFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSaveCategory = async () => {
+    if (!categoryFormData.name.trim()) {
+      setCategoryError('Category name is required');
+      return;
+    }
+
+    try {
+      setSavingCategory(true);
+      setCategoryError('');
+
+      if (editingCategory) {
+        // Update existing category
+        const response = await api.admin.updateCategory(editingCategory.id, categoryFormData);
+        
+        if (response.data && response.data.success) {
+          // Update the category in the list
+          setCategories(prev => 
+            prev.map(cat => 
+              cat.id === editingCategory.id ? response.data.data : cat
+            )
+          );
+          
+          // Also update any products that use this category
+          if (products.some(p => p.category?.id === editingCategory.id)) {
+            fetchProducts();
+          }
+        } else {
+          throw new Error(response.data?.message || 'Failed to update category');
+        }
+      } else {
+        // Create new category
+        const response = await api.products.createCategory(categoryFormData);
+        
+        if (response.data && response.data.success) {
+          // Add the new category to the list
+          setCategories(prev => [...prev, response.data.data]);
+        } else {
+          throw new Error(response.data?.message || 'Failed to create category');
+        }
+      }
+      
+      handleCloseCategoryModal();
+    } catch (error) {
+      console.error('Error saving category:', error);
+      setCategoryError(error.response?.data?.message || error.message || 'Failed to save category');
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
+  const handleDeleteCategoryClick = (category) => {
+    setCategoryToDelete(category);
+    setCategoryDeleteDialogOpen(true);
+  };
+
+  const handleDeleteCategoryCancel = () => {
+    setCategoryDeleteDialogOpen(false);
+    setCategoryToDelete(null);
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    
+    try {
+      setDeletingCategory(true);
+      
+      const response = await api.admin.deleteCategory(categoryToDelete.id);
+      
+      if (response.data && response.data.success) {
+        // Remove the category from the list
+        setCategories(prev => prev.filter(cat => cat.id !== categoryToDelete.id));
+        
+        // If products were filtered by this category, reset the filter
+        if (filters.category === categoryToDelete.id) {
+          setFilters(prev => ({ ...prev, category: '' }));
+          fetchProducts();
+        }
+        
+        setCategoryDeleteDialogOpen(false);
+      } else {
+        throw new Error(response.data?.message || 'Failed to delete category');
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      setError(error.response?.data?.message || error.message || 'Failed to delete category');
+      // Keep the dialog open to show the error
+    } finally {
+      setDeletingCategory(false);
+    }
+  };
+
   return (
     <Box sx={{ width: '100%' }}>
-      <Typography variant="h4" sx={{ mb: 3 }}>
-        Products Management
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">Products</Typography>
+        
+        <Box>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            sx={{ mr: 1 }}
+            onClick={() => window.open('/api/admin/products/export-template', '_blank')}
+          >
+            Template
+          </Button>
+          
+          <Button
+            variant="outlined"
+            startIcon={<FileUploadIcon />}
+            sx={{ mr: 1 }}
+            onClick={() => setImportDialogOpen(true)}
+          >
+            Import
+          </Button>
+          
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenCategoryModal()}
+            sx={{ mr: 1 }}
+          >
+            Add Category
+          </Button>
+          
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={handleAddProduct}
+          >
+            Add Product
+          </Button>
+        </Box>
+      </Box>
       
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -670,25 +882,12 @@ const ProductsPage = () => {
             </Grid>
           </Paper>
 
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-            <Button 
-              variant="outlined" 
-              color="primary" 
-              startIcon={<FileUploadIcon />}
-              onClick={handleImportDialogOpen}
-              sx={{ mr: 2 }}
-            >
-              Import Products
-            </Button>
-            <Button 
-              variant="contained" 
-              color="primary" 
-              startIcon={<AddIcon />}
-              onClick={handleAddNewProduct}
-            >
-              Add New Product
-            </Button>
-          </Box>
+          {/* Filters */}
+          <Paper sx={{ p: 2, mb: 3 }}>
+            <Grid container spacing={2} alignItems="center">
+              {/* Filter fields */}
+            </Grid>
+          </Paper>
           
           <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto' }}>
             <Table sx={{ minWidth: 800 }}>
@@ -702,38 +901,66 @@ const ProductsPage = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {loading && !products.length ? (
+                {loading ? (
                   <TableRow>
                     <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
                       <CircularProgress />
                     </TableCell>
                   </TableRow>
+                ) : error ? (
+                  <TableRow>
+                    <TableCell colSpan={5} align="center">
+                      <Alert severity="error">{error}</Alert>
+                    </TableCell>
+                  </TableRow>
                 ) : products.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <TableCell colSpan={5} align="center">
                       No products found.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  products.map((product) => (
+                  Array.isArray(products) && products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {product.imageUrl && (
+                          {product.images && product.images.length > 0 ? (
                             <Box
                               component="img"
-                              src={product.imageUrl}
+                              src={product.images[0]}
                               alt={product.name}
                               sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain' }}
                             />
+                          ) : (
+                            <Box
+                              component="div"
+                              sx={{ 
+                                width: 40, 
+                                height: 40, 
+                                mr: 2, 
+                                bgcolor: 'grey.200', 
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: 'text.secondary',
+                                fontSize: '10px'
+                              }}
+                            >
+                              No Image
+                            </Box>
                           )}
                           {product.name}
                         </Box>
                       </TableCell>
                       <TableCell>
-                        {product.category?.name || 'Uncategorized'}
+                        {product.categoryName || (product.categoryId ? 'Unknown Category' : 'No Category')}
                       </TableCell>
-                      <TableCell>${parseFloat(product.price).toFixed(2)}</TableCell>
+                      <TableCell>
+                        {new Intl.NumberFormat('vi-VN', {
+                          style: 'currency',
+                          currency: 'VND'
+                        }).format(product.price || 0)}
+                      </TableCell>
                       <TableCell>
                         <Chip 
                           label={product.status} 
@@ -929,6 +1156,17 @@ const ProductsPage = () => {
                           </MenuItem>
                         ))}
                       </Select>
+                      {!isViewMode && (
+                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                          <Button 
+                            size="small" 
+                            onClick={() => handleOpenCategoryModal()}
+                            startIcon={<AddIcon />}
+                          >
+                            Manage Categories
+                          </Button>
+                        </Box>
+                      )}
                     </FormControl>
                   </Grid>
                   
@@ -1261,6 +1499,85 @@ const ProductsPage = () => {
             startIcon={importing ? <CircularProgress size={20} /> : null}
           >
             {importing ? 'Importing...' : 'Import Products'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Category Management Modal */}
+      <Dialog 
+        open={categoryModalOpen} 
+        onClose={handleCloseCategoryModal}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          {editingCategory ? 'Edit Category' : 'Add Category'}
+        </DialogTitle>
+        <DialogContent>
+          {categoryError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {categoryError}
+            </Alert>
+          )}
+          
+          <TextField
+            autoFocus
+            margin="dense"
+            name="name"
+            label="Category Name"
+            type="text"
+            fullWidth
+            value={categoryFormData.name}
+            onChange={handleCategoryInputChange}
+            required
+            sx={{ mb: 2 }}
+          />
+          
+          <TextField
+            margin="dense"
+            name="description"
+            label="Description"
+            type="text"
+            fullWidth
+            multiline
+            rows={4}
+            value={categoryFormData.description}
+            onChange={handleCategoryInputChange}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCategoryModal}>Cancel</Button>
+          <Button 
+            onClick={handleSaveCategory} 
+            variant="contained" 
+            color="primary"
+            disabled={savingCategory}
+          >
+            {savingCategory ? <CircularProgress size={24} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Category Delete Confirmation Dialog */}
+      <Dialog
+        open={categoryDeleteDialogOpen}
+        onClose={handleDeleteCategoryCancel}
+      >
+        <DialogTitle>Delete Category</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete the category "{categoryToDelete?.name}"?
+            This cannot be undone, and any products assigned to this category will need to be reassigned.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCategoryCancel}>Cancel</Button>
+          <Button 
+            onClick={handleDeleteCategory} 
+            color="error"
+            disabled={deletingCategory}
+          >
+            {deletingCategory ? <CircularProgress size={24} /> : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

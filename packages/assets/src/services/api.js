@@ -3,7 +3,29 @@ import axios from 'axios';
 // Đảm bảo rằng đường dẫn API gốc được thiết lập đúng
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+console.log('[API] Initializing API client with base URL:', API_BASE_URL);
+
 /* log removed */
+
+// Tiện ích retry cho các hàm không đồng bộ
+const retryRequest = async (fn, retries = 3, delay = 1000) => {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) {
+      throw error;
+    }
+    
+    // Chỉ retry các lỗi mạng, không retry các lỗi 4xx
+    if (error.response && error.response.status >= 400 && error.response.status < 500) {
+      throw error;
+    }
+    
+    console.log(`[API] Request failed, retrying... (${retries} attempts left)`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return retryRequest(fn, retries - 1, delay * 1.5);
+  }
+};
 
 // Helper function to validate api client integrity
 const createApiClient = () => {
@@ -11,20 +33,14 @@ const createApiClient = () => {
     const client = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       // Add a timeout to prevent hanging requests
-      timeout: 15000,
-      // Đảm bảo không gửi stream không đọc được
-      transformRequest: [(data, headers) => {
-        // Nếu data không phải là FormData (cho upload file), thì chuyển đổi thành JSON string
-        if (data && !(data instanceof FormData)) {
-          headers['Content-Type'] = 'application/json';
-          return JSON.stringify(data);
-        }
-        return data;
-      }]
+      timeout: 15000
     });
+    
+    console.log('[API] API client created with baseURL:', client.defaults.baseURL);
     
     // Initialize headers object if it doesn't exist
     if (!client.defaults) {
@@ -41,7 +57,7 @@ const createApiClient = () => {
     
     return client;
   } catch (error) {
-    /* error removed */
+    console.error('[API] Error creating API client:', error);
     // Return a minimal implementation that won't crash
     return {
       defaults: {
@@ -76,7 +92,7 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    /* error removed */
+    console.error('[API] Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -87,13 +103,26 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    /* error removed */
+    console.error('[API] Response error:', error);
+    
+    let errorMessage = 'Đã xảy ra lỗi trong quá trình kết nối đến máy chủ.';
+    
+    // Xử lý lỗi mạng
+    if (!error.response) {
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Yêu cầu đã hết thời gian chờ. Vui lòng thử lại sau.';
+      } else if (error.message && error.message.includes('Network Error')) {
+        errorMessage = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn.';
+      }
+      error.friendlyMessage = errorMessage;
+    }
     
     // Only handle 401 errors for token removal - don't redirect automatically
     if (error.response && error.response.status === 401) {
       // Only remove the token from localStorage
       localStorage.removeItem('authToken');
       // Don't redirect - let the component handle redirection if needed
+      error.friendlyMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
     }
     return Promise.reject(error);
   }
@@ -101,28 +130,91 @@ api.interceptors.response.use(
 
 // Authentication API
 const auth = {
-  register: (data) => api.post('/auth/register', data),
-  login: (email, password) => api.post('/auth/login', { email, password }),
-  forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (token, newPassword) => api.post('/auth/reset-password', { token, newPassword }),
-  getProfile: () => api.get('/user/profile'),
-  updateProfile: (data) => api.put('/user/profile', data)
+  register: (data) => {
+    console.log('[API] Registering user with data:', data);
+    return retryRequest(() => 
+      axios({
+        method: 'post',
+        url: `${API_BASE_URL}/auth/register`,
+        data: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      })
+    );
+  },
+  login: (email, password) => {
+    console.log('[API] Logging in user:', email);
+    return retryRequest(() => 
+      axios({
+        method: 'post',
+        url: `${API_BASE_URL}/auth/login`,
+        data: JSON.stringify({ email, password }),
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      })
+    );
+  },
+  forgotPassword: (email) => retryRequest(() => 
+    axios({
+      method: 'post',
+      url: `${API_BASE_URL}/auth/forgot-password`,
+      data: JSON.stringify({ email }),
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    })
+  ),
+  resetPassword: (token, newPassword) => retryRequest(() => 
+    axios({
+      method: 'post',
+      url: `${API_BASE_URL}/auth/reset-password`,
+      data: JSON.stringify({ token, newPassword }),
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 10000
+    })
+  ),
+  getProfile: () => retryRequest(() => api.get('/auth/me')),
+  updateProfile: (data) => retryRequest(() => 
+    axios({
+      method: 'patch',
+      url: `${API_BASE_URL}/auth/profile`,
+      data: JSON.stringify(data),
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}` 
+      },
+      timeout: 10000
+    })
+  ),
+  verifyToken: () => retryRequest(() => api.get('/auth/verify-token'))
 };
 
 // Products API
 const products = {
-  getAll: (params) => api.get('/products', { params }),
-  getById: (id) => api.get(`/products/${id}`),
+  getAll: (params) => retryRequest(() => api.get('/products', { params })),
+  getById: (id) => retryRequest(() => api.get(`/products/${id}`)),
   create: (data) => api.post('/products', data),
   update: (id, data) => api.put(`/products/${id}`, data),
   delete: (id) => api.delete(`/products/${id}`),
-  uploadImage: (formData) => api.post('/products/upload-image', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
-  }),
-  getCategories: () => api.get('/categories'),
-  createCategory: (data) => api.post('/categories', data)
+  uploadImage: (formData) => {
+    return retryRequest(async () => {
+      console.log('[API] Uploading image to:', `${API_BASE_URL}/products/upload-image`);
+      const response = await axios.post(`${API_BASE_URL}/products/upload-image`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        }
+      });
+      return response.data;
+    }, 'products.uploadImage');
+  },
+  getCategories: () => retryRequest(() => api.get('/categories')),
+  getCategoryById: (id) => retryRequest(() => api.get(`/categories/${id}`)),
+  createCategory: (data) => retryRequest(() => api.post('/categories', data)),
+  updateCategory: (id, data) => retryRequest(() => api.put(`/admin/categories/${id}`, data)),
+  deleteCategory: (id) => retryRequest(() => api.delete(`/admin/categories/${id}`)),
 };
 
 // Orders API
@@ -153,9 +245,12 @@ const admin = {
   // Users management
   getUsers: (params) => api.get('/admin/users', { params }),
   getUserById: (uid) => api.get(`/admin/users/${uid}`),
-  approveUser: (uid) => api.put(`/admin/users/${uid}/approve`),
-  rejectUser: (uid) => api.put(`/admin/users/${uid}/reject`),
+  getUserOrders: (uid, params) => api.get(`/admin/users/${uid}/orders`, { params }),
+  getUserTransactions: (uid, params) => api.get(`/admin/users/${uid}/transactions`, { params }),
+  approveUser: (uid) => api.post(`/admin/users/${uid}/approve`),
+  rejectUser: (uid) => api.post(`/admin/users/${uid}/reject`),
   updateUserStatus: (uid, status) => api.put(`/admin/users/${uid}/status`, { status }),
+  updateUser: (uid, userData) => api.put(`/admin/users/${uid}`, userData),
   
   // Orders management
   getAllOrders: (params) => api.get('/admin/orders', { params }),
@@ -168,14 +263,22 @@ const admin = {
   approveTransaction: (id) => api.put(`/admin/transactions/${id}/approve`),
   rejectTransaction: (id, reason) => api.put(`/admin/transactions/${id}/reject`, { reason }),
   
-  // Products management
+  // Products and categories management
   getAllProducts: (params) => api.get('/admin/products', { params }),
-  createProduct: (data) => api.post('/admin/products', data),
-  updateProduct: (id, data) => api.put(`/admin/products/${id}`, data),
+  getProduct: (id) => api.get(`/admin/products/${id}`),
+  createProduct: (productData) => api.post('/admin/products', productData),
+  updateProduct: (id, productData) => api.put(`/admin/products/${id}`, productData),
   deleteProduct: (id) => api.delete(`/admin/products/${id}`),
   
-  // Dashboard
-  getDashboardStats: () => api.get('/admin/dashboard')
+  // Categories management
+  getAllCategories: () => retryRequest(() => api.get('/categories')),
+  getCategoryById: (id) => retryRequest(() => api.get(`/categories/${id}`)),
+  createCategory: (data) => retryRequest(() => api.post('/categories', data)),
+  updateCategory: (id, data) => retryRequest(() => api.put(`/admin/categories/${id}`, data)),
+  deleteCategory: (id) => retryRequest(() => api.delete(`/admin/categories/${id}`)),
+  
+  // Dashboard data
+  getDashboard: () => api.get('/admin/dashboard')
 };
 
 // Helper to set auth token (used by auth hooks)

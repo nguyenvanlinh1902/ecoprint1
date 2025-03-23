@@ -8,7 +8,11 @@ import {
   Container, 
   Box, 
   Alert, 
-  Grid
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import { validateInput, stripHTML } from '../helpers/validation';
@@ -20,7 +24,8 @@ const RegisterPage = () => {
     confirmPassword: '',
     displayName: '',
     companyName: '',
-    phone: ''
+    phone: '',
+    role: 'user'
   });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
@@ -70,16 +75,22 @@ const RegisterPage = () => {
         password: stripHTML(formData.password),
         displayName: stripHTML(formData.displayName),
         companyName: stripHTML(formData.companyName),
-        phone: stripHTML(formData.phone)
+        phone: stripHTML(formData.phone),
+        role: 'user' // Hardcode to user role
       };
+
+      console.log('Register data:', sanitizedData);
 
       const result = await registerViaApi(
         sanitizedData.email, 
         sanitizedData.password, 
         sanitizedData.displayName, 
         sanitizedData.companyName, 
-        sanitizedData.phone
+        sanitizedData.phone,
+        sanitizedData.role
       );
+      
+      console.log('Registration successful, navigating to success page with result:', result);
       
       // If successful, navigate to success page with message
       navigate('/registration-success', { 
@@ -89,6 +100,7 @@ const RegisterPage = () => {
         }
       });
     } catch (error) {
+      console.error('Registration error:', error);
       setServerError(error.message || 'Registration failed. Please try again later.');
     } finally {
       setLoading(false);
@@ -153,6 +165,7 @@ const RegisterPage = () => {
               label="Confirm Password"
               type="password"
               id="confirmPassword"
+              autoComplete="new-password"
               value={formData.confirmPassword}
               onChange={handleChange}
               error={!!errors.confirmPassword}
@@ -173,12 +186,10 @@ const RegisterPage = () => {
             />
             <TextField
               margin="normal"
-              required
               fullWidth
               name="companyName"
-              label="Company Name"
+              label="Company Name (Optional)"
               id="companyName"
-              autoComplete="organization"
               value={formData.companyName}
               onChange={handleChange}
               error={!!errors.companyName}
@@ -186,10 +197,9 @@ const RegisterPage = () => {
             />
             <TextField
               margin="normal"
-              required
               fullWidth
               name="phone"
-              label="Phone Number"
+              label="Phone Number (Optional)"
               id="phone"
               autoComplete="tel"
               value={formData.phone}
@@ -210,12 +220,11 @@ const RegisterPage = () => {
             
             <Grid container justifyContent="center">
               <Grid item>
-                <Typography variant="body2">
-                  Already have an account?{' '}
-                  <Link to="/login" style={{ textDecoration: 'none' }}>
-                    Sign in
-                  </Link>
-                </Typography>
+                <Link to="/auth/login" style={{ textDecoration: 'none' }}>
+                  <Typography variant="body2" color="primary">
+                    Already have an account? Login
+                  </Typography>
+                </Link>
               </Grid>
             </Grid>
           </Box>

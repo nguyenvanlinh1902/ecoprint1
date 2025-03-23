@@ -1,189 +1,273 @@
 import { admin } from '../config/firebase.js';
+import productRepository from '../repositories/productRepository.js';
+import categoryRepository from '../repositories/categoryRepository.js';
 import { CustomError } from '../exceptions/customError.js';
 
 /**
- * Tạo sản phẩm mới
+ * Create a new product
+ * @param {Object} productData - Product data
+ * @returns {Promise<Object>} Created product
  */
 export const createProduct = async (productData) => {
   try {
-    const db = admin.firestore();
-    // Chuẩn bị dữ liệu sản phẩm
-    const newProduct = {
-      name: productData.name,
-      colors: productData.colors || [],
-      sizes: productData.sizes || [],
-      sku: productData.sku || `SKU-${Date.now()}`,
-      basePrice: productData.basePrice,
-      type: productData.type, // 'USA' hoặc 'VIETNAM'
-      customizationOptions: productData.customizationOptions || [],
-      active: true,
+    console.log('[ProductService] Creating new product:', productData.name);
+    
+    // Validate required fields
+    if (!productData.name) {
+      const error = new Error('Product name is required');
+      error.status = 400;
+      throw error;
+    }
+    
+    // Check if SKU already exists if provided
+    if (productData.sku) {
+      const existingProduct = await productRepository.findBySku(productData.sku);
+      if (existingProduct) {
+        const error = new Error(`Product with SKU ${productData.sku} already exists`);
+        error.status = 400;
+        throw error;
+      }
+    }
+    
+    // If categoryId provided, verify it exists
+    if (productData.categoryId) {
+      const category = await categoryRepository.findById(productData.categoryId);
+      if (!category) {
+        const error = new Error(`Category with ID ${productData.categoryId} not found`);
+        error.status = 400;
+        throw error;
+      }
+    }
+    
+    // Generate SKU if not provided
+    if (!productData.sku) {
+      productData.sku = `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    }
+    
+    // Clean and prepare product data
+    const newProductData = {
+      name: productData.name.trim(),
+      description: productData.description || '',
+      price: Number(productData.price) || 0,
+      sku: productData.sku,
+      stock: Number(productData.stock) || 0,
+      categoryId: productData.categoryId || null,
+      images: productData.images || [],
+      features: productData.features || [],
+      specifications: productData.specifications || {},
+      status: productData.status || 'active',
+      deliveryOptions: productData.deliveryOptions || [],
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
     
-    // Lưu vào Firestore
-    const docRef = await db.collection('products').add(newProduct);
+    const newProduct = await productRepository.create(newProductData);
+    console.log('[ProductService] Product created successfully:', newProduct.id);
     
-    return {
-      id: docRef.id,
-      ...newProduct
-    };
+    return newProduct;
   } catch (error) {
-    
-    throw new CustomError('Lỗi khi tạo sản phẩm mới', 500);
+    console.error('[ProductService] Error creating product:', error);
+    throw error;
   }
 };
 
 /**
- * Cập nhật thông tin sản phẩm
+ * Update an existing product
+ * @param {string} id - Product ID
+ * @param {Object} updateData - Product update data
+ * @returns {Promise<Object>} Updated product
  */
-export const updateProduct = async (productId, updateData) => {
+export const updateProduct = async (id, updateData) => {
   try {
-    const db = admin.firestore();
-    // Kiểm tra sản phẩm có tồn tại không
-    const productDoc = await db.collection('products').doc(productId).get();
+    console.log('[ProductService] Updating product:', id);
     
-    if (!productDoc.exists) {
-      throw new CustomError('Không tìm thấy sản phẩm', 404);
-    }
-    
-    // Cập nhật timestamp
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-    
-    await db.collection('products').doc(productId).update(updateData);
-    
-    // Lấy dữ liệu sản phẩm sau khi cập nhật
-    const updatedDoc = await db.collection('products').doc(productId).get();
-    
-    return {
-      id: updatedDoc.id,
-      ...updatedDoc.data()
-    };
-  } catch (error) {
-    
-    if (error instanceof CustomError) {
+    // Verify product exists
+    const product = await productRepository.findById(id);
+    if (!product) {
+      const error = new Error('Product not found');
+      error.status = 404;
       throw error;
     }
-    throw new CustomError('Lỗi khi cập nhật sản phẩm', 500);
+    
+    // Check if SKU already exists and belongs to a different product
+    if (updateData.sku && updateData.sku !== product.sku) {
+      const existingProduct = await productRepository.findBySku(updateData.sku);
+      if (existingProduct && existingProduct.id !== id) {
+        const error = new Error(`Product with SKU ${updateData.sku} already exists`);
+        error.status = 400;
+        throw error;
+      }
+    }
+    
+    // If categoryId provided, verify it exists
+    if (updateData.categoryId && updateData.categoryId !== product.categoryId) {
+      const category = await categoryRepository.findById(updateData.categoryId);
+      if (!category) {
+        const error = new Error(`Category with ID ${updateData.categoryId} not found`);
+        error.status = 400;
+        throw error;
+      }
+    }
+    
+    // Clean up and prepare update data
+    const cleanUpdateData = { ...updateData };
+    
+    // Convert numeric fields
+    if (cleanUpdateData.price !== undefined) {
+      cleanUpdateData.price = Number(cleanUpdateData.price);
+    }
+    if (cleanUpdateData.stock !== undefined) {
+      cleanUpdateData.stock = Number(cleanUpdateData.stock);
+    }
+    
+    // Trim text fields
+    if (cleanUpdateData.name) {
+      cleanUpdateData.name = cleanUpdateData.name.trim();
+    }
+    
+    // Set updated timestamp
+    cleanUpdateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    
+    const updatedProduct = await productRepository.update(id, cleanUpdateData);
+    console.log('[ProductService] Product updated successfully:', id);
+    
+    return updatedProduct;
+  } catch (error) {
+    console.error('[ProductService] Error updating product:', error);
+    throw error;
   }
 };
 
 /**
- * Lấy thông tin sản phẩm theo ID
+ * Get a product by ID
+ * @param {string} id - Product ID
+ * @returns {Promise<Object>} Product object
  */
-export const getProductById = async (productId) => {
+export const getProductById = async (id) => {
   try {
-    const db = admin.firestore();
-    const productDoc = await db.collection('products').doc(productId).get();
+    console.log('[ProductService] Getting product by ID:', id);
     
-    if (!productDoc.exists) {
+    const product = await productRepository.findById(id);
+    if (!product) {
       return null;
     }
     
-    return {
-      id: productDoc.id,
-      ...productDoc.data()
-    };
-  } catch (error) {
-    
-    throw new CustomError('Lỗi khi lấy thông tin sản phẩm', 500);
-  }
-};
-
-/**
- * Lấy danh sách tất cả sản phẩm
- */
-export const getAllProducts = async () => {
-  try {
-    const db = admin.firestore();
-    const productsSnapshot = await db.collection('products').get();
-    const products = [];
-    
-    productsSnapshot.forEach(doc => {
-      products.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return products;
-  } catch (error) {
-    
-    throw new CustomError('Lỗi khi lấy danh sách sản phẩm', 500);
-  }
-};
-
-/**
- * Lấy danh sách sản phẩm theo trạng thái (active/inactive)
- */
-export const getProductsByStatus = async (isActive) => {
-  try {
-    const db = admin.firestore();
-    const productsSnapshot = await db.collection('products')
-      .where('active', '==', isActive)
-      .get();
-    
-    const products = [];
-    
-    productsSnapshot.forEach(doc => {
-      products.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return products;
-  } catch (error) {
-    
-    throw new CustomError('Lỗi khi lấy danh sách sản phẩm theo trạng thái', 500);
-  }
-};
-
-/**
- * Xóa sản phẩm
- */
-export const deleteProduct = async (productId) => {
-  try {
-    const db = admin.firestore();
-    // Kiểm tra sản phẩm có tồn tại không
-    const productDoc = await db.collection('products').doc(productId).get();
-    
-    if (!productDoc.exists) {
-      throw new CustomError('Không tìm thấy sản phẩm', 404);
+    // Get category name if product has a category
+    if (product.categoryId) {
+      try {
+        const category = await categoryRepository.findById(product.categoryId);
+        if (category) {
+          product.categoryName = category.name;
+        }
+      } catch (categoryError) {
+        console.error('[ProductService] Error fetching category:', categoryError);
+        // Don't fail the whole request if category lookup fails
+      }
     }
     
-    // Kiểm tra xem sản phẩm đã được sử dụng trong đơn hàng chưa
-    const ordersSnapshot = await db.collection('orders')
-      .where('productId', '==', productId)
-      .limit(1)
-      .get();
+    return product;
+  } catch (error) {
+    console.error('[ProductService] Error getting product by ID:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all products with optional filtering
+ * @param {Object} options - Query options
+ * @returns {Promise<Object>} Products and pagination info
+ */
+export const getAllProducts = async (options = {}) => {
+  try {
+    console.log('[ProductService] Getting all products with options:', options);
     
-    if (!ordersSnapshot.empty) {
-      // Thay vì xóa, chỉ đánh dấu sản phẩm là không hoạt động
-      await db.collection('products').doc(productId).update({
-        active: false,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
+    // Get products with pagination from repository
+    const result = await productRepository.findAll(options);
+    
+    // Guard against malformed result
+    if (!result || !result.products) {
+      console.error('[ProductService] Invalid result structure from repository');
       return {
-        deleted: false,
-        message: 'Sản phẩm đã được sử dụng trong đơn hàng, chuyển sang trạng thái không hoạt động'
+        products: [],
+        pagination: {
+          total: 0,
+          page: Math.floor(options.offset / options.limit) + 1 || 1,
+          limit: options.limit || 20,
+          totalPages: 0
+        }
       };
     }
     
-    // Xóa sản phẩm nếu chưa được sử dụng
-    await db.collection('products').doc(productId).delete();
+    // Get category names for all products
+    const categoryIds = new Set();
+    result.products.forEach(product => {
+      if (product.categoryId) {
+        categoryIds.add(product.categoryId);
+      }
+    });
     
-    return {
-      deleted: true,
-      message: 'Xóa sản phẩm thành công'
-    };
+    if (categoryIds.size > 0) {
+      const categories = {};
+      
+      // Get all categories in one batch
+      const categoryPromises = Array.from(categoryIds).map(
+        catId => categoryRepository.findById(catId)
+      );
+      
+      const categoryResults = await Promise.all(categoryPromises);
+      
+      categoryResults.forEach(category => {
+        if (category) {
+          categories[category.id] = category.name;
+        }
+      });
+      
+      // Add category names to products
+      result.products.forEach(product => {
+        if (product.categoryId && categories[product.categoryId]) {
+          product.categoryName = categories[product.categoryId];
+        }
+      });
+    }
+    
+    return result;
   } catch (error) {
+    console.error('[ProductService] Error getting all products:', error);
+    // Return an empty result with valid structure to avoid undefined errors
+    return {
+      products: [],
+      pagination: {
+        total: 0,
+        page: 1,
+        limit: options.limit || 20,
+        totalPages: 0
+      }
+    };
+  }
+};
+
+/**
+ * Delete a product
+ * @param {string} id - Product ID
+ * @returns {Promise<void>}
+ */
+export const deleteProduct = async (id) => {
+  try {
+    console.log('[ProductService] Deleting product:', id);
     
-    if (error instanceof CustomError) {
+    // Verify product exists
+    const product = await productRepository.findById(id);
+    if (!product) {
+      const error = new Error('Product not found');
+      error.status = 404;
       throw error;
     }
-    throw new CustomError('Lỗi khi xóa sản phẩm', 500);
+    
+    await productRepository.delete(id);
+    console.log('[ProductService] Product deleted successfully:', id);
+  } catch (error) {
+    console.error('[ProductService] Error deleting product:', error);
+    throw error;
   }
 };
 
@@ -192,6 +276,5 @@ export default {
   updateProduct,
   getProductById,
   getAllProducts,
-  getProductsByStatus,
   deleteProduct
 }; 

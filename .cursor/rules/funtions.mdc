@@ -1,7 +1,15 @@
 ---
 description: 
 globs: 
+alwaysApply: false
 ---
+Client Request → API Handler → Routes → Controllers → Services/Repositories → Firestore/External APIs
+index.js: Defines HTTP endpoints and Pub/Sub triggers
+handlers/api.js: Sets up Koa.js application with middleware, error handling, and route registration
+routes/api.js: Maps URL paths to specific controller methods
+controllers/: Execute business logic and interact with repositories/services
+repositories/: Provide CRUD operations on Firestore collections
+
 # KoaJS Development Rules and Best Practices
 
 This document outlines the rules, patterns, and best practices for developing with KoaJS in our functions architecture.
@@ -189,21 +197,3 @@ api.use(router.routes());
 - Configure function resources appropriately
 - Implement event triggers (Firestore, Auth, etc.)
 - Create scheduled functions when needed
-
-### Firebase Best Practices
-
-1. **Security Rules**: Always define proper Firestore and Storage security rules
-2. **Transactions**: Use transactions for atomic operations
-3. **Batched Writes**: Use batch operations for multiple writes
-4. **Indexes**: Create composite indexes for complex queries
-5. **Data Denormalization**: Strategically duplicate data to minimize reads
-6. **Collection Groups**: Use collection groups for querying across sub-collections
-7. **Security**: Never store API keys or secrets in client-side code
-8. **Error Handling**: Always handle Firebase operation errors gracefully
-9. **Offline Support**: Implement offline capabilities when appropriate
-10. **Cost Management**: Monitor usage to prevent unexpected billing
-
----
-
-By following these rules and patterns, we ensure our KoaJS functions are maintainable, scalable, and performant.
-s
