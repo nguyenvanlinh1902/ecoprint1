@@ -6,31 +6,35 @@ import * as orderController from '../controllers/orderController.js';
 import * as transactionController from '../controllers/transactionController.js';
 import * as adminController from '../controllers/adminController.js';
 import * as authMiddleware from '../middleware/authMiddleware.js';
+import * as simpleUploadMiddleware from '../middleware/simpleUploadMiddleware.js';
 
 const router = new Router();
 
-// Public routes
+// Authentication routes
 router.post('/auth/register', async (ctx) => {
-  console.log('Register route called with body:', ctx.req.body);
   await authController.register(ctx);
 });
 router.post('/auth/login', authController.login);
 router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/reset-password', authController.resetPassword);
 router.get('/auth/verify-token', authMiddleware.authenticate, authController.verifyToken);
-// Auth required routes
 router.get('/auth/me', authMiddleware.verifyToken, authController.getCurrentUser);
 router.patch('/auth/profile', authMiddleware.verifyToken, authController.updateProfile);
 
-// Products routes
+// Product routes
 router.get('/products', productController.getProducts);
-router.post('/products/upload-image', authMiddleware.verifyToken, productController.uploadProductImage);
+router.post(
+  '/products/upload-image', 
+  authMiddleware.verifyToken, 
+  simpleUploadMiddleware.imageUploadMiddleware,
+  productController.uploadProductImage
+);
 router.get('/products/:productId', productController.getProductById);
 router.post('/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
 router.put('/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
 router.delete('/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteProduct);
 
-// User management routes
+// User routes
 router.get('/users', authMiddleware.verifyToken, authMiddleware.isAdmin, userController.getAllUsers);
 router.get('/users/:userId', authMiddleware.verifyToken, userController.getUserById);
 router.put('/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, userController.updateUser);
@@ -43,7 +47,12 @@ router.get('/orders/:orderId', authMiddleware.verifyToken, orderController.getOr
 
 // Transaction routes
 router.post('/transactions/deposit', authMiddleware.verifyToken, transactionController.requestDeposit);
-router.post('/transactions/:transactionId/upload-receipt', authMiddleware.verifyToken, transactionController.uploadReceipt);
+router.post(
+  '/transactions/:transactionId/upload-receipt', 
+  authMiddleware.verifyToken, 
+  simpleUploadMiddleware.receiptUploadMiddleware,
+  transactionController.uploadReceipt
+);
 router.get('/transactions', authMiddleware.verifyToken, transactionController.getUserTransactions);
 router.post('/orders/:orderId/pay', authMiddleware.verifyToken, transactionController.payOrder);
 
@@ -64,6 +73,13 @@ router.get('/admin/products/:productId', authMiddleware.verifyToken, authMiddlew
 router.post('/admin/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
 router.put('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
 router.delete('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteProduct);
+
+// Admin transaction routes
+router.get('/admin/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getAllTransactions);
+router.get('/admin/transactions/:transactionId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getTransactionById);
+router.post('/admin/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.createTransaction);
+router.put('/admin/transactions/:transactionId/approve', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.approveTransaction);
+router.put('/admin/transactions/:transactionId/reject', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.rejectTransaction);
 
 // Categories
 router.get('/categories', productController.getAllCategories);

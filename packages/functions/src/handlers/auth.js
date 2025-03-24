@@ -49,15 +49,9 @@ app.use(async (ctx, next) => {
 
   if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
     try {
-      // Nếu đã có body từ ctx.request.body (Koa standard), sử dụng nó
-      if (ctx.request && ctx.request.body && Object.keys(ctx.request.body).length > 0) {
-        console.log('Using existing body from ctx.request.body');
-        ctx.req.body = ctx.request.body;
-      } 
-      // Nếu đã có body từ Firebase Functions (ctx.req.body), sử dụng nó
-      else if (ctx.req && ctx.req.body && Object.keys(ctx.req.body).length > 0) {
+      // Nếu đã có body từ ctx.req.body (Firebase Functions), sử dụng nó
+      if (ctx.req && ctx.req.body && Object.keys(ctx.req.body).length > 0) {
         console.log('Using existing body from ctx.req.body');
-        ctx.request.body = ctx.req.body;
       } 
       // Nếu có rawBody, parse nó
       else if (ctx.req && ctx.req.rawBody) {
@@ -67,11 +61,9 @@ app.use(async (ctx, next) => {
           console.log('Raw body:', rawBody);
           const parsedBody = JSON.parse(rawBody);
           ctx.req.body = parsedBody;
-          ctx.request.body = parsedBody;
         } catch (e) {
           console.error('Error parsing raw body:', e);
           ctx.req.body = {};
-          ctx.request.body = {};
         }
       } 
       // Nếu không có gì, đọc stream (cẩn thận)
@@ -80,27 +72,17 @@ app.use(async (ctx, next) => {
           console.log('Reading body from request stream');
           const body = await readRequestBody(ctx.req);
           ctx.req.body = body;
-          ctx.request.body = body;
         } catch (err) {
           console.error('Failed to read body stream:', err);
           ctx.req.body = {};
-          ctx.request.body = {};
         }
       }
       
       // Log body cho debugging
-      console.log('Auth request body after parsing:', JSON.stringify(ctx.request.body || ctx.req.body || {}));
-      
-      // Đảm bảo cả hai ctx.request.body và ctx.req.body đều có dữ liệu giống nhau
-      if (ctx.request && ctx.request.body) {
-        ctx.req.body = ctx.request.body;
-      } else if (ctx.req && ctx.req.body) {
-        ctx.request.body = ctx.req.body;
-      }
+      console.log('Auth request body after parsing:', JSON.stringify(ctx.req.body || {}));
     } catch (err) {
       console.error('Body parsing error in auth handler:', err);
       ctx.req.body = {};
-      ctx.request.body = {};
     }
   }
   

@@ -1,6 +1,7 @@
 import * as adminService from '../services/adminService.js';
 import { CustomError } from '../exceptions/customError.js';
 import { admin, db } from '../config/firebase.js';
+import transactionRepository from '../repositories/transactionRepository.js';
 
 /**
  * Get admin dashboard data 
@@ -417,6 +418,330 @@ export const updateUser = async (ctx) => {
     ctx.body = {
       success: false,
       message: error instanceof CustomError ? error.message : 'Failed to update user profile'
+    };
+  }
+};
+
+/**
+ * Get all transactions for admin
+ * This controller handles fetching all transactions with filtering and pagination
+ */
+export const getAllTransactions = async (ctx) => {
+  try {
+    const { page = 1, limit = 10, type, status, startDate, endDate, userId, search } = ctx.query;
+    
+    // Parse to numbers
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    
+    // Validate
+    if (isNaN(pageNumber) || isNaN(limitNumber) || pageNumber < 1 || limitNumber < 1) {
+      throw new CustomError('Invalid pagination parameters', 400);
+    }
+    
+    // Create filters
+    const filters = {
+      page: pageNumber,
+      limit: limitNumber,
+      type,
+      status,
+      startDate,
+      endDate,
+      userId,
+      search
+    };
+    
+    // Use the repository to get transactions
+    const result = await transactionRepository.getAllTransactions(filters);
+    
+    // Return success response with transactions data and pagination
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      transactions: result.transactions,
+      pagination: result.pagination
+    };
+  } catch (error) {
+    console.error('Error in getAllTransactions controller:', error);
+    
+    // Handle errors
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to fetch transactions',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Get transaction by id for admin
+ * This controller handles fetching a specific transaction's details
+ */
+export const getTransactionById = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    
+    if (!transactionId) {
+      throw new CustomError('Transaction ID is required', 400);
+    }
+    
+    // Use the repository to get transaction details
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      throw new CustomError('Transaction not found', 404);
+    }
+    
+    // Return success response with transaction data
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: transaction
+    };
+  } catch (error) {
+    console.error('Error in getTransactionById controller:', error);
+    
+    // Handle errors
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to fetch transaction details',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Approve transaction
+ * This controller handles approving a pending transaction
+ */
+export const approveTransaction = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    
+    if (!transactionId) {
+      throw new CustomError('Transaction ID is required', 400);
+    }
+    
+    // Get transaction
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      throw new CustomError('Transaction not found', 404);
+    }
+    
+    if (transaction.status !== 'pending') {
+      throw new CustomError('Only pending transactions can be approved', 400);
+    }
+    
+    // Use a transaction to update balance and transaction status
+    await admin.firestore().runTransaction(async (t) => {
+      // Chỉ cập nhật balance nếu là deposit
+      if (transaction.type === 'deposit') {
+        // Get user document
+        const userDoc = await t.get(db.collection('users').doc(transaction.userId));
+        
+        if (!userDoc.exists) {
+          throw new Error('User not found');
+        }
+        
+        const userData = userDoc.data();
+        const newBalance = (userData.balance || 0) + parseFloat(transaction.amount);
+        
+        // Update user balance
+        t.update(db.collection('users').doc(transaction.userId), {
+          balance: newBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      
+      // Update transaction status
+      t.update(db.collection('transactions').doc(transactionId), {
+        status: 'approved',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    });
+    
+    // Return success response
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'Transaction approved successfully'
+    };
+  } catch (error) {
+    console.error('Error in approveTransaction controller:', error);
+    
+    // Handle errors
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to approve transaction',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Reject transaction
+ * This controller handles rejecting a pending transaction
+ */
+export const rejectTransaction = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    const { reason } = ctx.req.body;
+    
+    if (!transactionId) {
+      throw new CustomError('Transaction ID is required', 400);
+    }
+    
+    // Get transaction
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      throw new CustomError('Transaction not found', 404);
+    }
+    
+    if (transaction.status !== 'pending') {
+      throw new CustomError('Only pending transactions can be rejected', 400);
+    }
+    
+    // Kiểm tra lý do từ chối và đảm bảo không trống
+    if (!reason || typeof reason !== 'string' || reason.trim() === '') {
+      throw new CustomError('Rejection reason is required', 400);
+    }
+    
+    // Update transaction status
+    await transactionRepository.updateTransactionStatus(
+      transactionId, 
+      'rejected', 
+      reason.trim()
+    );
+    
+    // Return success response
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'Transaction rejected successfully'
+    };
+  } catch (error) {
+    console.error('Error in rejectTransaction controller:', error);
+    
+    // Handle errors
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to reject transaction',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Create a new transaction (admin only)
+ * This controller handles creating a new transaction for a user
+ */
+export const createTransaction = async (ctx) => {
+  try {
+    const { userId, type, amount, description, status = 'completed' } = ctx.req.body;
+    
+    // Validate required fields
+    if (!userId || !type || !amount) {
+      throw new CustomError('User ID, type, and amount are required', 400);
+    }
+    
+    // Validate amount
+    const amountNumber = parseFloat(amount);
+    if (isNaN(amountNumber) || amountNumber <= 0) {
+      throw new CustomError('Amount must be a positive number', 400);
+    }
+    
+    // Validate type
+    const validTypes = ['deposit', 'withdrawal', 'refund', 'adjustment'];
+    if (!validTypes.includes(type)) {
+      throw new CustomError(`Type must be one of: ${validTypes.join(', ')}`, 400);
+    }
+    
+    // Validate status
+    const validStatuses = ['pending', 'completed', 'rejected', 'failed'];
+    if (!validStatuses.includes(status)) {
+      throw new CustomError(`Status must be one of: ${validStatuses.join(', ')}`, 400);
+    }
+    
+    // Check if user exists
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      throw new CustomError('User not found', 404);
+    }
+    
+    // Create transaction
+    const transactionRef = db.collection('transactions').doc();
+    
+    // Handle balance update if transaction is completed
+    if (status === 'completed') {
+      await admin.firestore().runTransaction(async (t) => {
+        // Get updated user data
+        const userData = userDoc.data();
+        
+        // Calculate new balance based on transaction type
+        let balanceChange = amountNumber;
+        if (type === 'withdrawal') {
+          balanceChange = -amountNumber;
+          
+          // Check if user has enough balance for withdrawal
+          if ((userData.balance || 0) < amountNumber) {
+            throw new CustomError('User does not have enough balance for this withdrawal', 400);
+          }
+        }
+        
+        const newBalance = (userData.balance || 0) + balanceChange;
+        
+        // Update user balance
+        t.update(db.collection('users').doc(userId), {
+          balance: newBalance,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
+        // Create transaction
+        t.set(transactionRef, {
+          userId,
+          type,
+          amount: amountNumber,
+          description: description || `Manual ${type} by admin`,
+          status,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      });
+    } else {
+      // Create transaction without updating balance
+      await transactionRef.set({
+        userId,
+        type,
+        amount: amountNumber,
+        description: description || `Manual ${type} by admin`,
+        status,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    
+    // Return success response
+    ctx.status = 201;
+    ctx.body = {
+      success: true,
+      message: 'Transaction created successfully',
+      transactionId: transactionRef.id
+    };
+  } catch (error) {
+    console.error('Error in createTransaction controller:', error);
+    
+    // Handle errors
+    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    ctx.body = {
+      success: false,
+      message: error instanceof CustomError ? error.message : 'Failed to create transaction',
+      error: error.message
     };
   }
 }; 

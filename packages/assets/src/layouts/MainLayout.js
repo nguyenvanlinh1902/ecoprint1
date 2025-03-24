@@ -517,27 +517,6 @@ const MainLayout = ({ children }) => {
             </Box>
           )}
           
-          {/* Debug info in development */}
-          {process.env.NODE_ENV === 'development' && (
-            <Paper sx={{ p: 2, mb: 3, bgcolor: 'rgba(232, 244, 253, 0.8)' }}>
-              <Typography variant="subtitle2" gutterBottom>Debug Panel:</Typography>
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                <Box>
-                  <Typography variant="caption">User:</Typography>
-                  <Typography variant="body2">{userProfile?.displayName} ({userProfile?.role})</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption">Balance:</Typography>
-                  <Typography variant="body2">${userProfile?.balance || 0}</Typography>
-                </Box>
-                <Box>
-                  <Typography variant="caption">Current Path:</Typography>
-                  <Typography variant="body2">{location.pathname}</Typography>
-                </Box>
-              </Box>
-            </Paper>
-          )}
-          
           {/* Render children directly instead of using Outlet */}
           {children}
         </Container>

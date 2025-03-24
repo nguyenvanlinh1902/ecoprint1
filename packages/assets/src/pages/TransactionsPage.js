@@ -178,12 +178,19 @@ const TransactionsPage = () => {
       // 1. Create deposit transaction
       const depositData = {
         amount: parseFloat(depositAmount),
-        method: depositMethod,
-        note: depositNote,
+        bankName: depositMethod,
+        transferDate: new Date(),
+        reference: depositNote || '',
       };
 
       const depositResponse = await api.transactions.requestDeposit(depositData);
-      const transactionId = depositResponse.data.data.id;
+      
+      // Check if we have a valid response with transactionId
+      if (!depositResponse || !depositResponse.data || !depositResponse.data.transactionId) {
+        throw new Error('Invalid response from server');
+      }
+      
+      const transactionId = depositResponse.data.transactionId;
 
       // 2. Upload receipt if provided
       if (receiptFile && transactionId) {

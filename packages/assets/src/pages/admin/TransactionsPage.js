@@ -14,7 +14,9 @@ import {
   Add as AddIcon,
   Visibility as VisibilityIcon,
   ArrowBack as ArrowBackIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  CheckCircle as ApproveIcon,
+  Cancel as RejectIcon
 } from '@mui/icons-material';
 import api from '../../services/api';
 import StatusBadge from '../../components/StatusBadge';
@@ -62,6 +64,12 @@ const TransactionsPage = () => {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
+  // Transaction approval/rejection
+  const [approveLoading, setApproveLoading] = useState(false);
+  const [rejectLoading, setRejectLoading] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  
   useEffect(() => {
     // Get URL parameters if any
     const params = new URLSearchParams(location.search);
@@ -85,24 +93,35 @@ const TransactionsPage = () => {
   const fetchTransactionDetails = async (id) => {
     try {
       setLoadingDetails(true);
+      setError('');
       
       // Sử dụng endpoint admin đã được cấu hình
       const response = await api.admin.getTransactionById(id);
       
-      // Kiểm tra cấu trúc dữ liệu trả về
-      if (response.data && response.data.data) {
-        setSelectedTransaction(response.data.data);
-      } else if (response.data) {
-        // Cấu trúc dữ liệu đơn giản hơn
-        setSelectedTransaction(response.data);
+      if (response && response.data) {
+        // Kiểm tra cấu trúc response
+        const transactionData = response.data.data || response.data;
+        
+        // Nếu có dữ liệu, hiển thị
+        if (transactionData) {
+          setSelectedTransaction(transactionData);
+          setSuccess('');
+        } else {
+          setError('Không tìm thấy thông tin giao dịch');
+          setSelectedTransaction(null);
+        }
       } else {
-        // Fallback
         console.error('Unexpected API response structure:', response);
         setError('Định dạng dữ liệu không đúng. Vui lòng liên hệ quản trị viên.');
       }
     } catch (error) {
       console.error('Error fetching transaction details:', error);
-      setError('Không thể tải chi tiết giao dịch. Vui lòng thử lại sau.');
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.friendlyMessage || 
+                          'Không thể tải chi tiết giao dịch. Vui lòng thử lại sau.';
+      setError(errorMessage);
+      setSelectedTransaction(null);
     } finally {
       setLoadingDetails(false);
     }
@@ -146,16 +165,16 @@ const TransactionsPage = () => {
       // Sử dụng endpoint admin đã được cấu hình
       const response = await api.admin.getAllTransactions(params);
       
-      // Kiểm tra cấu trúc dữ liệu trả về
-      if (response.data && response.data.data) {
-        setTransactions(response.data.data.transactions || []);
-        setTotalPages(response.data.data.totalPages || 1);
-      } else if (response.data) {
-        // Cấu trúc dữ liệu đơn giản hơn
+      // API trả về cấu trúc đơn giản { transactions, pagination }
+      if (response.data) {
         setTransactions(response.data.transactions || []);
-        setTotalPages(response.data.totalPages || 1);
+        
+        const pagination = response.data.pagination || {};
+        setTotalPages(pagination.totalPages || 1);
+        
+        // Clear error và success message nếu thành công
+        setError('');
       } else {
-        // Fallback
         setTransactions([]);
         setTotalPages(1);
         console.error('Unexpected API response structure:', response);
@@ -163,7 +182,13 @@ const TransactionsPage = () => {
       }
     } catch (error) {
       console.error('Error fetching transactions:', error);
-      setError('Không thể tải danh sách giao dịch. Vui lòng thử lại sau.');
+      const errorMessage = error.response?.data?.message || 
+                           error.response?.data?.error || 
+                           error.friendlyMessage || 
+                           'Không thể tải danh sách giao dịch. Vui lòng thử lại sau.';
+      setError(errorMessage);
+      setTransactions([]);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -256,7 +281,7 @@ const TransactionsPage = () => {
       setAddLoading(true);
       setAddError('');
       
-      const response = await api.post('/api/admin/transactions', newTransaction);
+      const response = await api.admin.addTransaction(newTransaction);
       
       setAddSuccess(true);
       setTimeout(() => {
@@ -266,7 +291,7 @@ const TransactionsPage = () => {
       }, 1500);
       
     } catch (error) {
-      /* error removed */
+      console.error('Error adding transaction:', error);
       setAddError('Failed to add transaction. Please check the details and try again.');
     } finally {
       setAddLoading(false);
@@ -279,6 +304,95 @@ const TransactionsPage = () => {
   
   const handleBackToList = () => {
     navigate('/admin/transactions');
+  };
+  
+  const handleApproveTransaction = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await api.admin.approveTransaction(selectedTransaction.id);
+      
+      // Check response
+      if (response && response.data && response.data.success) {
+        setSuccess(response.data.message || 'Transaction approved successfully');
+        
+        // Cập nhật transaction đã được approved
+        if (selectedTransaction) {
+          setSelectedTransaction({
+            ...selectedTransaction,
+            status: 'approved'
+          });
+        }
+        
+        // Refresh danh sách giao dịch
+        fetchTransactions();
+      } else {
+        console.error('Error approving transaction:', response);
+        setError(response?.data?.message || 'Failed to approve transaction');
+      }
+    } catch (error) {
+      console.error('Error approving transaction:', error);
+      const errorMessage = error.response?.data?.message || 
+                            error.response?.data?.error || 
+                            error.message || 
+                            'Failed to approve transaction';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleOpenRejectDialog = () => {
+    setRejectDialogOpen(true);
+    setRejectReason('');
+  };
+  
+  const handleCloseRejectDialog = () => {
+    setRejectDialogOpen(false);
+  };
+  
+  const handleRejectTransaction = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      // Call reject API
+      const response = await api.admin.rejectTransaction(selectedTransaction.id, { reason: rejectReason });
+      
+      // Check response
+      if (response && response.data && response.data.success) {
+        setSuccess(response.data.message || 'Transaction rejected successfully');
+        
+        // Update local transaction status
+        if (selectedTransaction) {
+          setSelectedTransaction({
+            ...selectedTransaction,
+            status: 'rejected',
+            rejectionReason: rejectReason
+          });
+        }
+        
+        // Refresh transactions list
+        fetchTransactions();
+        
+        // Reset rejection reason
+        setRejectReason('');
+        setRejectDialogOpen(false);
+      } else {
+        console.error('Error rejecting transaction:', response);
+        setError(response?.data?.message || 'Failed to reject transaction');
+      }
+    } catch (error) {
+      console.error('Error rejecting transaction:', error);
+      const errorMessage = error.response?.data?.message || 
+                            error.response?.data?.error || 
+                            error.message || 
+                            'Failed to reject transaction';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Render transaction details view
@@ -297,15 +411,55 @@ const TransactionsPage = () => {
       );
     }
     
+    const isPending = selectedTransaction.status === 'pending';
+    const isDeposit = selectedTransaction.type === 'deposit';
+    const showApproveReject = isPending && isDeposit;
+    
     return (
       <Paper sx={{ p: 3, width: '100%' }}>
-        <Box sx={{ mb: 3 }}>
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+        
+        {success && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            {success}
+          </Alert>
+        )}
+        
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Button 
             startIcon={<ArrowBackIcon />} 
             onClick={handleBackToList}
           >
             Back to Transactions
           </Button>
+          
+          {showApproveReject && (
+            <Box>
+              <Button 
+                variant="contained" 
+                color="success"
+                startIcon={<ApproveIcon />}
+                onClick={handleApproveTransaction}
+                disabled={approveLoading}
+                sx={{ mr: 1 }}
+              >
+                {approveLoading ? 'Approving...' : 'Approve'}
+              </Button>
+              <Button 
+                variant="contained" 
+                color="error"
+                startIcon={<RejectIcon />}
+                onClick={handleOpenRejectDialog}
+                disabled={rejectLoading}
+              >
+                {rejectLoading ? 'Rejecting...' : 'Reject'}
+              </Button>
+            </Box>
+          )}
         </Box>
         
         <Typography variant="h5" gutterBottom>
@@ -336,13 +490,22 @@ const TransactionsPage = () => {
               User
             </Typography>
             <Typography variant="body1">
-              {selectedTransaction.user ? (
-                <span>
-                  {selectedTransaction.user.name} ({selectedTransaction.user.email})
-                </span>
-              ) : 'N/A'}
+              {selectedTransaction.user ? 
+                `${selectedTransaction.user.name} (${selectedTransaction.user.email})` : 
+                selectedTransaction.userId}
             </Typography>
           </Grid>
+          
+          {selectedTransaction.user && selectedTransaction.user.phone && (
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">
+                User Phone
+              </Typography>
+              <Typography variant="body1">
+                {selectedTransaction.user.phone}
+              </Typography>
+            </Grid>
+          )}
           
           <Grid item xs={12} sm={6}>
             <Typography variant="subtitle2" color="text.secondary">
@@ -377,22 +540,63 @@ const TransactionsPage = () => {
             <StatusBadge status={selectedTransaction.status} />
           </Grid>
           
-          <Grid item xs={12}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Description
-            </Typography>
-            <Typography variant="body1">
-              {selectedTransaction.description || 'No description provided'}
-            </Typography>
-          </Grid>
-          
-          {selectedTransaction.notes && (
-            <Grid item xs={12}>
+          {selectedTransaction.bankName && (
+            <Grid item xs={12} sm={6}>
               <Typography variant="subtitle2" color="text.secondary">
-                Admin Notes
+                Bank Name
               </Typography>
               <Typography variant="body1">
-                {selectedTransaction.notes}
+                {selectedTransaction.bankName}
+              </Typography>
+            </Grid>
+          )}
+          
+          {selectedTransaction.reference && (
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Reference
+              </Typography>
+              <Typography variant="body1">
+                {selectedTransaction.reference}
+              </Typography>
+            </Grid>
+          )}
+          
+          {selectedTransaction.transferDate && (
+            <Grid item xs={12} sm={6}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Transfer Date
+              </Typography>
+              <Typography variant="body1">
+                {formatDateTime(selectedTransaction.transferDate)}
+              </Typography>
+            </Grid>
+          )}
+          
+          {selectedTransaction.receiptUrl && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Receipt
+              </Typography>
+              <Box sx={{ mt: 1 }}>
+                <a href={selectedTransaction.receiptUrl} target="_blank" rel="noopener noreferrer">
+                  <img 
+                    src={selectedTransaction.receiptUrl} 
+                    alt="Receipt" 
+                    style={{ maxWidth: '300px', maxHeight: '300px', border: '1px solid #eee' }} 
+                  />
+                </a>
+              </Box>
+            </Grid>
+          )}
+          
+          {selectedTransaction.rejectionReason && (
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="error">
+                Rejection Reason
+              </Typography>
+              <Typography variant="body1">
+                {selectedTransaction.rejectionReason}
               </Typography>
             </Grid>
           )}
@@ -727,6 +931,37 @@ const TransactionsPage = () => {
                 disabled={addLoading || !newTransaction.userId || !newTransaction.amount}
               >
                 {addLoading ? <CircularProgress size={24} /> : 'Add Transaction'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+          
+          {/* Rejection Dialog */}
+          <Dialog open={rejectDialogOpen} onClose={handleCloseRejectDialog}>
+            <DialogTitle>Reject Transaction</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Please provide a reason for rejecting this transaction:
+              </DialogContentText>
+              <TextField
+                autoFocus
+                margin="dense"
+                fullWidth
+                multiline
+                rows={3}
+                label="Reason for Rejection"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCloseRejectDialog}>Cancel</Button>
+              <Button 
+                onClick={handleRejectTransaction} 
+                variant="contained" 
+                color="error"
+                disabled={!rejectReason.trim() || rejectLoading}
+              >
+                {rejectLoading ? 'Rejecting...' : 'Reject Transaction'}
               </Button>
             </DialogActions>
           </Dialog>

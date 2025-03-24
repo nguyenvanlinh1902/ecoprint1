@@ -112,7 +112,7 @@ export const authorize = (roles = []) => {
 // Verify Firebase token
 export const verifyToken = async (ctx, next) => {
   try {
-    const authHeader = ctx.request.headers.authorization;
+    const authHeader = ctx.req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       ctx.status = 401;

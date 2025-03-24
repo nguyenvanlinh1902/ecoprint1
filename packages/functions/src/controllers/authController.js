@@ -172,8 +172,8 @@ export const login = async (ctx) => {
     console.log('Request headers:', ctx.headers);
     console.log('Request method:', ctx.method);
     
-    // Đảm bảo lấy dữ liệu từ ctx.request.body (đúng chuẩn Koa) thay vì ctx.req.body
-    const requestData = ctx.request.body || {};
+    // Đảm bảo lấy dữ liệu từ ctx.req.body thay vì ctx.request.body
+    const requestData = ctx.req.body || {};
     console.log('Login request data:', JSON.stringify(requestData));
     
     if (!requestData || Object.keys(requestData).length === 0) {
@@ -491,7 +491,7 @@ export const updateProfile = async (ctx) => {
 export const forgotPassword = async (ctx) => {
   try {
     // Get request data
-    const requestData = ctx.req.body || ctx.request.body || {};
+    const requestData = ctx.req.body || {};
     console.log('Forgot password request data:', JSON.stringify(requestData));
     
     const email = requestData.email || '';

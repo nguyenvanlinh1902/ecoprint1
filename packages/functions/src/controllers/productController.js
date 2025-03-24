@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import multer from '@koa/multer';
 import { v4 as uuidv4 } from 'uuid';
 import * as categoryService from '../services/categoryService.js';
+import * as fileUploadService from '../services/fileUploadService.js';
 
 // Mock services khi chúng ta chưa implement productService
 const productService = {
@@ -429,11 +430,24 @@ export const uploadProductImage = async (ctx) => {
   try {
     console.log('[ProductController] Processing image upload request');
     
-    // Log available request properties for debugging
-    console.log('[ProductController] Request files structure:', ctx.req.files ? Object.keys(ctx.req.files) : 'No files');
+    // Lấy file từ các nguồn khác nhau
+    let fileData = null;
     
-    // Check if we have files attached to the request
-    if (!ctx.req.files || !ctx.req.files.image || !ctx.req.files.image.length) {
+    // Kiểm tra files từ multer
+    if (ctx.req.files && ctx.req.files.image && ctx.req.files.image.length) {
+      console.log('[ProductController] Found image in ctx.req.files.image');
+      fileData = ctx.req.files.image[0];
+    } 
+    // Kiểm tra file từ multer.single
+    else if (ctx.req.file) {
+      console.log('[ProductController] Found image in ctx.req.file');
+      fileData = ctx.req.file;
+    }
+    // Kiểm tra base64 trong body
+    else if (ctx.req.body && ctx.req.body.image) {
+      console.log('[ProductController] Found image in ctx.req.body as base64');
+      fileData = ctx.req.body;
+    } else {
       console.error('[ProductController] No image file found in request');
       ctx.status = 400;
       ctx.body = { 
@@ -444,68 +458,37 @@ export const uploadProductImage = async (ctx) => {
       return;
     }
     
-    const file = ctx.req.files.image[0];
-    console.log('[ProductController] Processing file:', file.originalname, file.mimetype, file.size);
+    // Tạo ID tạm thời cho ảnh sản phẩm
+    const tempImageId = `temp_${Date.now()}`;
     
-    // Validate file type
-    const validImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!validImageTypes.includes(file.mimetype)) {
-      console.error('[ProductController] Invalid file type:', file.mimetype);
+    // Sử dụng service để xử lý upload
+    const uploadResult = await fileUploadService.uploadProductImage(tempImageId, fileData);
+    
+    if (!uploadResult.success) {
+      console.error('[ProductController] Image upload failed:', uploadResult.error);
       ctx.status = 400;
-      ctx.body = { 
+      ctx.body = {
         success: false,
-        error: 'Invalid file type',
-        message: 'Please upload a valid image file (JPEG, PNG, GIF, WEBP)' 
+        error: 'Image upload failed',
+        message: uploadResult.error
       };
       return;
     }
     
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      console.error('[ProductController] File too large:', file.size);
-      ctx.status = 400;
-      ctx.body = { 
-        success: false,
-        error: 'File too large',
-        message: 'Image file size must be less than 5MB' 
-      };
-      return;
-    }
-    
-    // Generate a unique filename
-    const fileName = `products/${Date.now()}_${file.originalname.replace(/\s+/g, '_')}`;
-    
-    // Upload file to Firebase Storage
-    const bucket = admin.storage().bucket();
-    
-    console.log('[ProductController] Uploading file to Firebase Storage:', fileName);
-    
-    const fileUpload = bucket.file(fileName);
-    await fileUpload.save(file.buffer, {
-      metadata: {
-        contentType: file.mimetype
-      }
-    });
-    
-    // Make the file publicly accessible
-    await fileUpload.makePublic();
-    
-    // Get public URL
-    const imageUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
-    console.log('[ProductController] File uploaded successfully, URL:', imageUrl);
-    
+    // Trả về kết quả thành công
+    console.log('[ProductController] Image uploaded successfully:', uploadResult.fileUrl);
     ctx.status = 200;
-    ctx.body = { 
+    ctx.body = {
       success: true,
-      imageUrl,
+      imageUrl: uploadResult.fileUrl,
       message: 'Image uploaded successfully'
     };
   } catch (error) {
-    console.error('[ProductController] Error uploading image:', error);
+    console.error('[ProductController] Error uploading product image:', error);
     ctx.status = 500;
-    ctx.body = { 
+    ctx.body = {
       success: false,
-      error: error.message,
+      error: 'Server error',
       message: 'Failed to upload image due to server error'
     };
   }

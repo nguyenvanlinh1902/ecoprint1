@@ -261,7 +261,8 @@ const admin = {
   getAllTransactions: (params) => api.get('/admin/transactions', { params }),
   getTransactionById: (id) => api.get(`/admin/transactions/${id}`),
   approveTransaction: (id) => api.put(`/admin/transactions/${id}/approve`),
-  rejectTransaction: (id, reason) => api.put(`/admin/transactions/${id}/reject`, { reason }),
+  rejectTransaction: (id, data) => api.put(`/admin/transactions/${id}/reject`, data),
+  addTransaction: (data) => api.post('/admin/transactions', data),
   
   // Products and categories management
   getAllProducts: (params) => api.get('/admin/products', { params }),

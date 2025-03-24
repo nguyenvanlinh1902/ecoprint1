@@ -74,10 +74,17 @@ const DepositPage = () => {
 
     try {
       const response = await api.transactions.requestDeposit(formData);
-      setTransactionId(response.data.transactionId);
-      setStep(2);
+      
+      // Check for transactionId in the response
+      if (response && response.data && response.data.transactionId) {
+        setTransactionId(response.data.transactionId);
+        setStep(2);
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create deposit request');
+      console.error("Deposit request error:", err);
+      setError(err.response?.data?.error || 'Failed to create deposit request. Please try again later.');
     } finally {
       setLoading(false);
     }

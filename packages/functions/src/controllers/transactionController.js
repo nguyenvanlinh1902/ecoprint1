@@ -1,5 +1,9 @@
 import { CustomError } from '../exceptions/customError.js';
 import { admin, db } from '../config/firebase.js';
+import transactionRepository from '../repositories/transactionRepository.js';
+import orderRepository from '../repositories/orderRepository.js';
+import * as fileUploadService from '../services/fileUploadService.js';
+import * as requestParserService from '../services/requestParserService.js';
 
 // Export stub functions that aren't part of the default export
 export const createDeposit = async (ctx) => {
@@ -27,7 +31,7 @@ export const updateTransactionStatus = async (ctx) => {
 export const requestDeposit = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
-    const { amount, bankName, transferDate, reference } = ctx.request.body;
+    const { amount, bankName, transferDate, reference } = ctx.req.body;
     
     // Validate required fields
     if (!amount || !bankName || !transferDate) {
@@ -43,25 +47,18 @@ export const requestDeposit = async (ctx) => {
       return;
     }
     
-    // Create transaction in Firestore
-    const transactionRef = db.collection('transactions').doc();
-    await transactionRef.set({
-      userId: uid,
-      type: 'deposit',
-      amount: Number(amount),
-      bankName,
-      transferDate: new Date(transferDate),
-      reference: reference || '',
-      receiptUrl: '', // Will be updated when receipt is uploaded
-      status: 'pending', // pending, approved, rejected
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // Use repository to create the deposit request
+    const result = await transactionRepository.createDepositRequest({
+      amount, 
+      bankName, 
+      transferDate, 
+      reference
+    }, uid);
     
     ctx.status = 201;
     ctx.body = { 
       message: 'Deposit request created successfully',
-      transactionId: transactionRef.id
+      transactionId: result.id
     };
   } catch (error) {
     ctx.status = 500;
@@ -74,64 +71,144 @@ export const requestDeposit = async (ctx) => {
  */
 export const uploadReceipt = async (ctx) => {
   try {
+    console.log('===== RECEIPT UPLOAD START =====');
+    console.log('Raw request info:', {
+      method: ctx.method,
+      url: ctx.url,
+      hasReq: !!ctx.req,
+      hasRes: !!ctx.res,
+      hasHeaders: !!(ctx.req && ctx.req.headers),
+      hasBody: !!(ctx.req && ctx.req.body),
+      hasFiles: !!(ctx.req && ctx.req.files),
+      hasFile: !!(ctx.req && ctx.req.file)
+    });
+    
     const { uid } = ctx.state.user;
     const { transactionId } = ctx.params;
     
-    if (!ctx.request.files || !ctx.request.files.receipt) {
+    console.log('Upload receipt request for transaction:', transactionId, 'user:', uid);
+    
+    // Prepare request with necessary objects
+    console.log('Preparing request...');
+    requestParserService.prepareRequest(ctx);
+    
+    // Print debug info about the request
+    console.log('Request method:', ctx.method);
+    console.log('Request URL:', ctx.url);
+    console.log('Content-Type:', ctx.req.headers['content-type'] || 'Not specified');
+    console.log('Is multipart:', requestParserService.isMultipartRequest(ctx.req));
+    console.log('Is JSON:', requestParserService.isJsonRequest(ctx.req));
+    console.log('Body keys:', Object.keys(ctx.req.body || {}));
+    console.log('Files keys:', Object.keys(ctx.req.files || {}));
+    
+    // Extract file data using the dedicated service
+    console.log('Extracting file data...');
+    const fileData = requestParserService.extractFileFromRequest(ctx, 'receipt');
+    
+    if (!fileData) {
+      console.error('No file data found in request');
+      
+      // Try one more attempt with 'image' field in case client used that field
+      console.log('Attempting to find file in "image" field as fallback...');
+      const imageData = requestParserService.extractFileFromRequest(ctx, 'image');
+      
+      if (imageData) {
+        console.log('Found file data in "image" field, using it as receipt');
+        const uploadResult = await fileUploadService.uploadTransactionReceipt(uid, transactionId, imageData);
+        
+        if (uploadResult.success) {
+          console.log('File upload successful using image field, URL:', uploadResult.fileUrl);
+          await transactionRepository.updateTransactionReceipt(transactionId, uploadResult.fileUrl);
+          
+          ctx.status = 200;
+          ctx.body = { 
+            message: 'Receipt uploaded successfully',
+            receiptUrl: uploadResult.fileUrl
+          };
+          
+          console.log('===== RECEIPT UPLOAD COMPLETED SUCCESSFULLY (via image field) =====');
+          return;
+        }
+      }
+      
       ctx.status = 400;
-      ctx.body = { error: 'No receipt file uploaded' };
+      ctx.body = { 
+        error: 'No receipt file found. Please upload a valid image file.',
+        debug: {
+          filesExist: !!ctx.req.files,
+          fileExists: !!ctx.req.file,
+          bodyExists: !!ctx.req.body,
+          bodyType: ctx.req.body ? typeof ctx.req.body : 'undefined',
+          bodyKeys: ctx.req.body ? Object.keys(ctx.req.body) : []
+        }
+      };
+      console.log('===== RECEIPT UPLOAD FAILED: NO FILE DATA =====');
       return;
     }
+    
+    console.log('File data found, type:', typeof fileData, 
+               'isBuffer:', Buffer.isBuffer(fileData),
+               'isString:', typeof fileData === 'string',
+               'isObject:', typeof fileData === 'object');
     
     // Check if transaction exists and belongs to user
-    const transactionDoc = await db.collection('transactions').doc(transactionId).get();
+    console.log('Validating transaction...');
+    const transaction = await transactionRepository.getTransactionById(transactionId);
     
-    if (!transactionDoc.exists) {
+    if (!transaction) {
+      console.error('Transaction not found:', transactionId);
       ctx.status = 404;
       ctx.body = { error: 'Transaction not found' };
+      console.log('===== RECEIPT UPLOAD FAILED: TRANSACTION NOT FOUND =====');
       return;
     }
-    
-    const transaction = transactionDoc.data();
     
     if (transaction.userId !== uid) {
+      console.error('User not authorized for transaction. Transaction user:', transaction.userId, 'Request user:', uid);
       ctx.status = 403;
       ctx.body = { error: 'Not authorized to upload receipt for this transaction' };
+      console.log('===== RECEIPT UPLOAD FAILED: UNAUTHORIZED =====');
       return;
     }
     
-    // Upload receipt to Firebase Storage
-    const file = ctx.request.files.receipt;
-    const fileName = `receipts/${uid}/${Date.now()}_${file.name}`;
+    console.log('Transaction validated, processing file upload');
     
-    const bucket = admin.storage().bucket();
-    const fileBuffer = file.data;
+    // Use the file upload service to handle the upload
+    console.log('Sending to fileUploadService.uploadTransactionReceipt...');
+    const uploadResult = await fileUploadService.uploadTransactionReceipt(uid, transactionId, fileData);
     
-    const fileUpload = bucket.file(fileName);
-    await fileUpload.save(fileBuffer, {
-      metadata: {
-        contentType: file.mimetype
-      }
-    });
+    if (!uploadResult.success) {
+      console.error('File upload failed:', uploadResult.error);
+      ctx.status = 400;
+      ctx.body = { error: uploadResult.error };
+      console.log('===== RECEIPT UPLOAD FAILED: UPLOAD ERROR =====');
+      return;
+    }
     
-    // Get public URL
-    await fileUpload.makePublic();
-    const receiptUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    console.log('File upload successful, URL:', uploadResult.fileUrl);
     
-    // Update transaction with receipt URL
-    await db.collection('transactions').doc(transactionId).update({
-      receiptUrl,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // Update transaction with receipt URL using repository
+    console.log('Updating transaction with receipt URL...');
+    await transactionRepository.updateTransactionReceipt(transactionId, uploadResult.fileUrl);
+    
+    console.log('Transaction updated with receipt URL');
     
     ctx.status = 200;
     ctx.body = { 
       message: 'Receipt uploaded successfully',
-      receiptUrl
+      receiptUrl: uploadResult.fileUrl
     };
+    
+    console.log('===== RECEIPT UPLOAD COMPLETED SUCCESSFULLY =====');
   } catch (error) {
+    console.error('Receipt upload error:', error);
+    console.error(error.stack);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      error: error.message,
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+    };
+    console.log('===== RECEIPT UPLOAD FAILED: EXCEPTION =====');
   }
 };
 
@@ -142,16 +219,14 @@ export const approveDeposit = async (ctx) => {
   try {
     const { transactionId } = ctx.params;
     
-    // Check if transaction exists
-    const transactionDoc = await db.collection('transactions').doc(transactionId).get();
+    // Check if transaction exists using repository
+    const transaction = await transactionRepository.getTransactionById(transactionId);
     
-    if (!transactionDoc.exists) {
+    if (!transaction) {
       ctx.status = 404;
       ctx.body = { error: 'Transaction not found' };
       return;
     }
-    
-    const transaction = transactionDoc.data();
     
     if (transaction.status !== 'pending') {
       ctx.status = 400;
@@ -159,34 +234,13 @@ export const approveDeposit = async (ctx) => {
       return;
     }
     
-    // Use a transaction to update balance and transaction status
-    await admin.firestore().runTransaction(async (t) => {
-      // Get user document
-      const userDoc = await t.get(db.collection('users').doc(transaction.userId));
-      
-      if (!userDoc.exists) {
-        throw new Error('User not found');
-      }
-      
-      const userData = userDoc.data();
-      const newBalance = (userData.balance || 0) + transaction.amount;
-      
-      // Update user balance
-      t.update(db.collection('users').doc(transaction.userId), {
-        balance: newBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // Update transaction status
-      t.update(db.collection('transactions').doc(transactionId), {
-        status: 'approved',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    });
+    // Use repository to approve transaction
+    await transactionRepository.approveTransaction(transactionId);
     
     ctx.status = 200;
     ctx.body = { message: 'Deposit approved successfully' };
   } catch (error) {
+    console.error("Error in approveDeposit:", error);
     ctx.status = 500;
     ctx.body = { error: error.message };
   }
@@ -198,18 +252,16 @@ export const approveDeposit = async (ctx) => {
 export const rejectDeposit = async (ctx) => {
   try {
     const { transactionId } = ctx.params;
-    const { reason } = ctx.request.body;
+    const { reason } = ctx.req.body;
     
     // Check if transaction exists
-    const transactionDoc = await db.collection('transactions').doc(transactionId).get();
+    const transaction = await transactionRepository.getTransactionById(transactionId);
     
-    if (!transactionDoc.exists) {
+    if (!transaction) {
       ctx.status = 404;
       ctx.body = { error: 'Transaction not found' };
       return;
     }
-    
-    const transaction = transactionDoc.data();
     
     if (transaction.status !== 'pending') {
       ctx.status = 400;
@@ -217,12 +269,8 @@ export const rejectDeposit = async (ctx) => {
       return;
     }
     
-    // Update transaction status
-    await db.collection('transactions').doc(transactionId).update({
-      status: 'rejected',
-      rejectionReason: reason || 'No reason provided',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // Update transaction status using repository
+    await transactionRepository.updateTransactionStatus(transactionId, 'rejected', reason || 'No reason provided');
     
     ctx.status = 200;
     ctx.body = { message: 'Deposit rejected successfully' };
@@ -240,75 +288,29 @@ export const payOrder = async (ctx) => {
     const { uid } = ctx.state.user;
     const { orderId } = ctx.params;
     
-    // Check if order exists
-    const orderDoc = await db.collection('orders').doc(orderId).get();
+    // Sử dụng repository để kiểm tra đơn hàng
+    const order = await orderRepository.getOrderById(orderId);
     
-    if (!orderDoc.exists) {
+    if (!order) {
       ctx.status = 404;
       ctx.body = { error: 'Order not found' };
       return;
     }
     
-    const order = orderDoc.data();
-    
-    // Check if user owns this order
     if (order.userId !== uid) {
       ctx.status = 403;
       ctx.body = { error: 'Not authorized to pay for this order' };
       return;
     }
     
-    // Check if order is already paid
     if (order.paymentStatus === 'paid') {
       ctx.status = 400;
       ctx.body = { error: 'Order is already paid' };
       return;
     }
     
-    // Use a transaction to update balance and order payment status
-    await admin.firestore().runTransaction(async (t) => {
-      // Get user document
-      const userDoc = await t.get(db.collection('users').doc(uid));
-      
-      if (!userDoc.exists) {
-        throw new Error('User not found');
-      }
-      
-      const userData = userDoc.data();
-      
-      // Check if user has enough balance
-      if ((userData.balance || 0) < order.total) {
-        throw new Error('Insufficient balance');
-      }
-      
-      const newBalance = userData.balance - order.total;
-      
-      // Update user balance
-      t.update(db.collection('users').doc(uid), {
-        balance: newBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // Update order payment status
-      t.update(db.collection('orders').doc(orderId), {
-        paymentStatus: 'paid',
-        paidAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      
-      // Create payment transaction
-      const paymentRef = db.collection('transactions').doc();
-      t.set(paymentRef, {
-        userId: uid,
-        orderId,
-        type: 'payment',
-        amount: -order.total, // Negative amount for payment
-        status: 'approved',
-        description: `Payment for order ${order.orderNumber}`,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    });
+    // Sử dụng repository cho việc thanh toán
+    await transactionRepository.processOrderPayment(orderId, uid, order.total);
     
     ctx.status = 200;
     ctx.body = { message: 'Order paid successfully' };
@@ -331,54 +333,27 @@ export const getUserTransactions = async (ctx) => {
     const { uid } = ctx.state.user;
     const { type, status, limit = 20, page = 1 } = ctx.query;
     
-    let query = db.collection('transactions').where('userId', '==', uid);
+    // Tạo options để truyền vào repository
+    const options = {
+      userId: uid,
+      type,
+      status,
+      limit: parseInt(limit),
+      page: parseInt(page)
+    };
     
-    if (type) {
-      query = query.where('type', '==', type);
-    }
+    // Sử dụng repository để lấy dữ liệu transactions
+    const result = await transactionRepository.getUserTransactions(options);
     
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-    
-    // Count total for pagination
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
-    
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    query = query.orderBy('createdAt', 'desc')
-                .limit(parseInt(limit))
-                .offset(offset);
-                
-    const transactionsSnapshot = await query.get();
-    const transactions = [];
-    
-    transactionsSnapshot.forEach(doc => {
-      const transactionData = doc.data();
-      transactions.push({
-        id: doc.id,
-        ...transactionData,
-        createdAt: transactionData.createdAt ? transactionData.createdAt.toDate() : null,
-        updatedAt: transactionData.updatedAt ? transactionData.updatedAt.toDate() : null,
-        transferDate: transactionData.transferDate ? new Date(transactionData.transferDate) : null
-      });
-    });
-    
-    // Get user balance
+    // Lấy thông tin balance của user từ repository
     const userDoc = await db.collection('users').doc(uid).get();
     const balance = userDoc.exists ? userDoc.data().balance || 0 : 0;
     
     ctx.status = 200;
     ctx.body = { 
-      transactions,
+      transactions: result.transactions,
       balance,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+      pagination: result.pagination
     };
   } catch (error) {
     ctx.status = 500;
@@ -391,66 +366,60 @@ export const getUserTransactions = async (ctx) => {
  */
 export const getAllTransactions = async (ctx) => {
   try {
-    const { userId, type, status, startDate, endDate, limit = 20, page = 1 } = ctx.query;
+    const { userId, type, status, startDate, endDate, limit = 20, page = 1 } = ctx.req.query;
     
-    let query = db.collection('transactions');
+    // Create a filter object to pass to the repository
+    const filters = {
+      userId,
+      type,
+      status,
+      startDate,
+      endDate,
+      limit: parseInt(limit),
+      page: parseInt(page)
+    };
     
-    // Apply filters
-    if (userId) {
-      query = query.where('userId', '==', userId);
-    }
-    
-    if (type) {
-      query = query.where('type', '==', type);
-    }
-    
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-    
-    // Apply date range if both start and end dates are provided
-    if (startDate && endDate) {
-      const startTimestamp = admin.firestore.Timestamp.fromDate(new Date(startDate));
-      const endTimestamp = admin.firestore.Timestamp.fromDate(new Date(endDate));
-      
-      query = query.where('createdAt', '>=', startTimestamp)
-                   .where('createdAt', '<=', endTimestamp);
-    }
-    
-    // Count total for pagination
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
-    
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    query = query.orderBy('createdAt', 'desc')
-                .limit(parseInt(limit))
-                .offset(offset);
-                
-    const transactionsSnapshot = await query.get();
-    const transactions = [];
-    
-    transactionsSnapshot.forEach(doc => {
-      const transactionData = doc.data();
-      transactions.push({
-        id: doc.id,
-        ...transactionData,
-        createdAt: transactionData.createdAt ? transactionData.createdAt.toDate() : null,
-        updatedAt: transactionData.updatedAt ? transactionData.updatedAt.toDate() : null,
-        transferDate: transactionData.transferDate ? new Date(transactionData.transferDate) : null
-      });
-    });
+    // Create a function in repository to handle getAllTransactions with these filters
+    const result = await transactionRepository.getAllTransactions(filters);
     
     ctx.status = 200;
     ctx.body = { 
-      transactions,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+      transactions: result.transactions,
+      pagination: result.pagination
     };
+  } catch (error) {
+    console.error("Error in getAllTransactions:", error);
+    ctx.status = 500;
+    ctx.body = { error: error.message };
+  }
+};
+
+/**
+ * Get transaction by id (admin and user)
+ */
+export const getTransactionById = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    const { uid, role } = ctx.state.user;
+    
+    // Use repository to get transaction
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      ctx.status = 404;
+      ctx.body = { error: 'Transaction not found' };
+      return;
+    }
+    
+    // Check if user has access to this transaction (must be admin or transaction owner)
+    if (role !== 'admin' && transaction.userId !== uid) {
+      ctx.status = 403;
+      ctx.body = { error: 'Not authorized to view this transaction' };
+      return;
+    }
+    
+    ctx.status = 200;
+    ctx.body = transaction;
   } catch (error) {
     ctx.status = 500;
     ctx.body = { error: error.message };

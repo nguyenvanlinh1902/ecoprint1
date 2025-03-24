@@ -55,48 +55,72 @@ const upload = multer({
 // Apply file upload middleware globally
 app.use(async (ctx, next) => {
   try {
-    // Only process multipart requests
-    const contentType = ctx.request.headers['content-type'] || '';
+    // Only process multipart requests if req and headers exist
+    if (!ctx.req) {
+      console.log('Request object missing, skipping multipart processing');
+      return await next();
+    }
+
+    // Skip multipart processing if headers are missing
+    if (!ctx.req.headers) {
+      console.log('Request headers missing, skipping global multipart processing');
+      // Continue without trying to use multer which would fail
+      return await next();
+    }
+    
+    const contentType = ctx.req.headers['content-type'] || '';
     if (contentType.includes('multipart/form-data')) {
-      console.log('Processing multipart/form-data request:', ctx.url);
-      // Use a single-function pattern to avoid 'Unexpected end of form' error
-      await new Promise((resolve, reject) => {
-        upload.fields([
-          { name: 'image', maxCount: 1 },
-          { name: 'files', maxCount: 5 }
-        ])(ctx.req, ctx.res, (err) => {
-          if (err) {
-            console.error('Multer error:', err);
-            reject(err);
-            return;
-          }
-          
-          // Make files available in req.files for Firebase compatibility
-          if (ctx.req.files) {
-            ctx.request.files = ctx.req.files; // Also set in ctx.request.files
-            console.log('Files attached to request:', 
-              Object.keys(ctx.req.files).map(key => 
-                `${key}: ${ctx.req.files[key].length} file(s)`
-              )
-            );
-          }
-          
-          resolve();
-        });
-      });
+      console.log('Processing multipart/form-data request via global middleware:', ctx.url);
       
-      await next();
+      // Skip specific routes that handle their own file upload
+      // These routes use their own fileUploadMiddleware
+      if (ctx.url.includes('/upload') || ctx.url.includes('/image') || ctx.url.includes('/file')) {
+        console.log('Skipping global multipart handling for file upload endpoint');
+        return await next();
+      }
+      
+      // For all other multipart requests, try parsing but don't fail if it errors
+      try {
+        console.log('Using basic form parsing for non-file multipart request');
+        
+        // We'll skip actual file processing here since fileUploadMiddleware handles that
+        // Just set up basic structure so routes don't crash
+        if (!ctx.req.files) {
+          ctx.req.files = {};
+        }
+        
+        await next();
+      } catch (multerError) {
+        console.error('Error in global multipart processing:', multerError);
+        // Continue to next middleware despite errors
+        await next();
+      }
     } else {
       await next();
     }
   } catch (err) {
     console.error('Error in file upload middleware:', err);
-    ctx.status = 500;
-    ctx.body = {
-      success: false,
-      error: 'File upload failed',
-      message: err.message || 'Error processing file upload'
-    };
+    // Check for specific Multer errors
+    if (err.name === 'MulterError') {
+      console.error(`Multer error type: ${err.code}`);
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        error: 'File upload validation failed',
+        code: err.code,
+        message: err.message || 'Error processing file upload'
+      };
+    } else {
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        error: 'File upload failed',
+        message: err.message || 'Error processing file upload'
+      };
+    }
+    
+    // Continue to next middleware instead of crashing
+    await next();
   }
 });
 
@@ -104,49 +128,65 @@ app.use(async (ctx, next) => {
 app.use(async (ctx, next) => {
   console.log(`Request received: ${ctx.method} ${ctx.url}`);
 
-  // Only parse the body for methods that typically have one
-  if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
-    try {
-      // Nếu Firebase Functions đã parse body
-      if (ctx.req.body) {
-        console.log('Using body from Firebase Functions');
-        ctx.request.body = ctx.req.body;
-      }
-      // Nếu có rawBody, ưu tiên sử dụng nó
-      else if (ctx.req.rawBody) {
-        try {
-          console.log('Using rawBody from request');
-          const rawBody = ctx.req.rawBody.toString();
-          const parsedBody = JSON.parse(rawBody);
-          ctx.request.body = parsedBody;
-          ctx.req.body = parsedBody;
-        } catch (e) {
-          console.error('Error parsing raw body:', e);
-          ctx.request.body = {};
-          ctx.req.body = {};
-        }
-      }
-      // Nếu không có gì, đọc trực tiếp từ stream (thận trọng)
-      else {
-        console.log('Reading body from request stream');
-        try {
-          const body = await readRequestBody(ctx.req);
-          ctx.request.body = body;
-          ctx.req.body = body;
-        } catch (err) {
-          console.error('Failed to read request body:', err);
-          ctx.request.body = {};
-          ctx.req.body = {};
-        }
-      }
-    } catch (err) {
-      console.error('Body parsing error:', err);
-      ctx.request.body = {};
-      ctx.req.body = {};
+  try {
+    // Skip specific routes that handle their own body parsing
+    if (ctx.url.includes('/upload-receipt') || ctx.url.includes('/upload-image') || ctx.url.includes('/upload')) {
+      console.log('Skipping global body parser for upload endpoint');
+      return await next();
     }
     
-    // Log body for debugging
-    console.log('Request body after parsing:', JSON.stringify(ctx.request.body || {}));
+    // Only parse the body for methods that typically have one
+    if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
+      try {
+        // If Firebase Functions already parsed body
+        if (ctx.req.body) {
+          console.log('Using body from Firebase Functions');
+          ctx.req.body = ctx.req.body;
+        }
+        // If we have rawBody, prioritize using it
+        else if (ctx.req.rawBody) {
+          try {
+            console.log('Using rawBody from request');
+            const rawBody = ctx.req.rawBody.toString();
+            const parsedBody = JSON.parse(rawBody);
+            ctx.req.body = parsedBody;
+          } catch (e) {
+            console.error('Error parsing raw body:', e);
+            ctx.req.body = {};
+          }
+        }
+        // If nothing, read directly from stream (with caution)
+        else {
+          console.log('Reading body from request stream');
+          try {
+            const body = await readRequestBody(ctx.req);
+            ctx.req.body = body;
+          } catch (err) {
+            console.error('Failed to read request body:', err);
+            ctx.req.body = {};
+          }
+        }
+      } catch (err) {
+        console.error('Body parsing error:', err);
+        ctx.req.body = {};
+      }
+      
+      // Ensure body is an object
+      if (!ctx.req.body || typeof ctx.req.body !== 'object') {
+        ctx.req.body = {};
+      }
+      
+      // Log body for debugging (omitting large fields)
+      const safeBody = {...ctx.req.body};
+      ['image', 'receipt', 'file', 'files'].forEach(field => {
+        if (safeBody[field]) {
+          safeBody[field] = '[File data omitted]';
+        }
+      });
+      console.log('Request body after parsing:', JSON.stringify(safeBody || {}));
+    }
+  } catch (err) {
+    console.error('Error in body parser middleware:', err);
   }
 
   await next();
