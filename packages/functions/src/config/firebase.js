@@ -2,6 +2,20 @@
 import * as functions from 'firebase-functions';
 import admin from 'firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Thay thế __dirname trong ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Vô hiệu hóa hoàn toàn Firestore emulator nếu có
+if (process.env.FIRESTORE_EMULATOR_HOST) {
+  console.log(`⚠️ Đang xóa FIRESTORE_EMULATOR_HOST (${process.env.FIRESTORE_EMULATOR_HOST}) để kết nối Firestore thật`);
+  delete process.env.FIRESTORE_EMULATOR_HOST;
+}
 
 // Sử dụng API local nhưng lưu dữ liệu thật trên cloud
 const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
@@ -15,18 +29,44 @@ console.log('- Running in API emulator:', isEmulator);
 console.log('- Project ID:', projectId);
 console.log('- Storage bucket:', process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`);
 console.log('- Using PRODUCTION Firestore Database (emulator sẽ chỉ xử lý API)');
+console.log('- FIRESTORE_EMULATOR_HOST:', process.env.FIRESTORE_EMULATOR_HOST || 'không được cài đặt (đúng - sẽ dùng Firestore THẬT)');
 
 // Initialize Firebase Admin only if not already initialized
 if (!admin.apps.length) {
   console.log('Initializing Firebase Admin SDK...');
+  
+  let serviceAccount;
+  const serviceAccountPath = path.resolve(__dirname, '../../../serviceAccount.json');
+  
+  // Kiểm tra xem file serviceAccount.json có tồn tại không
+  if (fs.existsSync(serviceAccountPath)) {
+    try {
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath));
+      console.log('Using serviceAccount.json for Firebase authentication');
+    } catch (error) {
+      console.error('Error loading serviceAccount.json:', error);
+      console.log('Falling back to application default credentials');
+    }
+  } else {
+    console.log('serviceAccount.json not found, using application default credentials');
+  }
+  
   const config = {
     projectId: projectId,
     // Use actual cloud services
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${projectId}.appspot.com`
   };
   
+  // Thêm credential từ serviceAccount nếu có
+  if (serviceAccount) {
+    config.credential = admin.credential.cert(serviceAccount);
+  }
+  
   admin.initializeApp(config);
-  console.log('Firebase Admin SDK initialized with config:', config);
+  console.log('Firebase Admin SDK initialized with config:', JSON.stringify({
+    ...config,
+    credential: serviceAccount ? 'ServiceAccount credentials provided' : 'Default credentials'
+  }));
 } else {
   console.log('Firebase Admin SDK already initialized');
 }

@@ -1,8 +1,17 @@
 import * as functions from 'firebase-functions';
 import { initializeApp, getApps } from 'firebase-admin/app';
+import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import apiHandler from './handlers/api.js';
 import authHandler from './handlers/auth.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Thay thế __dirname trong ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 console.log('Firebase Functions initializing...');
 console.log('Environment:', process.env.NODE_ENV || 'development');
@@ -16,10 +25,38 @@ const projectId = process.env.GCLOUD_PROJECT || 'ecoprint1-3cd5c';
 // Initialize Firebase Admin if not already initialized
 if (getApps().length === 0) {
   console.log('Initializing Firebase Admin in index.js');
-  initializeApp({
+  
+  let serviceAccount;
+  const serviceAccountPath = path.resolve(__dirname, '../../serviceAccount.json');
+  
+  // Kiểm tra xem file serviceAccount.json có tồn tại không
+  if (fs.existsSync(serviceAccountPath)) {
+    try {
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath));
+      console.log('Using serviceAccount.json for Firebase authentication in index.js');
+    } catch (error) {
+      console.error('Error loading serviceAccount.json in index.js:', error);
+      console.log('Falling back to application default credentials');
+    }
+  } else {
+    console.log('serviceAccount.json not found, using application default credentials');
+  }
+  
+  const config = {
     projectId: projectId,
     storageBucket: `${projectId}.appspot.com`
-  });
+  };
+  
+  // Thêm credential từ serviceAccount nếu có
+  if (serviceAccount) {
+    config.credential = admin.credential.cert(serviceAccount);
+  }
+  
+  initializeApp(config);
+  console.log('Firebase Admin initialized in index.js with config:', JSON.stringify({
+    ...config, 
+    credential: serviceAccount ? 'ServiceAccount credentials provided' : 'Default credentials'
+  }));
 } else {
   console.log('Firebase Admin already initialized in index.js');
 }
