@@ -7,6 +7,10 @@ import App from './App';
 import { AuthProvider } from './hooks/useAuth';
 import './styles/index.css';
 
+// Khởi tạo Firebase emulator nếu cần
+import { connectToEmulators } from './services/firebase-emulator';
+connectToEmulators();
+
 // Create default theme
 const theme = createTheme({
   palette: {

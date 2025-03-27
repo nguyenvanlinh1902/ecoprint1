@@ -18,73 +18,73 @@ router.post('/auth/login', authController.login);
 router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/reset-password', authController.resetPassword);
 router.get('/auth/verify-token', authMiddleware.authenticate, authController.verifyToken);
-router.get('/auth/me', authMiddleware.verifyToken, authController.getCurrentUser);
-router.patch('/auth/profile', authMiddleware.verifyToken, authController.updateProfile);
+router.get('/auth/me', authMiddleware.authenticate, authController.getCurrentUser);
+router.patch('/auth/profile', authMiddleware.authenticate, authController.updateProfile);
 
 // Product routes
 router.get('/products', productController.getProducts);
 router.post(
   '/products/upload-image', 
-  authMiddleware.verifyToken, 
+  authMiddleware.authenticate, 
   simpleUploadMiddleware.imageUploadMiddleware,
   productController.uploadProductImage
 );
 router.get('/products/:productId', productController.getProductById);
-router.post('/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
-router.put('/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
-router.delete('/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteProduct);
+router.post('/products', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.createProduct);
+router.put('/products/:productId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.updateProduct);
+router.delete('/products/:productId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.deleteProduct);
 
 // User routes
-router.get('/users', authMiddleware.verifyToken, authMiddleware.isAdmin, userController.getAllUsers);
-router.get('/users/:userId', authMiddleware.verifyToken, userController.getUserById);
-router.put('/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, userController.updateUser);
-router.delete('/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, userController.deleteUser);
+router.get('/users', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.getAllUsers);
+router.get('/users/:userId', authMiddleware.authenticate, userController.getUserById);
+router.put('/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.updateUser);
+router.delete('/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.deleteUser);
 
 // Order routes
-router.post('/orders', authMiddleware.verifyToken, orderController.createOrder);
-router.get('/orders', authMiddleware.verifyToken, orderController.getUserOrders);
-router.get('/orders/:orderId', authMiddleware.verifyToken, orderController.getOrderById);
+router.post('/orders', authMiddleware.authenticate, orderController.createOrder);
+router.get('/orders', authMiddleware.authenticate, orderController.getUserOrders);
+router.get('/orders/:orderId', authMiddleware.authenticate, orderController.getOrderById);
 
 // Transaction routes
-router.post('/transactions/deposit', authMiddleware.verifyToken, transactionController.requestDeposit);
+router.post('/transactions/deposit', authMiddleware.authenticate, transactionController.requestDeposit);
 router.post(
   '/transactions/:transactionId/upload-receipt', 
-  authMiddleware.verifyToken, 
+  authMiddleware.authenticate, 
   simpleUploadMiddleware.receiptUploadMiddleware,
   transactionController.uploadReceipt
 );
-router.get('/transactions', authMiddleware.verifyToken, transactionController.getUserTransactions);
-router.post('/orders/:orderId/pay', authMiddleware.verifyToken, transactionController.payOrder);
+router.get('/transactions', authMiddleware.authenticate, transactionController.getUserTransactions);
+router.post('/orders/:orderId/pay', authMiddleware.authenticate, transactionController.payOrder);
 
 // Admin routes
-router.get('/admin/dashboard', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getDashboard);
-router.get('/admin/users', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUsers);
-router.get('/admin/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserById);
-router.get('/admin/users/:userId/orders', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserOrders);
-router.get('/admin/users/:userId/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getUserTransactions);
-router.post('/admin/users/:userId/approve', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.approveUser);
-router.post('/admin/users/:userId/reject', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.rejectUser);
-router.put('/admin/users/:userId/status', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.updateUserStatus);
-router.put('/admin/users/:userId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.updateUser);
+router.get('/admin/dashboard', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getDashboard);
+router.get('/admin/users', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getUsers);
+router.get('/admin/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getUserById);
+router.get('/admin/users/:userId/orders', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getUserOrders);
+router.get('/admin/users/:userId/transactions', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getUserTransactions);
+router.post('/admin/users/:userId/approve', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.approveUser);
+router.post('/admin/users/:userId/reject', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.rejectUser);
+router.put('/admin/users/:userId/status', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.updateUserStatus);
+router.put('/admin/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.updateUser);
 
 // Admin product routes
-router.get('/admin/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.getAllProducts);
-router.get('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.getProduct);
-router.post('/admin/products', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createProduct);
-router.put('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateProduct);
-router.delete('/admin/products/:productId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteProduct);
+router.get('/admin/products', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.getAllProducts);
+router.get('/admin/products/:productId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.getProduct);
+router.post('/admin/products', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.createProduct);
+router.put('/admin/products/:productId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.updateProduct);
+router.delete('/admin/products/:productId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.deleteProduct);
 
 // Admin transaction routes
-router.get('/admin/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getAllTransactions);
-router.get('/admin/transactions/:transactionId', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.getTransactionById);
-router.post('/admin/transactions', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.createTransaction);
-router.put('/admin/transactions/:transactionId/approve', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.approveTransaction);
-router.put('/admin/transactions/:transactionId/reject', authMiddleware.verifyToken, authMiddleware.isAdmin, adminController.rejectTransaction);
+router.get('/admin/transactions', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getAllTransactions);
+router.get('/admin/transactions/:transactionId', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.getTransactionById);
+router.post('/admin/transactions', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.createTransaction);
+router.put('/admin/transactions/:transactionId/approve', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.approveTransaction);
+router.put('/admin/transactions/:transactionId/reject', authMiddleware.authenticate, authMiddleware.requireAdmin, adminController.rejectTransaction);
 
 // Categories
 router.get('/categories', productController.getAllCategories);
-router.post('/categories', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.createCategory);
-router.put('/admin/categories/:categoryId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.updateCategory);
-router.delete('/admin/categories/:categoryId', authMiddleware.verifyToken, authMiddleware.isAdmin, productController.deleteCategory);
+router.post('/categories', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.createCategory);
+router.put('/admin/categories/:categoryId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.updateCategory);
+router.delete('/admin/categories/:categoryId', authMiddleware.authenticate, authMiddleware.requireAdmin, productController.deleteCategory);
 
 export default router; 

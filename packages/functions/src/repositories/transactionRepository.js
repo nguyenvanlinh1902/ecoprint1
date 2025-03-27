@@ -1,4 +1,5 @@
 import { admin } from '../config/firebase.js';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 const db = admin.firestore();
 const transactionsCollection = 'transactions';
@@ -42,8 +43,8 @@ const createDepositRequest = async (data, userId) => {
       reference: reference || '',
       receiptUrl: '', // Will be updated when receipt is uploaded
       status: 'pending', // pending, approved, rejected
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     });
     
     return {
@@ -66,7 +67,7 @@ const updateTransactionReceipt = async (transactionId, receiptUrl) => {
   try {
     await db.collection(transactionsCollection).doc(transactionId).update({
       receiptUrl,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     });
     
     return true;
@@ -125,7 +126,7 @@ const updateTransactionStatus = async (transactionId, status, reason = null) => 
   try {
     const updateData = {
       status,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: FieldValue.serverTimestamp()
     };
     
     if (reason && status === 'rejected') {
@@ -376,13 +377,13 @@ const approveTransaction = async (transactionId) => {
       // Cập nhật số dư của user
       t.update(db.collection('users').doc(transaction.userId), {
         balance: newBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       });
       
       // Cập nhật trạng thái giao dịch
       t.update(db.collection(transactionsCollection).doc(transactionId), {
         status: 'approved',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       });
     });
     
@@ -432,14 +433,14 @@ const processOrderPayment = async (orderId, userId, amount) => {
       // Cập nhật số dư của user
       t.update(db.collection('users').doc(userId), {
         balance: newBalance,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: FieldValue.serverTimestamp()
       });
       
       // Cập nhật trạng thái thanh toán của đơn hàng
       t.update(db.collection('orders').doc(orderId), {
         paymentStatus: 'paid',
-        paidAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        paidAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
       });
       
       // Tạo giao dịch thanh toán
@@ -451,8 +452,8 @@ const processOrderPayment = async (orderId, userId, amount) => {
         amount: -amount, // Số tiền âm cho thanh toán
         status: 'approved',
         description: `Payment for order ${order.orderNumber}`,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
       });
     });
     

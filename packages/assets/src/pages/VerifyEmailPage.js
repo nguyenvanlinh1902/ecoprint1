@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Typography, Button, Paper, Container, Alert } from '@mui/material';
 import { sendEmailVerification } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth } from '../services/firebase';
 import { useAuth } from '../hooks/useAuth';
 
 /**

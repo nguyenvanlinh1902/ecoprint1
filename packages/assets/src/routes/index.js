@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth.js";
 import useHistory from "../hooks/useHistory.js";
 import { Box, CircularProgress } from "@mui/material";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebase.js";
+import { auth } from "../services/firebase.js";
 import { CONFIG } from "../config/env.js";
 
 // Lazy load router components

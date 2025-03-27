@@ -1,7 +1,6 @@
 import App from 'koa';
 import cors from '@koa/cors';
 import Router from '@koa/router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
 import createErrorHandler from '../middleware/errorHandler.js';
 import * as errorService from '../services/errorService.js';
 import render from 'koa-ejs';
@@ -13,14 +12,17 @@ import appConfig from '../config/app.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Xác định môi trường
+const isProd = process.env.NODE_ENV === 'production';
+
 // Initialize the Koa application
 const app = new App();
 app.proxy = true;
 
 // Configure EJS rendering
 render(app, {
-  cache: appConfig.views.cache,
-  debug: appConfig.views.debug,
+  cache: isProd, // Enable cache in production
+  debug: !isProd, // Disable debug in production
   layout: false,
   root: path.resolve(__dirname, '../../../views'),
   viewExt: 'html'
@@ -39,49 +41,34 @@ app.use(cors({
   maxAge: 86400
 }));
 
-console.log('Auth handler initialized - ready to handle requests');
-console.log('CORS configured with open access - allowing all origins');
-console.log('Auth handler will connect to PRODUCTION Firestore');
-
 // Custom JSON body parser middleware
 app.use(async (ctx, next) => {
-  console.log(`Auth handler received: ${ctx.method} ${ctx.url}`);
-
   if (ctx.method === 'POST' || ctx.method === 'PUT' || ctx.method === 'PATCH') {
     try {
       // Nếu đã có body từ ctx.req.body (Firebase Functions), sử dụng nó
       if (ctx.req && ctx.req.body && Object.keys(ctx.req.body).length > 0) {
-        console.log('Using existing body from ctx.req.body');
+        // Đã có body, không cần làm gì
       } 
       // Nếu có rawBody, parse nó
       else if (ctx.req && ctx.req.rawBody) {
         try {
-          console.log('Parsing body from rawBody');
           const rawBody = ctx.req.rawBody.toString();
-          console.log('Raw body:', rawBody);
           const parsedBody = JSON.parse(rawBody);
           ctx.req.body = parsedBody;
         } catch (e) {
-          console.error('Error parsing raw body:', e);
           ctx.req.body = {};
         }
       } 
-      // Nếu không có gì, đọc stream (cẩn thận)
+      // Nếu không có gì, đọc stream
       else {
         try {
-          console.log('Reading body from request stream');
           const body = await readRequestBody(ctx.req);
           ctx.req.body = body;
         } catch (err) {
-          console.error('Failed to read body stream:', err);
           ctx.req.body = {};
         }
       }
-      
-      // Log body cho debugging
-      console.log('Auth request body after parsing:', JSON.stringify(ctx.req.body || {}));
     } catch (err) {
-      console.error('Body parsing error in auth handler:', err);
       ctx.req.body = {};
     }
   }
@@ -108,13 +95,11 @@ function readRequestBody(req) {
         const body = bodyString ? JSON.parse(bodyString) : {};
         resolve(body);
       } catch (e) {
-        console.error('Error parsing JSON:', e);
         resolve({});
       }
     });
     
-    req.on('error', (err) => {
-      console.error('Error reading request:', err);
+    req.on('error', () => {
       resolve({});
     });
     
@@ -142,20 +127,12 @@ router.post('/register', async (ctx) => {
   }
 
   try {
-    // const userCredential = await Promise.race([
-    //   createUserWithEmailAndPassword(auth, email, password),
-    //   new Promise((_, reject) =>
-    //     setTimeout(() => reject(new Error('Registration timed out')), 30000)
-    //   )
-    // ]);
-
-    // ctx.body = {
-    //   success: true,
-    //   data: {
-    //     uid: userCredential.user.uid,
-    //     email: userCredential.user.email
-    //   }
-    // };
+    // Implement actual registration logic
+    ctx.status = 501; // Not Implemented
+    ctx.body = {
+      success: false,
+      message: "Please use the main API endpoint for registration"
+    };
   } catch (error) {
     ctx.status = error.message === 'Registration timed out' ? 504 : 400;
     ctx.body = errorService.formatError(error, ctx.status);
@@ -163,7 +140,12 @@ router.post('/register', async (ctx) => {
 });
 
 router.post('/login', async (ctx) => {
-  // Implementation for login
+  // Redirect to main API
+  ctx.status = 501; // Not Implemented
+  ctx.body = {
+    success: false,
+    message: "Please use the main API endpoint for authentication"
+  };
 });
 
 // Register routes

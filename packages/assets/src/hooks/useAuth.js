@@ -9,12 +9,15 @@ import {
   signInWithPopup
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { auth, db } from '../services/firebase';
 import api from '../services/api';
 import axios from 'axios';
 
 // Get API base URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+// Thời gian sống của token (24 giờ = 86400000 ms)
+const TOKEN_EXPIRY = 24 * 60 * 60 * 1000;
 
 const AuthContext = createContext();
 
@@ -27,6 +30,10 @@ export function AuthProvider({ children }) {
   const cleanupLocalStorage = () => {
     try {
       localStorage.removeItem('authToken');
+      localStorage.removeItem('tokenTimestamp');
+      localStorage.removeItem('userRole');
+      localStorage.removeItem('userProfile');
+      
       if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
         api.defaults.headers.common['Authorization'] = '';
       }
@@ -35,9 +42,60 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Kiểm tra token có hết hạn không
+  const isTokenExpired = () => {
+    try {
+      const tokenTimestamp = localStorage.getItem('tokenTimestamp');
+      if (!tokenTimestamp) return true;
+      
+      const timestamp = parseInt(tokenTimestamp, 10);
+      return Date.now() - timestamp > TOKEN_EXPIRY;
+    } catch (error) {
+      console.error('Error checking token expiry:', error);
+      return true;
+    }
+  };
+
+  // Lưu thông tin người dùng vào localStorage
+  const saveUserToLocalStorage = (userData) => {
+    try {
+      if (userData) {
+        localStorage.setItem('userRole', userData.role || 'user');
+        localStorage.setItem('userProfile', JSON.stringify({
+          displayName: userData.displayName,
+          email: userData.email,
+          role: userData.role,
+          status: userData.status,
+          uid: userData.uid || currentUser?.uid
+        }));
+      }
+    } catch (error) {
+      console.error('Error saving user to localStorage:', error);
+    }
+  };
+
+  // Tải thông tin người dùng từ localStorage
+  const loadUserFromLocalStorage = () => {
+    try {
+      const userProfileJson = localStorage.getItem('userProfile');
+      if (userProfileJson) {
+        return JSON.parse(userProfileJson);
+      }
+    } catch (error) {
+      console.error('Error loading user from localStorage:', error);
+    }
+    return null;
+  };
+
   // Listen for auth state changes
   useEffect(() => {
     let unsubscribe = () => {};
+    
+    // Khôi phục userProfile từ localStorage nếu có
+    const cachedProfile = loadUserFromLocalStorage();
+    if (cachedProfile && !userProfile) {
+      setUserProfile(cachedProfile);
+    }
 
     // Set up Firebase auth listener
     try {
@@ -46,31 +104,60 @@ export function AuthProvider({ children }) {
         
         if (user) {
           try {
+            // Lấy token và lưu trữ
+            const token = await user.getIdToken();
+            localStorage.setItem('authToken', token);
+            localStorage.setItem('tokenTimestamp', Date.now().toString());
+            
+            if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
+              api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            }
+            
             // Get user profile from Firestore
             const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
               const userData = userDoc.data();
+              userData.uid = user.uid;
               setUserProfile(userData);
+              saveUserToLocalStorage(userData);
             } else {
-              setUserProfile(null);
+              // Thử lấy thông tin từ API nếu không tìm thấy trong Firestore
+              try {
+                const response = await axios({
+                  method: 'get',
+                  url: `${API_BASE_URL}/auth/me`,
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                
+                if (response.data && response.data.success) {
+                  const apiUserData = response.data.user;
+                  setUserProfile(apiUserData);
+                  saveUserToLocalStorage(apiUserData);
+                } else {
+                  setUserProfile(null);
+                  console.error('Failed to fetch user data from API');
+                }
+              } catch (apiError) {
+                console.error('Error fetching user profile from API:', apiError);
+                setUserProfile(cachedProfile || null);
+              }
             }
-            
-            // Get and set token for API calls
-            const token = await user.getIdToken();
-            if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
-              api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-            }
-            localStorage.setItem('authToken', token);
           } catch (error) {
             console.error('Error fetching user profile:', error);
-            setUserProfile(null);
+            // Sử dụng dữ liệu từ localStorage nếu không lấy được từ Firestore
+            setUserProfile(cachedProfile || null);
           }
         } else {
-          setUserProfile(null);
-          if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
-            delete api.defaults.headers.common['Authorization'];
+          // Check if token is expired
+          if (isTokenExpired()) {
+            setUserProfile(null);
+            cleanupLocalStorage();
+          } else {
+            // Giữ lại thông tin người dùng từ localStorage nếu token chưa hết hạn
+            setUserProfile(cachedProfile || null);
           }
-          localStorage.removeItem('authToken');
         }
         
         setLoading(false);
@@ -128,7 +215,7 @@ export function AuthProvider({ children }) {
         displayName: displayName || email.split('@')[0],
         companyName: companyName || '',
         phone: phone || '',
-        role: role // Add role parameter
+        role: role
       };
       
       console.log('Calling registerViaApi with data:', { ...userData, password: '******' });
@@ -521,94 +608,6 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Login with admin credentials
-  const loginAsAdmin = async (email, password) => {
-    try {
-      console.log('Attempting to login as admin');
-      
-      // Thêm trường role=admin vào request để server biết đang đăng nhập admin
-      try {
-        const response = await axios({
-          method: 'post',
-          url: `${API_BASE_URL}/auth/login`,
-          data: JSON.stringify({ 
-            email, 
-            password,
-            loginAsAdmin: true // Đánh dấu là đang đăng nhập với vai trò admin
-          }),
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000 // Thêm timeout 10 giây
-        });
-        
-        if (response.data && response.data.token) {
-          console.log('Admin login successful');
-          console.log('User role from server:', response.data.user.role);
-          
-          // Đảm bảo role từ server là admin
-          if (response.data.user.role !== 'admin') {
-            console.error('Warning: User logged in but does not have admin role from server');
-            console.log('Overriding role to admin');
-          }
-          
-          // Lưu token vào localStorage và cập nhật trong axios
-          localStorage.setItem('authToken', response.data.token);
-          if (api && api.setAuthToken) {
-            api.setAuthToken(response.data.token);
-          } else {
-            console.error('api.setAuthToken is not available');
-            if (api && api.defaults && api.defaults.headers && api.defaults.headers.common) {
-              api.defaults.headers.common['Authorization'] = `Bearer ${response.data.token}`;
-            }
-          }
-          
-          // Cập nhật user profile từ response và ÐẢM BẢO có quyền admin
-          const userProfileData = {
-            ...response.data.user,
-            role: 'admin' // Bắt buộc gán role là admin
-          };
-          
-          console.log('Setting user profile with ADMIN role:', userProfileData);
-          setUserProfile(userProfileData);
-          
-          // Đảm bảo có thông tin người dùng đã đăng nhập
-          setCurrentUser({
-            uid: response.data.user.id,
-            email: response.data.user.email,
-            displayName: response.data.user.displayName,
-            emailVerified: true,
-            isAnonymous: false
-          });
-          
-          return {
-            user: userProfileData,
-            fromApi: true
-          };
-        }
-        
-        throw new Error('Admin login failed: Invalid response from server');
-      } catch (apiError) {
-        console.error('Admin login API error:', apiError);
-        
-        // Xử lý lỗi kết nối mạng
-        if (apiError.code === 'ECONNABORTED' || apiError.message.includes('timeout')) {
-          throw new Error('Yêu cầu đăng nhập đã hết thời gian chờ. Vui lòng thử lại sau.');
-        } else if (!apiError.response && apiError.message.includes('Network Error')) {
-          throw new Error('Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối mạng của bạn.');
-        } else if (apiError.response) {
-          // Nếu có response từ server, sử dụng thông báo lỗi từ server
-          throw new Error(apiError.response.data?.message || apiError.message || 'Đăng nhập admin thất bại');
-        } else {
-          throw new Error(apiError.message || 'Đăng nhập admin thất bại. Vui lòng thử lại sau.');
-        }
-      }
-    } catch (error) {
-      console.error('Admin login error:', error);
-      throw error; // Ném lại lỗi đã xử lý để component xử lý hiển thị
-    }
-  };
-
   const value = {
     currentUser,
     userProfile,
@@ -618,7 +617,6 @@ export function AuthProvider({ children }) {
     register,
     registerViaApi,
     login,
-    loginAsAdmin,
     loginWithGoogle,
     signOut,
     resetPassword,

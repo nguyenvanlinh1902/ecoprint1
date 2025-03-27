@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   setDoc
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../services/firebase';
 
 /**
  * Hook tùy chỉnh để tương tác với Firestore

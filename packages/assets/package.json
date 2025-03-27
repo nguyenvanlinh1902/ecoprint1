@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:prod": "NODE_ENV=production vite build --mode production",
+    "build:analyze": "NODE_ENV=production ANALYZE=true vite build --mode production",
     "preview": "vite preview",
+    "preview:prod": "vite preview --mode production",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -1,5 +1,7 @@
 import admin from 'firebase-admin';
 import { CustomError } from '../exceptions/customError.js';
+import bcrypt from 'bcrypt';
+import { db, auth } from './firebase.js';
 
 // Không khởi tạo db tại thời điểm import
 // Thay vào đó, tạo helper function để lấy db khi cần
@@ -10,54 +12,49 @@ const getDb = () => admin.firestore();
  */
 export const createUser = async (userData) => {
   try {
-    // Lấy db khi cần
-    const db = getDb();
+    // Kiểm tra xem email đã tồn tại chưa
+    const existingUser = await getUserByEmail(userData.email);
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
     
-    // Tạo user trong Firebase Auth
-    const userRecord = await admin.auth().createUser({
-      email: userData.email,
-      password: userData.password,
-      displayName: userData.companyName
-    });
-
-    // Chuẩn bị dữ liệu cho Firestore
-    const firestoreData = {
-      email: userData.email,
-      companyName: userData.companyName,
-      phone: userData.phone,
-      role: 'b2b', // Mặc định là B2B
-      status: 'pending', // Chờ admin phê duyệt
-      balance: 0, // Số dư ban đầu
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    // Thêm timestamps
+    const newUser = {
+      ...userData,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
-
-    // Lưu vào Firestore
-    await db.collection('users').doc(userRecord.uid).set(firestoreData);
-
+    
+    // Thêm vào Firestore
+    const docRef = await db.collection('users').add(newUser);
+    
     return {
-      uid: userRecord.uid,
-      ...firestoreData
+      id: docRef.id,
+      ...newUser
     };
   } catch (error) {
-    throw error;
+    throw new Error(`Failed to create user: ${error.message}`);
   }
 };
 
 /**
  * Cập nhật thông tin người dùng
  */
-export const updateUser = async (userId, userData) => {
+export const updateUser = async (userId, updateData) => {
   try {
-    const db = getDb();
-    // Cập nhật timestamp
-    userData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    // Không cho phép cập nhật một số trường nhất định
+    const { email, createdAt, role, ...allowedUpdates } = updateData;
     
-    await db.collection('users').doc(userId).update(userData);
+    // Thêm timestamp
+    allowedUpdates.updatedAt = new Date();
     
-    return getUserById(userId);
+    // Cập nhật trong Firestore
+    await db.collection('users').doc(userId).update(allowedUpdates);
+    
+    // Lấy dữ liệu người dùng sau khi cập nhật
+    return await getUserById(userId);
   } catch (error) {
-    throw error;
+    throw new Error(`Failed to update user: ${error.message}`);
   }
 };
 
@@ -66,7 +63,6 @@ export const updateUser = async (userId, userData) => {
  */
 export const getUserById = async (userId) => {
   try {
-    const db = getDb();
     const userDoc = await db.collection('users').doc(userId).get();
     
     if (!userDoc.exists) {
@@ -74,11 +70,11 @@ export const getUserById = async (userId) => {
     }
     
     return {
-      id: userId,
+      id: userDoc.id,
       ...userDoc.data()
     };
   } catch (error) {
-    throw new CustomError('Database error fetching user', 500);
+    throw new Error(`Failed to get user: ${error.message}`);
   }
 };
 
@@ -144,12 +140,9 @@ export const updateUserStatus = async (userId, status) => {
 
 /**
  * Lấy thông tin người dùng theo email
- * @param {string} email - Email của người dùng
- * @returns {Promise<Object|null>} - Thông tin người dùng hoặc null nếu không tìm thấy
  */
 export const getUserByEmail = async (email) => {
   try {
-    const db = getDb();
     const usersRef = db.collection('users');
     const snapshot = await usersRef.where('email', '==', email).limit(1).get();
     
@@ -157,27 +150,130 @@ export const getUserByEmail = async (email) => {
       return null;
     }
     
-    const doc = snapshot.docs[0];
+    const userDoc = snapshot.docs[0];
     return {
-      id: doc.id,
-      ...doc.data()
+      id: userDoc.id,
+      ...userDoc.data()
     };
   } catch (error) {
-    throw new CustomError('Database error fetching user', 500);
+    throw new Error(`Failed to get user by email: ${error.message}`);
   }
 };
 
 /**
  * Xóa người dùng
- * @param {string} userId - ID của người dùng
- * @returns {Promise<boolean>} - true nếu xóa thành công
  */
 export const deleteUser = async (userId) => {
   try {
-    const db = getDb();
+    // Xóa người dùng từ Firebase Auth
+    try {
+      await auth.deleteUser(userId);
+    } catch (authError) {
+      // Tiếp tục nếu người dùng không tồn tại trong Auth
+      if (authError.code !== 'auth/user-not-found') {
+        throw authError;
+      }
+    }
+    
+    // Xóa document từ Firestore
     await db.collection('users').doc(userId).delete();
+    
     return true;
   } catch (error) {
-    throw error;
+    throw new Error(`Failed to delete user: ${error.message}`);
+  }
+};
+
+/**
+ * Thay đổi mật khẩu người dùng
+ */
+export const changePassword = async (userId, newPassword) => {
+  try {
+    // Cập nhật mật khẩu trong Firebase Auth
+    await auth.updateUser(userId, {
+      password: newPassword
+    });
+    
+    // Cập nhật thời gian cập nhật
+    await db.collection('users').doc(userId).update({
+      updatedAt: new Date()
+    });
+    
+    return true;
+  } catch (error) {
+    throw new Error(`Failed to change password: ${error.message}`);
+  }
+};
+
+/**
+ * Lấy danh sách người dùng với phân trang
+ */
+export const getUsers = async (options = {}) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      role,
+      sortBy = 'createdAt',
+      sortDirection = 'desc'
+    } = options;
+    
+    // Tính offset
+    const offset = (page - 1) * limit;
+    
+    // Tạo query cơ bản
+    let query = db.collection('users');
+    
+    // Thêm filters nếu có
+    if (status) {
+      query = query.where('status', '==', status);
+    }
+    
+    if (role) {
+      query = query.where('role', '==', role);
+    }
+    
+    // Thêm sorting
+    query = query.orderBy(sortBy, sortDirection);
+    
+    // Thêm pagination
+    query = query.limit(limit).offset(offset);
+    
+    // Thực hiện query
+    const snapshot = await query.get();
+    
+    // Tạo array kết quả
+    const users = [];
+    snapshot.forEach(doc => {
+      users.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    // Đếm tổng số users (không hiệu quả cho collections lớn)
+    const countQuery = db.collection('users');
+    if (status) {
+      countQuery.where('status', '==', status);
+    }
+    if (role) {
+      countQuery.where('role', '==', role);
+    }
+    
+    const countSnapshot = await countQuery.get();
+    const total = countSnapshot.size;
+    
+    return {
+      users,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  } catch (error) {
+    throw new Error(`Failed to get users: ${error.message}`);
   }
 }; 

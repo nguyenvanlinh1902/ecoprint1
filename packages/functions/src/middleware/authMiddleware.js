@@ -1,13 +1,12 @@
 import jwt from 'jsonwebtoken';
-import { getUserById } from '../services/userService.js';
-import { admin, db } from '../config/firebase.js';
+import { db, auth } from '../services/firebase.js';
 import * as functions from 'firebase-functions';
 
 // Secret key for JWT from config
 const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
 
 /**
- * Middleware xác thực token từ Authorization header
+ * Middleware xác thực JWT token
  */
 export const authenticate = async (ctx, next) => {
   try {
@@ -17,7 +16,7 @@ export const authenticate = async (ctx, next) => {
       ctx.status = 401;
       ctx.body = {
         success: false,
-        message: 'Authentication failed. No token provided.'
+        message: 'Xác thực thất bại. Không có token.'
       };
       return;
     }
@@ -32,106 +31,21 @@ export const authenticate = async (ctx, next) => {
       ctx.status = 401;
       ctx.body = {
         success: false,
-        message: 'Authentication failed. Invalid token.'
+        message: 'Xác thực thất bại. Token không hợp lệ.'
       };
       return;
     }
     
-    // Get user from database
+    // Get user from Firestore
     try {
-      const user = await getUserById(decoded.id);
-      
-      if (!user) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'Authentication failed. User not found.'
-        };
-        return;
-      }
-      
-      // Set user in state
-      ctx.state.user = user;
-      
-      await next();
-    } catch (dbError) {
-      // Silent error handling
-      ctx.status = 500;
-      ctx.body = {
-        success: false,
-        message: 'Internal server error during authentication.'
-      };
-    }
-  } catch (err) {
-    // Silent error handling
-    ctx.status = 500;
-    ctx.body = {
-      success: false,
-      message: 'Internal server error during authentication.'
-    };
-  }
-};
-
-/**
- * Middleware kiểm tra quyền truy cập dựa trên role
- * @param {Array} roles - Mảng các role có quyền truy cập
- */
-export const authorize = (roles = []) => {
-  return async (ctx, next) => {
-    try {
-      if (!ctx.state.user) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'Authentication required'
-        };
-        return;
-      }
-      
-      if (roles.length && !roles.includes(ctx.state.user.role)) {
-        ctx.status = 403;
-        ctx.body = {
-          success: false,
-          message: 'You do not have permission to access this resource'
-        };
-        return;
-      }
-      
-      await next();
-    } catch (error) {
-      // Silent error handling
-      ctx.status = 403;
-      ctx.body = {
-        success: false,
-        message: 'Unauthorized access.'
-      };
-    }
-  };
-};
-
-// Verify Firebase token
-export const verifyToken = async (ctx, next) => {
-  try {
-    const authHeader = ctx.req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      ctx.status = 401;
-      ctx.body = { error: 'Unauthorized - No token provided' };
-      return;
-    }
-    
-    const token = authHeader.split('Bearer ')[1];
-    
-    try {
-      // First try to verify JWT token
-      const decoded = jwt.verify(token, JWT_SECRET);
-      
-      // Get user from Firestore
       const userDoc = await db.collection('users').doc(decoded.id).get();
       
       if (!userDoc.exists) {
-        ctx.status = 403;
-        ctx.body = { error: 'User data not found' };
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Xác thực thất bại. Không tìm thấy người dùng.'
+        };
         return;
       }
       
@@ -140,84 +54,181 @@ export const verifyToken = async (ctx, next) => {
       // Check if user is active
       if (userData.status !== 'active') {
         ctx.status = 403;
-        ctx.body = { error: 'Account is not active' };
+        ctx.body = {
+          success: false,
+          message: 'Tài khoản chưa được kích hoạt hoặc đã bị vô hiệu hóa.'
+        };
         return;
       }
       
-      // Store user info in context state
+      // Set user in state
       ctx.state.user = {
-        uid: decoded.id,
-        id: decoded.id,
-        email: decoded.email || userData.email,
-        role: decoded.role || userData.role,
-        displayName: userData.displayName
+        id: userDoc.id,
+        email: userData.email,
+        role: userData.role,
+        displayName: userData.displayName,
+        status: userData.status,
+        companyName: userData.companyName || '',
+        phone: userData.phone || '',
+        balance: userData.balance || 0
       };
       
-      return next();
-    } catch (jwtError) {
-      // If JWT verification fails, try Firebase token
-      try {
-        // Verify token with Firebase
-        const decodedToken = await admin.auth().verifyIdToken(token);
-        
-        // Get user from Firestore to check status and roles
-        const userDoc = await db.collection('users').doc(decodedToken.uid).get();
-        
-        if (!userDoc.exists) {
-          ctx.status = 403;
-          ctx.body = { error: 'User data not found' };
-          return;
-        }
-        
-        const userData = userDoc.data();
-        
-        // Check if user is active
-        if (userData.status !== 'active') {
-          ctx.status = 403;
-          ctx.body = { error: 'Account is not active' };
-          return;
-        }
-        
-        // Store user info in context state
-        ctx.state.user = {
-          uid: decodedToken.uid,
-          id: decodedToken.uid,
-          email: decodedToken.email,
-          role: userData.role,
-          displayName: userData.displayName
-        };
-        
-        return next();
-      } catch (firebaseError) {
-        ctx.status = 401;
-        ctx.body = { error: 'Unauthorized - Invalid token' };
-        return;
-      }
+      await next();
+    } catch (dbError) {
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        message: 'Lỗi server trong quá trình xác thực.'
+      };
     }
-  } catch (error) {
-    ctx.status = 401;
-    ctx.body = { error: 'Unauthorized - Invalid token' };
+  } catch (err) {
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Lỗi server trong quá trình xác thực.'
+    };
   }
 };
 
-// Check if user is admin
-export const isAdmin = async (ctx, next) => {
+/**
+ * Middleware kiểm tra quyền truy cập dựa trên role
+ */
+export const authorize = (roles = []) => {
+  return async (ctx, next) => {
+    try {
+      if (!ctx.state.user) {
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Yêu cầu xác thực'
+        };
+        return;
+      }
+      
+      if (roles.length && !roles.includes(ctx.state.user.role)) {
+        ctx.status = 403;
+        ctx.body = {
+          success: false,
+          message: 'Bạn không có quyền truy cập tài nguyên này'
+        };
+        return;
+      }
+      
+      await next();
+    } catch (error) {
+      ctx.status = 403;
+      ctx.body = {
+        success: false,
+        message: 'Truy cập không được phép'
+      };
+    }
+  };
+};
+
+/**
+ * Middleware kiểm tra quyền admin
+ */
+export const requireAdmin = async (ctx, next) => {
   try {
     if (!ctx.state.user) {
       ctx.status = 401;
-      ctx.body = { error: 'Authentication required' };
+      ctx.body = { 
+        success: false, 
+        message: 'Yêu cầu xác thực' 
+      };
       return;
     }
     
     if (ctx.state.user.role !== 'admin') {
       ctx.status = 403;
-      ctx.body = { error: 'Admin access required' };
+      ctx.body = { 
+        success: false, 
+        message: 'Yêu cầu quyền quản trị' 
+      };
       return;
     }
     
-    return next();
+    await next();
   } catch (error) {
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false, 
+      message: 'Lỗi kiểm tra quyền truy cập' 
+    };
+  }
+};
+
+/**
+ * Middleware xác thực Firebase ID Token
+ */
+export const verifyFirebaseToken = async (ctx, next) => {
+  try {
+    const authHeader = ctx.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      ctx.status = 401;
+      ctx.body = { 
+        success: false, 
+        message: 'Không có token xác thực' 
+      };
+      return;
+    }
+    
+    const token = authHeader.split('Bearer ')[1];
+    
+    try {
+      // Verify token with Firebase
+      const decodedToken = await auth.verifyIdToken(token);
+      
+      // Get user from Firestore to check status and roles
+      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      
+      if (!userDoc.exists) {
+        ctx.status = 403;
+        ctx.body = { 
+          success: false, 
+          message: 'Không tìm thấy dữ liệu người dùng' 
+        };
+        return;
+      }
+      
+      const userData = userDoc.data();
+      
+      // Check if user is active
+      if (userData.status !== 'active') {
+        ctx.status = 403;
+        ctx.body = { 
+          success: false, 
+          message: 'Tài khoản chưa được kích hoạt' 
+        };
+        return;
+      }
+      
+      // Store user info in context state
+      ctx.state.user = {
+        id: decodedToken.uid,
+        email: decodedToken.email,
+        role: userData.role,
+        displayName: userData.displayName,
+        status: userData.status,
+        companyName: userData.companyName || '',
+        phone: userData.phone || '',
+        balance: userData.balance || 0
+      };
+      
+      await next();
+    } catch (firebaseError) {
+      ctx.status = 401;
+      ctx.body = { 
+        success: false, 
+        message: 'Token không hợp lệ' 
+      };
+    }
+  } catch (error) {
+    ctx.status = 500;
+    ctx.body = { 
+      success: false, 
+      message: 'Lỗi server trong quá trình xác thực' 
+    };
   }
 }; 
