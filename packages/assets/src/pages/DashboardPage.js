@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Grid, Paper, Box, Button, Card, CardContent,
@@ -10,13 +10,13 @@ import {
   AccountBalance as BalanceIcon,
   AddShoppingCart as CreateOrderIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 import { useAuth } from '../hooks/useAuth';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 
 const DashboardPage = () => {
-  const { userProfile, currentUser } = useAuth();
+  const { userProfile, currentUser, isLoggedIn } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orderStats, setOrderStats] = useState({
@@ -28,59 +28,57 @@ const DashboardPage = () => {
   });
   const [recentOrders, setRecentOrders] = useState([]);
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [dataFetched, setDataFetched] = useState(false);
 
-  useEffect(() => {
-    /* log removed */
-    /* log removed */
-  }, [userProfile, currentUser]);
-
-  useEffect(() => {
-    const fetchDashboardData = async () => {
+  // Prevent multiple api calls triggered by auth state changes
+  const fetchDashboardData = useCallback(async () => {
+    if (dataFetched) return; // Only fetch once per component mount
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Get recent orders
       try {
-        /* log removed */
-        setLoading(true);
-        setError(null);
+        const ordersResponse = await api.get('/api/orders?limit=5');
+        setRecentOrders(ordersResponse.data.data?.orders || []);
         
-        // Get recent orders
-        try {
-          const ordersResponse = await api.get('/api/orders?limit=5');
-          /* log removed */
-          setRecentOrders(ordersResponse.data.data?.orders || []);
-          
-          // Calculate order stats
-          const allOrders = ordersResponse.data.data?.orders || [];
-          const stats = {
-            total: allOrders.length,
-            pending: allOrders.filter(order => order.status === 'pending').length,
-            processing: allOrders.filter(order => order.status === 'processing').length,
-            shipped: allOrders.filter(order => order.status === 'shipped').length,
-            delivered: allOrders.filter(order => order.status === 'delivered').length
-          };
-          setOrderStats(stats);
-        } catch (orderError) {
-          /* error removed */
-          // Continue with other requests even if orders fail
-        }
-        
-        // Get recent transactions
-        try {
-          const transactionsResponse = await api.get('/api/transactions?limit=5');
-          /* log removed */
-          setRecentTransactions(transactionsResponse.data.data?.transactions || []);
-        } catch (transactionError) {
-          /* error removed */
-          // Continue even if transactions fail
-        }
-      } catch (error) {
-        /* error removed */
-        setError('Failed to load dashboard data. Please try again later.');
-      } finally {
-        setLoading(false);
+        // Calculate order stats
+        const allOrders = ordersResponse.data.data?.orders || [];
+        const stats = {
+          total: allOrders.length,
+          pending: allOrders.filter(order => order.status === 'pending').length,
+          processing: allOrders.filter(order => order.status === 'processing').length,
+          shipped: allOrders.filter(order => order.status === 'shipped').length,
+          delivered: allOrders.filter(order => order.status === 'delivered').length
+        };
+        setOrderStats(stats);
+      } catch (orderError) {
+        // Continue with other requests even if orders fail
       }
-    };
+      
+      // Get recent transactions
+      try {
+        const transactionsResponse = await api.get('/api/transactions?limit=5');
+        setRecentTransactions(transactionsResponse.data.data?.transactions || []);
+      } catch (transactionError) {
+        // Continue even if transactions fail
+      }
+      
+      setDataFetched(true);
+    } catch (error) {
+      setError('Failed to load dashboard data. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  }, [dataFetched]);
 
-    fetchDashboardData();
-  }, []);
+  useEffect(() => {
+    // Only fetch data when user is properly logged in and we have their profile
+    if (isLoggedIn() && userProfile && !dataFetched) {
+      fetchDashboardData();
+    }
+  }, [userProfile, isLoggedIn, fetchDashboardData, dataFetched]);
 
   if (loading) {
     return (
@@ -104,7 +102,10 @@ const DashboardPage = () => {
         </Typography>
         <Button
           variant="contained"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            setDataFetched(false);
+            fetchDashboardData();
+          }}
           sx={{ mt: 2 }}
         >
           Retry

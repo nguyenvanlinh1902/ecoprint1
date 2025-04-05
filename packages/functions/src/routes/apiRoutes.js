@@ -11,12 +11,11 @@ import * as simpleUploadMiddleware from '../middleware/simpleUploadMiddleware.js
 const router = new Router();
 
 // Authentication routes
-router.post('/auth/register', async (ctx) => {
-  await authController.register(ctx);
-});
+router.post('/auth/register', authController.register);
 router.post('/auth/login', authController.login);
 router.post('/auth/forgot-password', authController.forgotPassword);
 router.post('/auth/reset-password', authController.resetPassword);
+router.post('/auth/check-status', authController.checkUserStatus);
 router.get('/auth/verify-token', authMiddleware.authenticate, authController.verifyToken);
 router.get('/auth/me', authMiddleware.authenticate, authController.getCurrentUser);
 router.patch('/auth/profile', authMiddleware.authenticate, authController.updateProfile);
@@ -37,7 +36,7 @@ router.delete('/products/:productId', authMiddleware.authenticate, authMiddlewar
 // User routes
 router.get('/users', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.getAllUsers);
 router.get('/users/:userId', authMiddleware.authenticate, userController.getUserById);
-router.put('/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.updateUser);
+router.put('/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.updateUserRole);
 router.delete('/users/:userId', authMiddleware.authenticate, authMiddleware.requireAdmin, userController.deleteUser);
 
 // Order routes

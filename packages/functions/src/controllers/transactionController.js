@@ -1,9 +1,13 @@
-import { CustomError } from '../exceptions/customError.js';
-import { admin, db } from '../config/firebase.js';
+import { Firestore } from '@google-cloud/firestore';
+import { adminStorage } from '../config/firebaseAdmin.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import orderRepository from '../repositories/orderRepository.js';
-import * as fileUploadService from '../services/fileUploadService.js';
-import * as requestParserService from '../services/requestParserService.js';
+import fileUploadRepository from '../repositories/fileUploadRepository.js';
+import requestParserRepository from '../repositories/requestParserRepository.js';
+import userRepository from '../repositories/userRepository.js';
+import { CustomError } from '../exceptions/customError.js';
+
+const firestore = new Firestore();
 
 // Export stub functions that aren't part of the default export
 export const createDeposit = async (ctx) => {
@@ -90,31 +94,31 @@ export const uploadReceipt = async (ctx) => {
     
     // Prepare request with necessary objects
     console.log('Preparing request...');
-    requestParserService.prepareRequest(ctx);
+    requestParserRepository.prepareRequest(ctx);
     
     // Print debug info about the request
     console.log('Request method:', ctx.method);
     console.log('Request URL:', ctx.url);
     console.log('Content-Type:', ctx.req.headers['content-type'] || 'Not specified');
-    console.log('Is multipart:', requestParserService.isMultipartRequest(ctx.req));
-    console.log('Is JSON:', requestParserService.isJsonRequest(ctx.req));
+    console.log('Is multipart:', requestParserRepository.isMultipartRequest(ctx.req));
+    console.log('Is JSON:', requestParserRepository.isJsonRequest(ctx.req));
     console.log('Body keys:', Object.keys(ctx.req.body || {}));
     console.log('Files keys:', Object.keys(ctx.req.files || {}));
     
-    // Extract file data using the dedicated service
+    // Extract file data using repository function
     console.log('Extracting file data...');
-    const fileData = requestParserService.extractFileFromRequest(ctx, 'receipt');
+    const fileData = requestParserRepository.extractFileFromRequest(ctx, 'receipt');
     
     if (!fileData) {
       console.error('No file data found in request');
       
       // Try one more attempt with 'image' field in case client used that field
       console.log('Attempting to find file in "image" field as fallback...');
-      const imageData = requestParserService.extractFileFromRequest(ctx, 'image');
+      const imageData = requestParserRepository.extractFileFromRequest(ctx, 'image');
       
       if (imageData) {
         console.log('Found file data in "image" field, using it as receipt');
-        const uploadResult = await fileUploadService.uploadTransactionReceipt(uid, transactionId, imageData);
+        const uploadResult = await fileUploadRepository.uploadTransactionReceipt(uid, transactionId, imageData);
         
         if (uploadResult.success) {
           console.log('File upload successful using image field, URL:', uploadResult.fileUrl);
@@ -173,9 +177,9 @@ export const uploadReceipt = async (ctx) => {
     
     console.log('Transaction validated, processing file upload');
     
-    // Use the file upload service to handle the upload
-    console.log('Sending to fileUploadService.uploadTransactionReceipt...');
-    const uploadResult = await fileUploadService.uploadTransactionReceipt(uid, transactionId, fileData);
+    // Use the file upload repository to handle the upload
+    console.log('Sending to fileUploadRepository.uploadTransactionReceipt...');
+    const uploadResult = await fileUploadRepository.uploadTransactionReceipt(uid, transactionId, fileData);
     
     if (!uploadResult.success) {
       console.error('File upload failed:', uploadResult.error);
@@ -346,7 +350,7 @@ export const getUserTransactions = async (ctx) => {
     const result = await transactionRepository.getUserTransactions(options);
     
     // Lấy thông tin balance của user từ repository
-    const userDoc = await db.collection('users').doc(uid).get();
+    const userDoc = await firestore.collection('users').doc(uid).get();
     const balance = userDoc.exists ? userDoc.data().balance || 0 : 0;
     
     ctx.status = 200;

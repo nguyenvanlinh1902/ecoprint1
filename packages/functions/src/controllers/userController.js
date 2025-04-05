@@ -1,81 +1,61 @@
-import { db, auth } from '../services/firebase.js';
 import { CustomError } from '../exceptions/customError.js';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
-import * as userService from '../services/userService.js';
-import * as functions from 'firebase-functions';
+import { admin, adminAuth } from '../config/firebaseAdmin.js';
+import userRepository from '../repositories/userRepository.js';
+import userProfileRepository from '../repositories/userProfileRepository.js';
+import orderRepository from '../repositories/orderRepository.js';
+import transactionRepository from '../repositories/transactionRepository.js';
+import { Firestore } from '@google-cloud/firestore';
 
-// Secret key for JWT from config
-const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
+const firestore = new Firestore();
 
 /**
- * Đăng ký người dùng mới 
+ * Tạo tài khoản người dùng mới
  */
-export const register = async (ctx) => {
+export const createUser = async (ctx) => {
   try {
-    const { email, password, companyName, phone } = ctx.request.body;
+    const { email, password, displayName, companyName, phone, role = 'user' } = ctx.request.body;
     
-    // Kiểm tra dữ liệu đầu vào
-    if (!email || !password || !companyName || !phone) {
-      throw new CustomError('Thông tin không đầy đủ', 400);
+    if (!email || !password || !displayName) {
+      throw new CustomError('Thiếu thông tin bắt buộc', 400);
     }
     
     // Kiểm tra email đã tồn tại chưa
-    const existingUser = await userService.getUserByEmail(email);
+    const existingUser = await userProfileRepository.getUserProfileByEmail(email);
     if (existingUser) {
-      throw new CustomError('Email đã được sử dụng', 400);
-    }
-
-    // Tạo người dùng trong Firebase Auth
-    let userRecord;
-    try {
-      userRecord = await auth.createUser({
-        email,
-        password,
-        displayName: companyName,
-        disabled: false,
-      });
-    } catch (createError) {
-      throw new CustomError(`Lỗi tạo tài khoản: ${createError.message}`, 500);
+      throw new CustomError('Email đã được sử dụng', 409);
     }
     
-    // Tạo dữ liệu người dùng cho Firestore
-    const userData = {
+    // Tạo user trên Firebase Auth
+    const userRecord = await adminAuth.createUser({
       email,
-      displayName: companyName,
-      phone,
-      companyName,
-      role: 'user',
-      status: 'pending',
+      password,
+      displayName,
+      emailVerified: role === 'admin'
+    });
+    
+    // Tạo dữ liệu user cho Firestore
+    const userData = {
+      uid: userRecord.uid,
+      email,
+      displayName,
+      companyName: companyName || '',
+      phone: phone || '',
+      role,
+      balance: 0,
+      status: role === 'admin' ? 'active' : 'pending',
       createdAt: new Date(),
-      updatedAt: new Date(),
-      balance: 0
+      updatedAt: new Date()
     };
     
     // Lưu vào Firestore
-    try {
-      await db.collection('users').doc(userRecord.uid).set(userData);
-    } catch (firestoreError) {
-      // Nếu lưu Firestore thất bại, xóa user Auth đã tạo
-      try {
-        await auth.deleteUser(userRecord.uid);
-      } catch (rollbackError) {
-        // Bỏ qua lỗi rollback
-      }
-      throw new CustomError(`Lỗi lưu thông tin: ${firestoreError.message}`, 500);
-    }
+    await userProfileRepository.createUserProfile(userData);
     
-    ctx.status = 201;
     ctx.body = {
       success: true,
-      message: 'Đăng ký thành công. Vui lòng đợi quản trị viên phê duyệt.',
+      message: 'Tạo tài khoản thành công',
       data: {
         id: userRecord.uid,
-        email,
-        companyName,
-        phone,
-        role: 'user',
-        status: 'pending'
+        ...userData
       }
     };
   } catch (error) {
@@ -90,30 +70,15 @@ export const register = async (ctx) => {
 /**
  * Lấy thông tin người dùng hiện tại
  */
-export const getCurrentUser = async (ctx) => {
+export const getProfile = async (ctx) => {
   try {
     const userId = ctx.state.user.id;
     
-    const userDoc = await db.collection('users').doc(userId).get();
-    
-    if (!userDoc.exists) {
-      throw new CustomError('Không tìm thấy người dùng', 404);
-    }
-    
-    const userData = userDoc.data();
+    const userProfile = await userProfileRepository.getUserProfileById(userId);
     
     ctx.body = {
       success: true,
-      data: {
-        id: userId,
-        email: userData.email,
-        displayName: userData.displayName,
-        companyName: userData.companyName,
-        phone: userData.phone || '',
-        role: userData.role,
-        status: userData.status,
-        balance: userData.balance || 0
-      }
+      data: userProfile
     };
   } catch (error) {
     ctx.status = error.statusCode || 500;
@@ -142,35 +107,20 @@ export const updateProfile = async (ctx) => {
       throw new CustomError('Không có thông tin để cập nhật', 400);
     }
     
-    // Thêm timestamp
-    updateData.updatedAt = new Date();
-    
     // Cập nhật trong Firestore
-    await db.collection('users').doc(userId).update(updateData);
+    const updatedUser = await userProfileRepository.updateUserProfile(userId, updateData);
     
     // Nếu displayName được cập nhật, cũng cập nhật trong Firebase Auth
     if (displayName) {
-      await auth.updateUser(userId, {
+      await adminAuth.updateUser(userId, {
         displayName
       });
     }
     
-    // Lấy thông tin đã cập nhật
-    const updatedUserDoc = await db.collection('users').doc(userId).get();
-    const updatedUserData = updatedUserDoc.data();
-    
     ctx.body = {
       success: true,
       message: 'Cập nhật thông tin thành công',
-      data: {
-        id: userId,
-        email: updatedUserData.email,
-        displayName: updatedUserData.displayName,
-        companyName: updatedUserData.companyName,
-        phone: updatedUserData.phone || '',
-        role: updatedUserData.role,
-        status: updatedUserData.status
-      }
+      data: updatedUser
     };
   } catch (error) {
     ctx.status = error.statusCode || 500;
@@ -182,33 +132,30 @@ export const updateProfile = async (ctx) => {
 };
 
 /**
- * Lấy danh sách tất cả người dùng (admin only)
+ * Lấy danh sách người dùng (chỉ admin mới có quyền)
  */
 export const getAllUsers = async (ctx) => {
   try {
-    const usersRef = db.collection('users');
-    const snapshot = await usersRef.get();
+    // Lấy tham số phân trang từ query
+    const page = parseInt(ctx.query.page) || 1;
+    const limit = parseInt(ctx.query.limit) || 20;
+    const status = ctx.query.status;
+    const role = ctx.query.role;
+    const search = ctx.query.search;
     
-    const users = [];
-    snapshot.forEach(doc => {
-      const userData = doc.data();
-      users.push({
-        id: doc.id,
-        email: userData.email,
-        displayName: userData.displayName,
-        companyName: userData.companyName,
-        phone: userData.phone || '',
-        role: userData.role,
-        status: userData.status,
-        balance: userData.balance || 0,
-        createdAt: userData.createdAt,
-        updatedAt: userData.updatedAt
-      });
+    // Query với các bộ lọc
+    const result = await userProfileRepository.queryUserProfiles({
+      page,
+      limit,
+      status,
+      role,
+      search
     });
     
     ctx.body = {
       success: true,
-      data: users
+      data: result.data,
+      pagination: result.pagination
     };
   } catch (error) {
     ctx.status = error.statusCode || 500;
@@ -220,40 +167,21 @@ export const getAllUsers = async (ctx) => {
 };
 
 /**
- * Lấy thông tin người dùng theo ID
+ * Lấy thông tin chi tiết người dùng (admin only)
  */
 export const getUserById = async (ctx) => {
   try {
     const { id } = ctx.params;
     
-    // Kiểm tra quyền truy cập
-    const currentUser = ctx.state.user;
-    if (currentUser.role !== 'admin' && currentUser.id !== id) {
-      throw new CustomError('Không có quyền truy cập thông tin người dùng này', 403);
+    if (!id) {
+      throw new CustomError('ID người dùng là bắt buộc', 400);
     }
     
-    const userDoc = await db.collection('users').doc(id).get();
-    
-    if (!userDoc.exists) {
-      throw new CustomError('Không tìm thấy người dùng', 404);
-    }
-    
-    const userData = userDoc.data();
+    const userProfile = await userProfileRepository.getUserProfileById(id);
     
     ctx.body = {
       success: true,
-      data: {
-        id: userDoc.id,
-        email: userData.email,
-        displayName: userData.displayName,
-        companyName: userData.companyName,
-        phone: userData.phone || '',
-        role: userData.role,
-        status: userData.status,
-        balance: userData.balance || 0,
-        createdAt: userData.createdAt,
-        updatedAt: userData.updatedAt
-      }
+      data: userProfile
     };
   } catch (error) {
     ctx.status = error.statusCode || 500;
@@ -265,96 +193,35 @@ export const getUserById = async (ctx) => {
 };
 
 /**
- * Cập nhật thông tin người dùng theo ID (admin only)
+ * Cập nhật trạng thái người dùng (active, inactive, pending)
  */
-export const updateUser = async (ctx) => {
+export const updateUserStatus = async (ctx) => {
   try {
     const { id } = ctx.params;
-    const updateData = ctx.request.body;
+    const { status } = ctx.request.body;
     
-    // Kiểm tra quyền truy cập
-    const currentUser = ctx.state.user;
-    if (currentUser.role !== 'admin' && currentUser.id !== id) {
-      throw new CustomError('Không có quyền cập nhật thông tin người dùng này', 403);
+    if (!id) {
+      throw new CustomError('ID người dùng là bắt buộc', 400);
     }
     
-    // Người dùng thường chỉ được cập nhật một số trường
-    if (currentUser.role !== 'admin') {
-      const allowedFields = ['displayName', 'companyName', 'phone'];
-      const updatedFields = {};
-      
-      Object.keys(updateData).forEach(key => {
-        if (allowedFields.includes(key)) {
-          updatedFields[key] = updateData[key];
-        }
-      });
-      
-      if (Object.keys(updatedFields).length === 0) {
-        throw new CustomError('Không có thông tin hợp lệ để cập nhật', 400);
-      }
-      
-      // Thêm timestamp
-      updatedFields.updatedAt = new Date();
-      
-      // Cập nhật trong Firestore
-      await db.collection('users').doc(id).update(updatedFields);
-      
-      // Cập nhật displayName trong Auth nếu có
-      if (updatedFields.displayName) {
-        await auth.updateUser(id, {
-          displayName: updatedFields.displayName
-        });
-      }
-    } else {
-      // Admin có thể cập nhật nhiều trường hơn
-      const allowedFields = ['displayName', 'companyName', 'phone', 'role', 'status', 'balance'];
-      const updatedFields = {};
-      
-      Object.keys(updateData).forEach(key => {
-        if (allowedFields.includes(key)) {
-          updatedFields[key] = updateData[key];
-        }
-      });
-      
-      // Thêm timestamp
-      updatedFields.updatedAt = new Date();
-      
-      // Cập nhật trong Firestore
-      await db.collection('users').doc(id).update(updatedFields);
-      
-      // Cập nhật trong Auth nếu cần
-      if (updatedFields.displayName || updatedFields.status === 'suspended') {
-        const authUpdate = {};
-        if (updatedFields.displayName) {
-          authUpdate.displayName = updatedFields.displayName;
-        }
-        if (updatedFields.status === 'suspended') {
-          authUpdate.disabled = true;
-        } else if (updatedFields.status === 'active') {
-          authUpdate.disabled = false;
-        }
-        
-        await auth.updateUser(id, authUpdate);
-      }
+    if (!status || !['active', 'inactive', 'pending'].includes(status)) {
+      throw new CustomError('Trạng thái không hợp lệ', 400);
     }
     
-    // Lấy thông tin đã cập nhật
-    const updatedUserDoc = await db.collection('users').doc(id).get();
-    const updatedUserData = updatedUserDoc.data();
+    // Cập nhật trạng thái
+    const updatedUser = await userProfileRepository.updateUserStatus(id, status);
+    
+    // Cập nhật trạng thái disabled trên Auth nếu cần
+    if (status === 'inactive') {
+      await adminAuth.updateUser(id, { disabled: true });
+    } else if (status === 'active') {
+      await adminAuth.updateUser(id, { disabled: false });
+    }
     
     ctx.body = {
       success: true,
-      message: 'Cập nhật thông tin thành công',
-      data: {
-        id,
-        email: updatedUserData.email,
-        displayName: updatedUserData.displayName,
-        companyName: updatedUserData.companyName,
-        phone: updatedUserData.phone || '',
-        role: updatedUserData.role,
-        status: updatedUserData.status,
-        balance: updatedUserData.balance || 0
-      }
+      message: 'Cập nhật trạng thái thành công',
+      data: updatedUser
     };
   } catch (error) {
     ctx.status = error.statusCode || 500;
@@ -366,24 +233,51 @@ export const updateUser = async (ctx) => {
 };
 
 /**
- * Xóa người dùng theo ID (admin only)
+ * Cập nhật vai trò người dùng (admin only)
+ */
+export const updateUserRole = async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    const { role } = ctx.request.body;
+    
+    if (!id) {
+      throw new CustomError('ID người dùng là bắt buộc', 400);
+    }
+    
+    if (!role || !['user', 'admin'].includes(role)) {
+      throw new CustomError('Vai trò không hợp lệ', 400);
+    }
+    
+    // Cập nhật vai trò
+    const updatedUser = await userProfileRepository.updateUserProfile(id, { role });
+    
+    ctx.body = {
+      success: true,
+      message: 'Cập nhật vai trò thành công',
+      data: updatedUser
+    };
+  } catch (error) {
+    ctx.status = error.statusCode || 500;
+    ctx.body = {
+      success: false,
+      message: error.message
+    };
+  }
+};
+
+/**
+ * Xóa người dùng (admin only)
  */
 export const deleteUser = async (ctx) => {
   try {
     const { id } = ctx.params;
     
-    // Xóa người dùng từ Firebase Auth
-    try {
-      await auth.deleteUser(id);
-    } catch (authError) {
-      // Bỏ qua nếu người dùng đã không tồn tại trong Auth
-      if (authError.code !== 'auth/user-not-found') {
-        throw new CustomError(`Lỗi xóa tài khoản: ${authError.message}`, 500);
-      }
+    if (!id) {
+      throw new CustomError('ID người dùng là bắt buộc', 400);
     }
     
-    // Xóa document từ Firestore
-    await db.collection('users').doc(id).delete();
+    // Xóa người dùng
+    await userProfileRepository.deleteUserProfile(id);
     
     ctx.body = {
       success: true,

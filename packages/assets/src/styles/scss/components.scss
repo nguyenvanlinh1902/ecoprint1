@@ -1,0 +1,16 @@
+// Components styling
+
+// LoadingScreen
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  
+  &__message {
+    margin-top: 16px;
+  }
+}
+
+// Common component styles can be added here 

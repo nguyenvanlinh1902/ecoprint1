@@ -1,33 +1,30 @@
 import React, { lazy, useEffect } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
-import Loadable from '../components/Loadable.js';
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
-import useHistory from "../hooks/useHistory.js";
 import { Box, CircularProgress } from "@mui/material";
-import { signOut } from "firebase/auth";
-import { auth } from "../services/firebase.js";
 import { CONFIG } from "../config/env.js";
 
-// Lazy load router components
-const UserRouter = Loadable(lazy(() => import('./userRouter.js')));
-const AdminRouter = Loadable(lazy(() => import('./adminRouter.js')));
-
-// Lazy load auth-related pages
-const AuthLayout = Loadable(lazy(() => import('../layouts/AuthLayout.js')));
-const LoginPage = Loadable(lazy(() => import('../pages/LoginPage.js')));
-const RegisterPage = Loadable(lazy(() => import('../pages/RegisterPage.js')));
-const ForgotPasswordPage = Loadable(lazy(() => import('../pages/ForgotPasswordPage.js')));
-const ResetPasswordPage = Loadable(lazy(() => import('../pages/ResetPasswordPage.js')));
-const VerifyEmailPage = Loadable(lazy(() => import('../pages/VerifyEmailPage.js')));
-const RegistrationSuccessPage = Loadable(lazy(() => import('../pages/RegistrationSuccessPage.js')));
-const NotFoundPage = Loadable(lazy(() => import('../pages/NotFoundPage.js')));
-const MaintenancePage = Loadable(lazy(() => import('../pages/MaintenancePage.js')));
+// Import loadable components from @loadable folder
+import {
+  UserRouter,
+  AdminRouter,
+  AuthLayout,
+  LoginPage,
+  RegisterPage,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  VerifyEmailPage,
+  VerificationSentPage,
+  RegistrationSuccessPage,
+  NotFoundPage,
+  MaintenancePage
+} from '../loadable';
 
 // Auth Guards
 export const AuthGuard = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { currentUser, userProfile, loading, signOut } = useAuth();
   const location = useLocation();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   useEffect(() => {
     // Store the current path for redirection after login
@@ -58,10 +55,10 @@ export const AuthGuard = ({ children }) => {
   // Handle the case where we have a user but no profile data
   if (currentUser && !userProfile && !loading) {
     // If the user has no profile, sign them out and redirect to login
-    signOut(auth).then(() => {
-      console.error("User has no profile data. Signing out.");
+    signOut().then(() => {
+      // User has no profile data. Signing out.
     }).catch((error) => {
-      console.error("Error signing out:", error);
+      // Error signing out
     });
     
     return <Navigate to="/auth/login" replace />;
@@ -85,32 +82,20 @@ export const AdminGuard = ({ children }) => {
     );
   }
   
-  // Kiểm tra cả từ localStorage (dùng làm backup để tránh mất state)
-  const storedRole = localStorage.getItem('userRole');
-  const effectiveRole = userProfile?.role || storedRole;
-  
-  console.log('AdminGuard - Checking role:', {
-    userRole: userProfile?.role,
-    storedRole,
-    effectiveRole,
-    hasProfile: !!userProfile
-  });
+  // Chỉ sử dụng userProfile từ context
+  const effectiveRole = userProfile?.role;
   
   // Kiểm tra nghiêm ngặt quyền admin
-  if (!userProfile && !storedRole) {
-    console.log('Access denied: No user profile found and no stored role');
+  if (!userProfile) {
     return <Navigate to="/dashboard" replace />;
   }
   
   if (effectiveRole !== 'admin') {
-    console.log('Access denied: User is not an admin, role is:', effectiveRole);
     // Ghi nhớ đường dẫn người dùng đang cố truy cập
     const fromPath = location.pathname;
-    console.log(`User with role ${effectiveRole} tried to access ${fromPath}`);
     return <Navigate to="/dashboard" replace />;
   }
   
-  console.log('Admin access granted for user with role:', effectiveRole);
   return <>{children}</>;
 };
 
@@ -120,18 +105,12 @@ export const GuestGuard = ({ children }) => {
   const location = useLocation();
   const pathname = location.pathname;
   
-  // Log for debugging
-  console.log('GuestGuard - Current path:', pathname);
-  console.log('GuestGuard - Authentication state:', { 
-    currentUser: currentUser ? 'Logged in' : 'Not logged in',
-    loading
-  });
-  
   // Kiểm tra nếu đang ở những trang không cần redirect khi đã đăng nhập
   const whitelist = [
     '/auth/verify-email',
     '/registration-success',
-    '/auth/reset-password'
+    '/auth/reset-password',
+    '/auth/verification-sent'
   ];
   
   const isWhitelistedPath = whitelist.some(path => pathname.startsWith(path));
@@ -150,8 +129,6 @@ export const GuestGuard = ({ children }) => {
   
   // Redirect to dashboard if already authenticated and not on whitelisted page
   if (currentUser && !isWhitelistedPath) {
-    console.log('User authenticated, redirecting from', pathname, 'to', from);
-    
     // Chỉ redirect nếu đã có userProfile hoặc đang truy cập trang login
     if (userProfile || pathname === '/auth/login') {
       return <Navigate to={from} replace />;
@@ -162,7 +139,6 @@ export const GuestGuard = ({ children }) => {
   // - Là người dùng chưa đăng nhập
   // - Hoặc đang ở trang được whitelist
   // - Hoặc đã đăng nhập nhưng chưa có profile (đang chờ)
-  console.log('Rendering auth page:', pathname);
   return <>{children}</>;
 };
 
@@ -179,32 +155,19 @@ const RootRedirect = () => {
     );
   }
   
-  // Kiểm tra cả từ localStorage để tránh mất state
-  const storedRole = localStorage.getItem('userRole');
-  const effectiveRole = userProfile?.role || storedRole;
-  
-  // Log trạng thái cho debugging
-  console.log('RootRedirect - Auth state:', { 
-    isLoggedIn: !!currentUser,
-    role: userProfile?.role,
-    storedRole,
-    effectiveRole,
-    userId: userProfile?.id || currentUser?.uid
-  });
+  // Chỉ sử dụng userProfile từ context, không dùng localStorage
+  const effectiveRole = userProfile?.role;
   
   // Redirect based on auth status and role
   if (!currentUser) {
-    console.log('No authenticated user, redirecting to login page');
     return <Navigate to="/auth/login" replace />;
   }
   
-  // Luôn kiểm tra role từ userProfile hoặc localStorage
+  // Luôn kiểm tra role từ userProfile
   if (effectiveRole === 'admin') {
-    console.log('User has admin role, redirecting to admin dashboard');
     return <Navigate to="/admin/dashboard" replace />;
   }
   
-  console.log('User has regular role, redirecting to user dashboard');
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -225,6 +188,7 @@ const AppRouter = () => {
               <Route path="forgot-password" element={<ForgotPasswordPage />} />
               <Route path="reset-password" element={<ResetPasswordPage />} />
               <Route path="verify-email" element={<VerifyEmailPage />} />
+              <Route path="verification-sent" element={<VerificationSentPage />} />
               <Route path="*" element={<Navigate to="/auth/login" replace />} />
             </Routes>
           </AuthLayout>

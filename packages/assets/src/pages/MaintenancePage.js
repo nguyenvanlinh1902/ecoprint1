@@ -4,7 +4,7 @@ import {
   Button, Alert, Container
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import api from '@/api';
 
 const MaintenancePage = () => {
   const [message, setMessage] = useState('');

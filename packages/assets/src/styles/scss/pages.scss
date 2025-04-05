@@ -1,0 +1,72 @@
+// Page styles
+
+// Login page
+.login-page {
+  .form-container {
+    width: 100%;
+    
+    .form-header {
+      margin-bottom: $spacing-lg;
+      text-align: center;
+    }
+    
+    .form-actions {
+      margin-top: $spacing-md;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  }
+}
+
+// Dashboard page
+.dashboard-page {
+  .stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: $spacing-md;
+    margin-bottom: $spacing-lg;
+    
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .recent-activity {
+    margin-top: $spacing-lg;
+  }
+}
+
+// Product page
+.product-page {
+  .product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: $spacing-md;
+    
+    @include mobile {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  .product-filters {
+    margin-bottom: $spacing-lg;
+  }
+}
+
+// Profile page
+.profile-page {
+  .profile-section {
+    margin-bottom: $spacing-lg;
+  }
+  
+  .avatar-section {
+    display: flex;
+    align-items: center;
+    margin-bottom: $spacing-lg;
+    
+    .avatar-upload {
+      margin-left: $spacing-md;
+    }
+  }
+} 

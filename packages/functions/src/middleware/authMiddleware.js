@@ -1,8 +1,12 @@
 import jwt from 'jsonwebtoken';
-import { db, auth } from '../services/firebase.js';
+import { Firestore } from '@google-cloud/firestore';
+import { adminAuth } from '../config/firebaseAdmin.js';
 import * as functions from 'firebase-functions';
 
-// Secret key for JWT from config
+const firestore = new Firestore();
+const usersCollection = firestore.collection('users');
+const userProfilesCollection = firestore.collection('userProfiles');
+
 const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
 
 /**
@@ -10,20 +14,23 @@ const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
  */
 export const authenticate = async (ctx, next) => {
   try {
-    // Get token from Authorization header
+    if (ctx.method === 'OPTIONS') {
+      return await next();
+    }
+    
     const authHeader = ctx.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       ctx.status = 401;
       ctx.body = {
         success: false,
-        message: 'Xác thực thất bại. Không có token.'
+        message: 'Authentication required. Please log in.',
+        code: 'ERR_401'
       };
       return;
     }
     
     const token = authHeader.split(' ')[1];
     
-    // Verify token
     let decoded;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
@@ -31,21 +38,42 @@ export const authenticate = async (ctx, next) => {
       ctx.status = 401;
       ctx.body = {
         success: false,
-        message: 'Xác thực thất bại. Token không hợp lệ.'
+        message: 'Authentication required. Please log in.',
+        code: 'ERR_401'
       };
       return;
     }
     
-    // Get user from Firestore
+    // Get user from Firestore users collection instead of userProfiles
     try {
-      const userDoc = await db.collection('users').doc(decoded.id).get();
+      const userDoc = await usersCollection.doc(decoded.id).get();
       
+      // If not found in users collection, try userProfiles collection
       if (!userDoc.exists) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'Xác thực thất bại. Không tìm thấy người dùng.'
+        const profileDoc = await userProfilesCollection.doc(decoded.id).get();
+        const profileData = profileDoc.data();
+        if (profileData.status !== 'active') {
+          ctx.status = 403;
+          ctx.body = {
+            success: false,
+            message: 'Your account is not active. Please contact support.'
+          };
+          return;
+        }
+        
+        // Set user in state
+        ctx.state.user = {
+          id: profileDoc.id,
+          email: profileData.email,
+          role: profileData.role,
+          displayName: profileData.displayName,
+          status: profileData.status,
+          companyName: profileData.companyName || '',
+          phone: profileData.phone || '',
+          balance: profileData.balance || 0
         };
+        
+        await next();
         return;
       }
       
@@ -56,7 +84,7 @@ export const authenticate = async (ctx, next) => {
         ctx.status = 403;
         ctx.body = {
           success: false,
-          message: 'Tài khoản chưa được kích hoạt hoặc đã bị vô hiệu hóa.'
+          message: 'Your account is not active. Please contact support.'
         };
         return;
       }
@@ -78,14 +106,14 @@ export const authenticate = async (ctx, next) => {
       ctx.status = 500;
       ctx.body = {
         success: false,
-        message: 'Lỗi server trong quá trình xác thực.'
+        message: 'Server error during authentication.'
       };
     }
   } catch (err) {
     ctx.status = 500;
     ctx.body = {
       success: false,
-      message: 'Lỗi server trong quá trình xác thực.'
+      message: 'Server error during authentication.'
     };
   }
 };
@@ -163,6 +191,11 @@ export const requireAdmin = async (ctx, next) => {
  */
 export const verifyFirebaseToken = async (ctx, next) => {
   try {
+    // Skip authentication for preflight OPTIONS requests (for CORS)
+    if (ctx.method === 'OPTIONS') {
+      return await next();
+    }
+    
     const authHeader = ctx.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -178,10 +211,10 @@ export const verifyFirebaseToken = async (ctx, next) => {
     
     try {
       // Verify token with Firebase
-      const decodedToken = await auth.verifyIdToken(token);
+      const decodedToken = await adminAuth.verifyIdToken(token);
       
-      // Get user from Firestore to check status and roles
-      const userDoc = await db.collection('users').doc(decodedToken.uid).get();
+      // Get user from Firestore userProfiles collection
+      const userDoc = await userProfilesCollection.doc(decodedToken.uid).get();
       
       if (!userDoc.exists) {
         ctx.status = 403;
@@ -218,17 +251,18 @@ export const verifyFirebaseToken = async (ctx, next) => {
       
       await next();
     } catch (firebaseError) {
+      console.error('Firebase validation error:', firebaseError);
       ctx.status = 401;
       ctx.body = { 
         success: false, 
-        message: 'Token không hợp lệ' 
+        message: 'Token xác thực không hợp lệ'
       };
     }
   } catch (error) {
     ctx.status = 500;
     ctx.body = { 
       success: false, 
-      message: 'Lỗi server trong quá trình xác thực' 
+      message: 'Lỗi xác thực'
     };
   }
 }; 

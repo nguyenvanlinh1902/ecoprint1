@@ -2,10 +2,12 @@
  * Lớp lỗi tùy chỉnh cho xử lý lỗi thống nhất
  */
 class CustomError extends Error {
-  constructor(message, status = 500) {
+  constructor(message, status = 500, code = null) {
     super(message);
     this.name = 'CustomError';
-    this.status = status;
+    this.status = parseInt(status) || 500;
+    this.statusCode = this.status;
+    this.code = code || `ERR_${this.status}`;
   }
 }
 
@@ -17,11 +19,11 @@ const errorHandler = async (ctx, next) => {
     await next();
   } catch (err) {
     if (err instanceof CustomError) {
-      ctx.status = err.status;
+      ctx.status = parseInt(err.status) || 500;
       ctx.body = {
         success: false,
         error: {
-          code: `ERR_${err.status}`,
+          code: err.code || `ERR_${err.status}`,
           message: err.message
         }
       };

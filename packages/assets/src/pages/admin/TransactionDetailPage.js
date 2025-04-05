@@ -32,7 +32,7 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import { formatCurrency, formatDate } from '../../helpers/formatters';
 import { useFetchApi } from '../../hooks';
-import api from '../../services/api';
+import api from '@/api';
 
 /**
  * Transaction Detail Page for Admin

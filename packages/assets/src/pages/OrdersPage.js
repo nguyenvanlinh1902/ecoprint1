@@ -12,7 +12,7 @@ import {
   Add as AddIcon,
   CloudUpload as ImportIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';

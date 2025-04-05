@@ -1,8 +1,12 @@
 import { CustomError } from '../exceptions/customError.js';
-import { admin, db } from '../config/firebase.js';
+import { Firestore } from '@google-cloud/firestore';
 import multer from '@koa/multer';
 import { parse } from 'csv-parse/sync';
 import { v4 as uuidv4 } from 'uuid';
+import orderRepository from '../repositories/orderRepository.js';
+import productRepository from '../repositories/productRepository.js';
+
+const firestore = new Firestore();
 
 /**
  * Tạo đơn hàng mới
@@ -32,7 +36,7 @@ export const createOrder = async (ctx) => {
     // Process each item
     for (const item of items) {
       // Get product from database
-      const productDoc = await db.collection('products').doc(item.productId).get();
+      const productDoc = await firestore.collection('products').doc(item.productId).get();
       
       if (!productDoc.exists) {
         ctx.status = 400;
@@ -66,9 +70,9 @@ export const createOrder = async (ctx) => {
       });
       
       // Update product stock
-      await db.collection('products').doc(item.productId).update({
-        stock: admin.firestore.FieldValue.increment(-item.quantity),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      await firestore.collection('products').doc(item.productId).update({
+        stock: firestore.FieldValue.increment(-item.quantity),
+        updatedAt: new Date()
       });
     }
     
@@ -92,7 +96,7 @@ export const createOrder = async (ctx) => {
     const total = subtotal + customizationTotal + shippingFee;
     
     // Create order in database
-    const orderRef = db.collection('orders').doc();
+    const orderRef = firestore.collection('orders').doc();
     await orderRef.set({
       userId: uid,
       orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
@@ -107,8 +111,8 @@ export const createOrder = async (ctx) => {
       notes: notes || '',
       status: 'pending', // pending, confirmed, processing, shipping, delivered, cancelled
       paymentStatus: 'unpaid', // unpaid, paid
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
     
     ctx.status = 201;
@@ -195,7 +199,7 @@ export const importOrders = async (ctx) => {
         }
         
         // Validate product exists and has enough stock
-        const productDoc = await db.collection('products').doc(record.product_id).get();
+        const productDoc = await firestore.collection('products').doc(record.product_id).get();
         
         if (!productDoc.exists) {
           throw new Error(`Product with ID ${record.product_id} not found`);
@@ -231,9 +235,9 @@ export const importOrders = async (ctx) => {
     // Store valid records in a temporary collection for later processing
     const batchId = uuidv4();
     
-    await db.collection('order_import_batches').doc(batchId).set({
+    await firestore.collection('order_import_batches').doc(batchId).set({
       userId: uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date(),
       status: 'pending',
       validationResults,
       records: validRecords
@@ -285,7 +289,7 @@ export const getBatchImportOrders = async (ctx) => {
     const { batchId } = ctx.params;
     const { uid } = ctx.state.user;
     
-    const batchDoc = await db.collection('order_import_batches').doc(batchId).get();
+    const batchDoc = await firestore.collection('order_import_batches').doc(batchId).get();
     
     if (!batchDoc.exists) {
       ctx.status = 404;
@@ -333,7 +337,7 @@ export const confirmBatchImport = async (ctx) => {
     const { uid } = ctx.state.user;
     
     // Get batch document
-    const batchDoc = await db.collection('order_import_batches').doc(batchId).get();
+    const batchDoc = await firestore.collection('order_import_batches').doc(batchId).get();
     
     if (!batchDoc.exists) {
       ctx.status = 404;
@@ -367,12 +371,12 @@ export const confirmBatchImport = async (ctx) => {
     }
     
     // Process each valid record
-    const batchWrite = db.batch();
+    const batchWrite = firestore.batch();
     const orderRefs = [];
     
     for (const record of batchData.records) {
       // Create order in Firestore
-      const orderRef = db.collection('orders').doc();
+      const orderRef = firestore.collection('orders').doc();
       orderRefs.push(orderRef.id);
       
       // Construct shipping address
@@ -404,23 +408,23 @@ export const confirmBatchImport = async (ctx) => {
         shippingAddress,
         shippingMethod: record.shipping_method || 'standard',
         notes: record.additional_requirements || '',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
         importBatchId: batchId
       });
       
       // Update product stock
-      const productRef = db.collection('products').doc(record.product.id);
+      const productRef = firestore.collection('products').doc(record.product.id);
       batchWrite.update(productRef, {
-        stock: admin.firestore.FieldValue.increment(-record.quantity),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        stock: firestore.FieldValue.increment(-record.quantity),
+        updatedAt: new Date()
       });
     }
     
     // Update batch status
-    batchWrite.update(db.collection('order_import_batches').doc(batchId), {
+    batchWrite.update(firestore.collection('order_import_batches').doc(batchId), {
       status: 'processed',
-      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processedAt: new Date(),
       orderIds: orderRefs
     });
     
@@ -454,7 +458,7 @@ export const getAllOrders = async (ctx) => {
   try {
     const { status, userId, startDate, endDate, limit = 20, page = 1 } = ctx.query;
     
-    let query = db.collection('orders');
+    let query = firestore.collection('orders');
     
     // Apply filters
     if (status) {
@@ -467,8 +471,8 @@ export const getAllOrders = async (ctx) => {
     
     // Apply date range if both start and end dates are provided
     if (startDate && endDate) {
-      const startTimestamp = admin.firestore.Timestamp.fromDate(new Date(startDate));
-      const endTimestamp = admin.firestore.Timestamp.fromDate(new Date(endDate));
+      const startTimestamp = firestore.Timestamp.fromDate(new Date(startDate));
+      const endTimestamp = firestore.Timestamp.fromDate(new Date(endDate));
       
       query = query.where('createdAt', '>=', startTimestamp)
                    .where('createdAt', '<=', endTimestamp);
@@ -521,7 +525,7 @@ export const getUserOrders = async (ctx) => {
     const { uid } = ctx.state.user;
     const { status, limit = 20, page = 1 } = ctx.query;
     
-    let query = db.collection('orders').where('userId', '==', uid);
+    let query = firestore.collection('orders').where('userId', '==', uid);
     
     if (status) {
       query = query.where('status', '==', status);
@@ -599,7 +603,7 @@ export const updateOrderStatus = async (ctx) => {
     }
     
     // Check if order exists
-    const orderDoc = await db.collection('orders').doc(orderId).get();
+    const orderDoc = await firestore.collection('orders').doc(orderId).get();
     
     if (!orderDoc.exists) {
       ctx.status = 404;
@@ -608,9 +612,9 @@ export const updateOrderStatus = async (ctx) => {
     }
     
     // Update order status
-    await db.collection('orders').doc(orderId).update({
+    await firestore.collection('orders').doc(orderId).update({
       status,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: new Date()
     });
     
     ctx.status = 200;
@@ -630,7 +634,7 @@ export const cancelOrder = async (ctx) => {
     const { uid } = ctx.state.user;
     
     // Check if order exists
-    const orderDoc = await db.collection('orders').doc(orderId).get();
+    const orderDoc = await firestore.collection('orders').doc(orderId).get();
     
     if (!orderDoc.exists) {
       ctx.status = 404;
@@ -655,16 +659,16 @@ export const cancelOrder = async (ctx) => {
     }
     
     // Update order status
-    await db.collection('orders').doc(orderId).update({
+    await firestore.collection('orders').doc(orderId).update({
       status: 'cancelled',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      updatedAt: new Date()
     });
     
     // Return items to stock
     for (const item of orderData.items) {
-      await db.collection('products').doc(item.productId).update({
-        stock: admin.firestore.FieldValue.increment(item.quantity),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      await firestore.collection('products').doc(item.productId).update({
+        stock: firestore.FieldValue.increment(item.quantity),
+        updatedAt: new Date()
       });
     }
     

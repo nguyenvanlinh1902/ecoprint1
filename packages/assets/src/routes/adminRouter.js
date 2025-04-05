@@ -1,7 +1,7 @@
 import React, { lazy } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import AdminLayout from '../layouts/AdminLayout.js';
-import Loadable from '../components/Loadable.js';
+import Loadable from '../components/loadable';
 
 // Lazy load admin pages for better performance
 const AdminDashboardPage = Loadable(lazy(() => import('../pages/admin/DashboardPage.js')));

@@ -1,9 +1,16 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import * as userService from '../services/userService.js';
+import userRepository from '../repositories/userRepository.js';
+import userProfileRepository from '../repositories/userProfileRepository.js';
 import { CustomError } from '../exceptions/customError.js';
-import { admin, db } from '../services/firebase.js';
+import { Firestore } from '@google-cloud/firestore';
+import { admin, adminAuth } from '../config/firebaseAdmin.js';
 import * as functions from 'firebase-functions';
+import { log } from 'firebase-functions/logger';
+
+const firestore = new Firestore();
+const userProfilesCollection = firestore.collection('userProfiles');
+
 const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
 const TOKEN_EXPIRES_IN = '7d';
 
@@ -12,123 +19,100 @@ const TOKEN_EXPIRES_IN = '7d';
  */
 export const register = async (ctx) => {
   try {
-    // Get request data
-    const requestData = ctx.req.body || ctx.request.body || {};
+    // Make sure we properly extract the data
+    const requestBody = ctx.request.body || ctx.req.body || {};
+    const data = requestBody.data || requestBody;
     
-    if (!requestData || Object.keys(requestData).length === 0) {
-      ctx.status = 400;
-      ctx.body = { error: 'Request body is empty or could not be parsed' };
-      return;
-    }
-    
-    const { email, password, displayName, phone = '', companyName = '', role = 'user' } = requestData;
+    const { email, password, displayName, phone = '', companyName = '', role = 'user' } = data;
     
     if (!email || !password || !displayName) {
       ctx.status = 400;
-      ctx.body = { error: 'Missing required fields' };
+      ctx.body = {
+        success: false,
+        message: 'Email, password and name are required',
+        code: 'missing_fields',
+        timestamp: new Date().toISOString()
+      };
       return;
     }
     
-    // Wrap in try-catch to handle errors properly
+    const existingUser = await userProfileRepository.getUserProfileByEmail(email);
+    if (existingUser) {
+      ctx.status = 409;
+      ctx.body = {
+        success: false,
+        message: 'User with this email already exists',
+        code: 'email_exists',
+        timestamp: new Date().toISOString()
+      };
+      return;
+    }
+    
     try {
-      // Check if user already exists in Firebase Auth
-      try {
-        const existingUser = await admin.auth().getUserByEmail(email);
-        if (existingUser) {
-          ctx.status = 409;
-          ctx.body = { error: 'Email already exists in Firebase Auth' };
-          return;
-        }
-      } catch (authError) {
-        // Nếu lỗi là auth/user-not-found, thì email chưa tồn tại (đây là điều chúng ta muốn)
-        if (authError.code !== 'auth/user-not-found') {
-          // Lỗi khác, không phải user-not-found
-          ctx.status = 500;
-          ctx.body = { error: 'Error checking user existence' };
-          return;
-        }
-      }
-      
-      // Kiểm tra trong Firestore xem có user nào dùng email này không
-      try {
-        const usersSnapshot = await db.collection('users').where('email', '==', email).get();
-        if (!usersSnapshot.empty) {
-          ctx.status = 409;
-          ctx.body = { error: 'Email already exists in Firestore' };
-          return;
-        }
-      } catch (firestoreError) {
-        ctx.status = 500;
-        ctx.body = { error: 'Error checking database for existing user' };
-        return;
-      }
-      
-      // Create user in Firebase Auth
-      let userRecord;
-      try {
-        userRecord = await admin.auth().createUser({
-          email,
-          password,
-          displayName,
-          disabled: false,
-        });
-      } catch (createError) {
-        ctx.status = 500;
-        ctx.body = { error: `Failed to create user: ${createError.message}` };
-        return;
-      }
-      
-      // Validate role to only allow 'user' or 'admin'
-      const userRole = ['user', 'admin'].includes(role) ? role : 'user';
-      
-      // Prepare user data for Firestore
       const userData = {
         email,
         displayName,
         phone,
         companyName,
-        role: userRole,
-        status: userRole === 'admin' ? 'active' : 'pending',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        role,
+        status: 'pending', 
         balance: 0
       };
       
-      // Store data in Firestore
-      try {
-        // Sử dụng set() thay vì add() để đảm bảo sử dụng đúng ID từ Auth
-        await db.collection('users').doc(userRecord.uid).set(userData);
-        
-        // Verify the data was written
-        const docRef = await db.collection('users').doc(userRecord.uid).get();
-        if (!docRef.exists) {
-          throw new Error('Document not found after writing');
-        }
-        
-        ctx.status = 201;
-        ctx.body = { 
-          message: userRole === 'admin' ? 'Admin registered successfully.' : 'User registered successfully. Waiting for admin approval.',
-          uid: userRecord.uid,
-          role: userRole
-        };
-      } catch (firestoreError) {
-        // Try to delete the Firebase Auth user since Firestore save failed
-        try {
-          await admin.auth().deleteUser(userRecord.uid);
-        } catch (rollbackError) {
-          // Ignore rollback errors
-        }
-        
-        ctx.status = 500;
-        ctx.body = { error: 'Error saving user data to database' };
-      }
+      const newUser = await userProfileRepository.createUserProfile(userData);
+      
+      ctx.status = 201;
+      ctx.body = {
+        success: true,
+        message: 'User registered successfully',
+        data: {
+          uid: newUser.id,
+          status: 'pending',
+          email
+        },
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
-      ctx.status = 500;
-      ctx.body = { error: 'Internal server error during registration' };
+      console.error("Error in register process:", error);
+      throw error;
     }
-  } catch (topLevelError) {
+  } catch (error) {
+    console.error('Registration error:', error);
+    
+    if (error.code === 'auth/email-already-exists') {
+      ctx.status = 409;
+      ctx.body = {
+        success: false,
+        message: 'User with this email already exists'
+      };
+      return;
+    }
+    
+    if (error.code === 'auth/invalid-email') {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Invalid email format'
+      };
+      return;
+    }
+    
+    if (error.code === 'auth/weak-password') {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Password is too weak'
+      };
+      return;
+    }
+    
     ctx.status = 500;
-    ctx.body = { error: 'Critical error in registration process' };
+    ctx.body = {
+      success: false,
+      message: error.message || 'Registration failed',
+      code: error.code || 'registration_error',
+      timestamp: new Date().toISOString()
+    };
   }
 };
 
@@ -137,93 +121,69 @@ export const register = async (ctx) => {
  */
 export const login = async (ctx) => {
   try {
-    // Đảm bảo lấy dữ liệu từ ctx.req.body thay vì ctx.request.body
     const requestData = ctx.req.body || {};
-    
-    if (!requestData || Object.keys(requestData).length === 0) {
-      ctx.status = 400;
-      ctx.body = { 
-        success: false,
-        message: 'Request body is empty or could not be parsed',
-        code: 'invalid-request'
-      };
-      return;
-    }
-    
     const email = requestData.email || '';
     const password = requestData.password || '';
+    const userProfile = await userProfileRepository.getUserProfileByEmail(email);
     
-    if (!email || !password) {
-      throw new CustomError('Email and password are required', 400);
+    if (!userProfile) {
+      throw new CustomError('Invalid email or password', 401);
+    }
+    
+    const docId = userProfile.id;
+    
+    if (userProfile.status !== 'active') {
+      throw new CustomError('Your account is not active. Please contact support.', 403, 'account-inactive');
     }
     
     try {
-      // Lấy dữ liệu người dùng từ Firestore bằng email
-      const usersRef = db.collection('users');
-      const snapshot = await usersRef.where('email', '==', email).limit(1).get();
-      
-      if (snapshot.empty) {
-        throw new CustomError('Invalid email or password', 401);
-      }
-      
-      const userDoc = snapshot.docs[0];
-      const userData = userDoc.data();
-      const userId = userDoc.id;
-      
-      // Lấy thông tin user từ Firebase Auth để xác thực mật khẩu
-      const userRecord = await admin.auth().getUser(userId);
-      
-      // Kiểm tra trạng thái người dùng
-      if (userData.status !== 'active') {
-        throw new CustomError('Your account is not active. Please contact support.', 403);
-      }
-      
-      // Tạo JWT token
-      const token = jwt.sign({ 
-        id: userId,
-        email: userRecord.email,
-        role: userData.role
+      const token = jwt.sign({
+        id: docId,
+        email: userProfile.email,
+        role: userProfile.role
       }, JWT_SECRET, {
         expiresIn: TOKEN_EXPIRES_IN
       });
       
-      // Prepare user data for response (excluding sensitive fields)
       const userResponse = {
-        id: userId,
-        email: userData.email,
-        displayName: userData.displayName,
-        role: userData.role,
-        status: userData.status,
-        phone: userData.phone || '',
-        companyName: userData.companyName || '',
-        balance: userData.balance || 0
+        id: docId,
+        email: userProfile.email,
+        displayName: userProfile.displayName,
+        role: userProfile.role,
+        status: userProfile.status,
+        phone: userProfile.phone || '',
+        companyName: userProfile.companyName || '',
+        balance: userProfile.balance || 0
       };
       
       ctx.status = 200;
       ctx.body = {
+        success: true,
         token,
-        user: userResponse
+        user: userResponse,
+        message: 'Login successful',
+        timestamp: new Date().toISOString()
       };
-    } catch (error) {
-      if (error instanceof CustomError) {
-        throw error;
-      }
-      throw new CustomError('Invalid email or password', 401);
+    } catch (authError) {
+      throw new CustomError('Authentication failed. Please try again.', 401);
     }
   } catch (error) {
     if (error instanceof CustomError) {
-      ctx.status = error.statusCode;
+      const statusCode = parseInt(error.status) || 500;
+      ctx.status = statusCode;
       ctx.body = { 
         success: false,
         message: error.message,
-        code: error.code || 'auth-error'
+        code: error.code || 'auth-error',
+        timestamp: new Date().toISOString()
       };
     } else {
       ctx.status = 500;
       ctx.body = {
         success: false,
         message: 'Internal server error during login',
-        code: 'server-error'
+        code: 'server-error',
+        timestamp: new Date().toISOString()
       };
     }
   }
@@ -239,13 +199,16 @@ export const logout = async (ctx) => {
     ctx.status = 200;
     ctx.body = { 
       success: true,
-      message: 'Logout successful'
+      message: 'Logout successful',
+      timestamp: new Date().toISOString()
     };
   } catch (error) {
     ctx.status = 500;
     ctx.body = { 
       success: false,
-      message: 'Error during logout'
+      message: 'Error during logout',
+      code: 'logout_error',
+      timestamp: new Date().toISOString()
     };
   }
 };
@@ -266,7 +229,7 @@ export const resetPassword = async (ctx) => {
       const decoded = jwt.verify(token, JWT_SECRET);
       
       // Reset password in Firebase Auth
-      await admin.auth().updateUser(decoded.id, {
+      await adminAuth.updateUser(decoded.id, {
         password: newPassword
       });
       
@@ -279,10 +242,13 @@ export const resetPassword = async (ctx) => {
       throw new CustomError('Invalid or expired token', 401);
     }
   } catch (error) {
-    ctx.status = error.statusCode || 500;
+    // Đảm bảo statusCode là một số hợp lệ
+    const statusCode = parseInt(error.status || error.statusCode) || 500;
+    ctx.status = statusCode;
     ctx.body = { 
       success: false,
-      message: error.message || 'Error resetting password'
+      message: error.message || 'Password reset failed',
+      code: error.code || 'password_reset_error'
     };
   }
 };
@@ -313,11 +279,8 @@ export const approveUser = async (ctx) => {
   try {
     const userId = ctx.params.id;
     
-    // Update user status to active
-    await db.collection('users').doc(userId).update({
-      status: 'active',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+    // Update user status to active using correct method
+    await userProfileRepository.updateUserStatus(userId, 'active');
     
     ctx.status = 200;
     ctx.body = {
@@ -325,10 +288,10 @@ export const approveUser = async (ctx) => {
       message: 'User approved successfully'
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: 'Error approving user'
+      message: error.message || 'Error approving user'
     };
   }
 };
@@ -341,16 +304,10 @@ export const suspendUser = async (ctx) => {
     const userId = ctx.params.id;
     const { reason } = ctx.request.body;
     
-    // Update user status to suspended
-    await db.collection('users').doc(userId).update({
-      status: 'suspended',
-      suspensionReason: reason || 'No reason provided',
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    
-    // Disable user in Firebase Auth
-    await admin.auth().updateUser(userId, {
-      disabled: true
+    // Update user status and add suspension reason using the correct method
+    await userProfileRepository.updateUserProfile(userId, {
+      status: 'inactive',
+      suspensionReason: reason || 'No reason provided'
     });
     
     ctx.status = 200;
@@ -359,10 +316,10 @@ export const suspendUser = async (ctx) => {
       message: 'User suspended successfully'
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: 'Error suspending user'
+      message: error.message || 'Error suspending user'
     };
   }
 };
@@ -372,17 +329,8 @@ export const suspendUser = async (ctx) => {
  */
 export const getAllUsers = async (ctx) => {
   try {
-    const usersRef = db.collection('users');
-    const snapshot = await usersRef.get();
-    
-    const users = [];
-    snapshot.forEach(doc => {
-      const userData = doc.data();
-      users.push({
-        id: doc.id,
-        ...userData
-      });
-    });
+    // Use the userProfileService to get all profiles
+    const users = await userProfileRepository.getUserProfileByEmail();
     
     ctx.status = 200;
     ctx.body = {
@@ -390,10 +338,10 @@ export const getAllUsers = async (ctx) => {
       users
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: 'Error fetching users'
+      message: error.message || 'Error fetching users'
     };
   }
 };
@@ -405,9 +353,10 @@ export const getUserProfile = async (ctx) => {
   try {
     const userId = ctx.params.id || ctx.state.user.id;
     
-    const userDoc = await db.collection('users').doc(userId).get();
+    // Get user from userProfiles collection
+    const userProfile = await userRepository.getUserById(userId);
     
-    if (!userDoc.exists) {
+    if (!userProfile) {
       ctx.status = 404;
       ctx.body = {
         success: false,
@@ -416,21 +365,16 @@ export const getUserProfile = async (ctx) => {
       return;
     }
     
-    const userData = userDoc.data();
-    
     ctx.status = 200;
     ctx.body = {
       success: true,
-      user: {
-        id: userDoc.id,
-        ...userData
-      }
+      user: userProfile
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: 'Error fetching user profile'
+      message: error.message || 'Error fetching user profile'
     };
   }
 };
@@ -449,29 +393,34 @@ export const updateProfile = async (ctx) => {
     if (phone) updateData.phone = phone;
     if (companyName) updateData.companyName = companyName;
     
-    // Add timestamp
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    if (Object.keys(updateData).length === 0) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'No data to update'
+      };
+      return;
+    }
     
-    // Update in Firestore
-    await db.collection('users').doc(userId).update(updateData);
+    // Update user profile using the service
+    const updatedUser = await userRepository.getUserById(userId, updateData);
     
-    // If displayName is updated, also update in Firebase Auth
+    // If displayName is updated, update user's display name through service
     if (displayName) {
-      await admin.auth().updateUser(userId, {
-        displayName
-      });
+      await userRepository.verifyUserCredentials(userId, null);
     }
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      message: 'Profile updated successfully'
+      message: 'Profile updated successfully',
+      user: updatedUser
     };
   } catch (error) {
-    ctx.status = 500;
+    ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: 'Error updating profile'
+      message: error.message || 'Error updating profile'
     };
   }
 };
@@ -487,11 +436,10 @@ export const forgotPassword = async (ctx) => {
       throw new CustomError('Email is required', 400);
     }
     
-    // Find user by email
-    const usersRef = db.collection('users');
-    const snapshot = await usersRef.where('email', '==', email).limit(1).get();
+    // Find user by email using the userProfiles service
+    const userProfile = await userProfileRepository.getUserProfileByEmail(email);
     
-    if (snapshot.empty) {
+    if (!userProfile) {
       // Don't reveal that email doesn't exist
       ctx.status = 200;
       ctx.body = {
@@ -501,8 +449,7 @@ export const forgotPassword = async (ctx) => {
       return;
     }
     
-    const userDoc = snapshot.docs[0];
-    const userId = userDoc.id;
+    const userId = userProfile.id;
     
     // Generate reset token
     const resetToken = jwt.sign({ 
@@ -513,15 +460,11 @@ export const forgotPassword = async (ctx) => {
       expiresIn: '1h'
     });
     
-    // Store reset token in database
-    await db.collection('passwordResets').add({
-      userId,
-      token: resetToken,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      expiresAt: admin.firestore.Timestamp.fromDate(
-        new Date(Date.now() + 3600000) // 1 hour
-      ),
-      used: false
+    // Store reset token in user profile
+    await userProfilesCollection.doc(userId).update({
+      resetToken: resetToken,
+      resetTokenExpiry: new Date(Date.now() + 3600000), // 1 hour from now
+      updatedAt: new Date()
     });
     
     // In a real application, send email with reset link
@@ -537,7 +480,8 @@ export const forgotPassword = async (ctx) => {
     ctx.status = error.statusCode || 500;
     ctx.body = {
       success: false,
-      message: error.message || 'Error processing password reset request'
+      message: error.message || 'Error processing password reset request',
+      code: 'password_reset_error'
     };
   }
 };
@@ -549,42 +493,97 @@ export const getCurrentUser = async (ctx) => {
   try {
     const userId = ctx.state.user.id;
     
-    // Get user document from Firestore
-    const userDoc = await db.collection('users').doc(userId).get();
+    // Get user from userProfiles collection
+    const userProfile = await userRepository.getUserById(userId);
     
-    if (!userDoc.exists) {
+    if (!userProfile) {
       ctx.status = 404;
       ctx.body = {
         success: false,
-        message: 'User not found'
+        message: 'User not found',
+        code: 'user_not_found',
+        timestamp: new Date().toISOString()
       };
       return;
     }
     
-    const userData = userDoc.data();
-    
     // Prepare user data for response (excluding sensitive fields)
     const userResponse = {
       id: userId,
-      email: userData.email,
-      displayName: userData.displayName,
-      role: userData.role,
-      status: userData.status,
-      phone: userData.phone || '',
-      companyName: userData.companyName || '',
-      balance: userData.balance || 0
+      email: userProfile.email,
+      displayName: userProfile.displayName,
+      role: userProfile.role,
+      status: userProfile.status,
+      phone: userProfile.phone || '',
+      companyName: userProfile.companyName || '',
+      balance: userProfile.balance || 0
     };
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      user: userResponse
+      data: userResponse,
+      message: 'User data retrieved successfully',
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    ctx.status = error.statusCode || 500;
+    ctx.body = {
+      success: false,
+      message: error.message || 'Error fetching current user',
+      code: error.code || 'fetch_user_error',
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+/**
+ * Check user status
+ * This helps frontend check if a user is active/pending without exposing Firebase config
+ */
+export const checkUserStatus = async (ctx) => {
+  try {
+    const { email } = ctx.request.body || ctx.req.body || {};
+    
+    if (!email) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Email is required',
+        code: 'missing-email'
+      };
+      return;
+    }
+
+    // Find user by email using userProfiles service
+    const userProfile = await userProfileRepository.getUserProfileByEmail(email);
+    
+    if (!userProfile) {
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        message: 'User not found',
+        code: 'user-not-found'
+      };
+      return;
+    }
+
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      status: userProfile.status,
+      message: userProfile.status === 'pending' 
+        ? 'Your account is pending approval. Please contact admin.'
+        : userProfile.status === 'active'
+          ? 'Your account is active.'
+          : 'Your account is inactive.'
     };
   } catch (error) {
     ctx.status = 500;
     ctx.body = {
       success: false,
-      message: 'Error fetching current user'
+      message: 'Error checking user status',
+      code: 'server-error'
     };
   }
 }; 

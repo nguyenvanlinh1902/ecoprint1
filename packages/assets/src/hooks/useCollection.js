@@ -1,83 +1,121 @@
-import { useState, useEffect } from 'react';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  where, 
-  orderBy, 
-  limit 
-} from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { useState, useEffect, useCallback } from 'react';
+import ApiHooks from './api';
 
 /**
- * Hook để lắng nghe các thay đổi trong thời gian thực từ một collection
- * @param {string} collectionName - Tên collection trong Firestore
- * @param {Array} [queryConstraints] - Mảng các ràng buộc query (where, orderBy, limit)
- * @returns {Object} - Các documents, loading state, và error
+ * Hook to fetch and optionally poll for data updates from a collection
+ * @param {string} resourceName - The resource name (e.g., 'products', 'users')
+ * @param {Object} options - Query options including filters, sorting, etc.
+ * @returns {Object} - The documents, loading state, and error
  */
-export const useCollection = (collectionName, queryConstraints = []) => {
+export const useCollection = (resourceName, options = {}) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const api = ApiHooks;
+
+  // Extract options
+  const { 
+    filters = {}, 
+    sort = null, 
+    limit = null, 
+    page = 1, 
+    pollInterval = 0, // Set to > 0 ms to enable polling
+  } = options;
   
+  // Get resource methods
+  const resource = useCallback(() => {
+    return api.createResourceMethods(resourceName);
+  }, [api, resourceName]);
+
   useEffect(() => {
-    setLoading(true);
+    let isMounted = true;
+    let intervalId = null;
     
-    // Tạo query từ collection và các ràng buộc
-    const collectionRef = collection(db, collectionName);
-    const q = query(collectionRef, ...queryConstraints);
-    
-    // Thiết lập real-time listener
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const results = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+    const fetchData = async () => {
+      if (!isMounted) return;
+      
+      try {
+        setLoading(true);
         
-        setDocuments(results);
-        setLoading(false);
-      }, 
-      (err) => {
-        /* error removed */
-        setError(err.message);
-        setLoading(false);
+        // Prepare query parameters
+        const params = { ...filters };
+        
+        // Add sorting
+        if (sort) {
+          if (sort.field) params.sortBy = sort.field;
+          if (sort.direction) params.sortDir = sort.direction;
+        }
+        
+        // Add pagination
+        if (limit) params.limit = limit;
+        if (page) params.page = page;
+        
+        // Fetch data using the resource
+        const result = await resource().getAll(params);
+        
+        // Handle response structure that might have data in different properties
+        const data = result.data || result.items || result.documents || result;
+        
+        if (isMounted) {
+          setDocuments(Array.isArray(data) ? data : []);
+          setError(null);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    );
+    };
     
-    // Clean up function
-    return () => unsubscribe();
-  }, [collectionName, JSON.stringify(queryConstraints)]);
+    // Initial fetch
+    fetchData();
+    
+    // Set up polling if enabled
+    if (pollInterval > 0) {
+      intervalId = setInterval(fetchData, pollInterval);
+    }
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [resource, JSON.stringify(filters), JSON.stringify(sort), limit, page, pollInterval]);
   
   return { documents, loading, error };
 };
 
 /**
- * Helper function to create query constraints
- * @param {string} field - Field to filter
- * @param {string} operator - Operator (==, !=, >, <, >=, <=)
- * @param {any} value - Value to compare
- * @returns {Object} - where constraint
+ * Utility function to create a filter object
+ * @param {Object} filters - Key-value pairs for filtering
+ * @returns {Object} - Filter object for useCollection
  */
-export const createWhereConstraint = (field, operator, value) => {
-  return where(field, operator, value);
+export const createFilter = (filters) => {
+  return filters;
 };
 
 /**
- * Helper function to create order constraints
- * @param {string} field - Field to order by
- * @param {string} direction - Direction ('asc' or 'desc')
- * @returns {Object} - orderBy constraint
+ * Utility function to create a sort configuration
+ * @param {string} field - Field to sort by
+ * @param {string} direction - Sort direction ('asc' or 'desc')
+ * @returns {Object} - Sort configuration
  */
-export const createOrderConstraint = (field, direction = 'asc') => {
-  return orderBy(field, direction);
+export const createSort = (field, direction = 'asc') => {
+  return { field, direction };
 };
 
 /**
- * Helper function to create limit constraint
- * @param {number} value - Number of documents to limit
- * @returns {Object} - limit constraint
+ * Utility function to create pagination options
+ * @param {number} page - Page number (1-based)
+ * @param {number} limit - Items per page
+ * @returns {Object} - Pagination options
  */
-export const createLimitConstraint = (value) => {
-  return limit(value);
+export const createPagination = (page = 1, limit = 10) => {
+  return { page, limit };
 }; 

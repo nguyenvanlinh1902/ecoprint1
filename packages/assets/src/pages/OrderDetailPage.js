@@ -13,7 +13,7 @@ import {
   Receipt as ReceiptIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';

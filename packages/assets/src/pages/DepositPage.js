@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
-import api from '../services/api';
+import api from '@/api';
 
 const DepositPage = () => {
   const navigate = useNavigate();

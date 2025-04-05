@@ -1,8 +1,8 @@
-import { admin } from '../config/firebase.js';
+import {Firestore} from '@google-cloud/firestore';
 
-const db = admin.firestore();
-const categoriesCollection = 'categories';
-const productsCollection = 'products';
+const firestore = new Firestore();
+const collection = firestore.collection('categories');
+const productsCollection = firestore.collection('products');
 
 /**
  * Format a category document from Firestore
@@ -35,7 +35,7 @@ const categoryRepository = {
   findAll: async () => {
     try {
       console.log('[CategoryRepository] Finding all categories');
-      const snapshot = await db.collection(categoriesCollection).get();
+      const snapshot = await collection.get();
       
       const categories = [];
       snapshot.forEach(doc => {
@@ -57,7 +57,7 @@ const categoryRepository = {
   findById: async (id) => {
     try {
       console.log('[CategoryRepository] Finding category by ID:', id);
-      const doc = await db.collection(categoriesCollection).doc(id).get();
+      const doc = await collection.doc(id).get();
       return formatCategory(doc);
     } catch (error) {
       console.error('[CategoryRepository] Error finding category by ID:', error);
@@ -73,7 +73,7 @@ const categoryRepository = {
   create: async (categoryData) => {
     try {
       console.log('[CategoryRepository] Creating new category:', categoryData.name);
-      const docRef = await db.collection(categoriesCollection).add(categoryData);
+      const docRef = await collection.add(categoryData);
       
       // Get the created document
       const doc = await docRef.get();
@@ -93,10 +93,10 @@ const categoryRepository = {
   update: async (id, updateData) => {
     try {
       console.log('[CategoryRepository] Updating category:', id);
-      await db.collection(categoriesCollection).doc(id).update(updateData);
+      await collection.doc(id).update(updateData);
       
       // Get the updated document
-      const doc = await db.collection(categoriesCollection).doc(id).get();
+      const doc = await collection.doc(id).get();
       return formatCategory(doc);
     } catch (error) {
       console.error('[CategoryRepository] Error updating category:', error);
@@ -112,7 +112,7 @@ const categoryRepository = {
   delete: async (id) => {
     try {
       console.log('[CategoryRepository] Deleting category:', id);
-      await db.collection(categoriesCollection).doc(id).delete();
+      await collection.doc(id).delete();
     } catch (error) {
       console.error('[CategoryRepository] Error deleting category:', error);
       throw error;
@@ -127,7 +127,7 @@ const categoryRepository = {
   findProductsWithCategory: async (categoryId) => {
     try {
       console.log('[CategoryRepository] Finding products with category:', categoryId);
-      const snapshot = await db.collection(productsCollection)
+      const snapshot = await productsCollection
         .where('categoryId', '==', categoryId)
         .limit(1)
         .get();

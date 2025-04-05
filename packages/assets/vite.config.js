@@ -21,11 +21,21 @@ export default defineConfig(({ mode }) => {
     '/api': {
       target: backendBaseUrl,
       changeOrigin: true,
-      secure: true,
-      rewrite: (path) => path.replace(/^\/api/, '/api'),
+      secure: false,
+      ws: true,
+      rewrite: (path) => path.replace(/^\/api/, ''),
       configure: (proxy, options) => {
         proxy.on('error', (err, req, res) => {
           console.log('proxy error', err);
+          // Provide a better error response to the client
+          if (res.writeHead && !res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              error: 'Proxy error', 
+              message: 'Failed to connect to backend server',
+              details: err.message
+            }));
+          }
         });
         proxy.on('proxyReq', (proxyReq, req, res) => {
           // Thêm headers CORS
@@ -73,7 +83,24 @@ export default defineConfig(({ mode }) => {
       react({
         // Enable Fast Refresh in dev mode only
         fastRefresh: !isProd,
-      })
+      }),
+
+      // Network connectivity check plugin
+      {
+        name: 'network-connectivity-check',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            // Check if server is healthy
+            if (req.url === '/__network_check') {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ status: 'ok', env: mode }));
+              return;
+            }
+            next();
+          });
+        }
+      }
     ],
     
     // Optimization configuration
@@ -100,7 +127,9 @@ export default defineConfig(({ mode }) => {
         '@resources': path.resolve(__dirname, './src/resources'),
         '@config': path.resolve(__dirname, './src/config'),
         '@const': path.resolve(__dirname, './src/const'),
-        '@functions': path.resolve(__dirname, '../functions/src')
+        '@functions': path.resolve(__dirname, '../functions/src'),
+        '@api': path.resolve(__dirname, './src/api'),
+        '@assets': path.resolve(__dirname, './src')
       }
     },
     
@@ -111,7 +140,33 @@ export default defineConfig(({ mode }) => {
       strictPort: false, // Try another port if the specified one is in use
       proxy: proxyConfig,
       cors: true,
-      hmr: true,
+      hmr: {
+        protocol: 'ws',
+        host: 'localhost',
+        port: fePort,
+        clientPort: fePort,
+        timeout: 5000,
+        overlay: true
+      },
+      watch: {
+        usePolling: true,
+        interval: 1000,
+      },
+      // Add middleware to handle preflight OPTIONS requests
+      middlewares: [
+        (req, res, next) => {
+          if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,POST,DELETE,PATCH,OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+            res.setHeader('Access-Control-Max-Age', '86400');
+            res.statusCode = 204;
+            res.end();
+            return;
+          }
+          next();
+        }
+      ]
     },
     
     // Build configuration - optimized for production
@@ -124,7 +179,7 @@ export default defineConfig(({ mode }) => {
       minify: isProd ? 'terser' : false,
       terserOptions: isProd ? {
         compress: {
-          drop_console: true,
+          drop_console: false, // Keep console logs for debugging
           drop_debugger: true
         }
       } : undefined,
@@ -132,10 +187,12 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 1600,
       rollupOptions: {
         output: {
+          globals: {
+            'process.env.NODE_ENV': JSON.stringify(mode)
+          },
+          // Extract third-party libraries to the vendor chunk
           manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
-            firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
-            mui: ['@mui/material', '@mui/icons-material', '@mui/lab', '@mui/x-data-grid']
+            vendor: ['react', 'react-dom', 'react-router-dom', '@mui/material'],
           }
         }
       }

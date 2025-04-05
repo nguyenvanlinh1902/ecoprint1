@@ -14,7 +14,7 @@ import {
   FiberNew as NewIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
-import api from '../../services/api';
+import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate } from '../../helpers/formatters';
 

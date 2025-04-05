@@ -1,7 +1,8 @@
-import { admin } from '../config/firebase.js';
+import {Firestore} from '@google-cloud/firestore';
 
-const db = admin.firestore();
-const productsCollection = 'products';
+const firestore = new Firestore();
+const collection = firestore.collection('products');
+const ordersCollection = firestore.collection('orders');
 
 /**
  * Format a product document from Firestore
@@ -56,7 +57,7 @@ const productRepository = {
       } = options;
       
       // Build query
-      let query = db.collection(productsCollection);
+      let query = collection;
       
       // Apply filters
       if (category) {
@@ -70,8 +71,8 @@ const productRepository = {
       let total = 0;
       try {
         // Get total count for pagination
-        const countSnapshot = await query.count().get();
-        total = countSnapshot.data().count;
+        const countSnapshot = await query.get();
+        total = countSnapshot.size;
       } catch (countError) {
         console.error('[ProductRepository] Error getting count:', countError);
         // Continue with total as 0
@@ -141,7 +142,7 @@ const productRepository = {
   findById: async (id) => {
     try {
       console.log('[ProductRepository] Finding product by ID:', id);
-      const doc = await db.collection(productsCollection).doc(id).get();
+      const doc = await collection.doc(id).get();
       return formatProduct(doc);
     } catch (error) {
       console.error('[ProductRepository] Error finding product by ID:', error);
@@ -157,7 +158,7 @@ const productRepository = {
   findBySku: async (sku) => {
     try {
       console.log('[ProductRepository] Finding product by SKU:', sku);
-      const snapshot = await db.collection(productsCollection)
+      const snapshot = await collection
         .where('sku', '==', sku)
         .limit(1)
         .get();
@@ -181,7 +182,7 @@ const productRepository = {
   create: async (productData) => {
     try {
       console.log('[ProductRepository] Creating new product:', productData.name);
-      const docRef = await db.collection(productsCollection).add(productData);
+      const docRef = await collection.add(productData);
       
       // Get the created document
       const doc = await docRef.get();
@@ -201,10 +202,10 @@ const productRepository = {
   update: async (id, updateData) => {
     try {
       console.log('[ProductRepository] Updating product:', id);
-      await db.collection(productsCollection).doc(id).update(updateData);
+      await collection.doc(id).update(updateData);
       
       // Get the updated document
-      const doc = await db.collection(productsCollection).doc(id).get();
+      const doc = await collection.doc(id).get();
       return formatProduct(doc);
     } catch (error) {
       console.error('[ProductRepository] Error updating product:', error);
@@ -222,7 +223,7 @@ const productRepository = {
       console.log('[ProductRepository] Deleting product:', id);
       
       // Check if product is used in orders
-      const ordersSnapshot = await db.collection('orders')
+      const ordersSnapshot = await ordersCollection
         .where('items.productId', '==', id)
         .limit(1)
         .get();
@@ -230,13 +231,13 @@ const productRepository = {
       if (!ordersSnapshot.empty) {
         console.log('[ProductRepository] Product used in orders, marking as inactive instead of deleting');
         // Mark as inactive instead of deleting
-        await db.collection(productsCollection).doc(id).update({
+        await collection.doc(id).update({
           status: 'inactive',
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          updatedAt: new Date()
         });
       } else {
         // Safe to delete
-        await db.collection(productsCollection).doc(id).delete();
+        await collection.doc(id).delete();
       }
     } catch (error) {
       console.error('[ProductRepository] Error deleting product:', error);

@@ -9,14 +9,15 @@ import {
   Box, 
   Alert, 
   Grid,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem
+  CircularProgress  // Added CircularProgress for loading indication
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
 import { validateInput, stripHTML } from '../helpers/validation';
+import PropTypes from 'prop-types';
 
+/**
+ * Registration page component with email verification
+ */
 const RegisterPage = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -24,14 +25,14 @@ const RegisterPage = () => {
     confirmPassword: '',
     displayName: '',
     companyName: '',
-    phone: '',
-    role: 'user'
+    phone: ''
   });
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [formSubmitted, setFormSubmitted] = useState(false);
   const navigate = useNavigate();
-  const { registerViaApi } = useAuth();
+  const { register } = useAuth();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -39,6 +40,19 @@ const RegisterPage = () => {
       ...formData,
       [name]: value
     });
+    
+    // Clear error when user types
+    if (errors[name]) {
+      setErrors({
+        ...errors,
+        [name]: ''
+      });
+    }
+    
+    // Clear server error when user makes changes after a failed submission
+    if (formSubmitted && serverError) {
+      setServerError('');
+    }
   };
 
   const validate = () => {
@@ -63,46 +77,102 @@ const RegisterPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    
+    // Don't submit if already loading
+    if (loading) return;
+    
+    setFormSubmitted(true);
+    
+    // Validate the form - If validation fails, form data remains intact
+    if (!validate()) {
+      console.log('[RegisterPage] Validation failed - keeping form data');
+      return;
+    }
 
+    // Important: We'll clear previous errors but NEVER clear form data until successful
     setServerError('');
     setLoading(true);
 
+    // Create a local copy of form data to use in the API call
+    // This avoids any accidental mutations to the original form data
+    const formDataCopy = { ...formData };
+
     try {
-      // Sanitize input data
+      // Sanitize input data WITHOUT modifying the original form data
       const sanitizedData = {
-        email: stripHTML(formData.email),
-        password: stripHTML(formData.password),
-        displayName: stripHTML(formData.displayName),
-        companyName: stripHTML(formData.companyName),
-        phone: stripHTML(formData.phone),
-        role: 'user' // Hardcode to user role
+        email: stripHTML(formDataCopy.email),
+        password: stripHTML(formDataCopy.password),
+        displayName: stripHTML(formDataCopy.displayName),
+        companyName: stripHTML(formDataCopy.companyName || ''),
+        phone: stripHTML(formDataCopy.phone || '')
       };
 
-      console.log('Register data:', sanitizedData);
-
-      const result = await registerViaApi(
-        sanitizedData.email, 
-        sanitizedData.password, 
-        sanitizedData.displayName, 
-        sanitizedData.companyName, 
-        sanitizedData.phone,
-        sanitizedData.role
-      );
-      
-      console.log('Registration successful, navigating to success page with result:', result);
-      
-      // If successful, navigate to success page with message
-      navigate('/registration-success', { 
-        state: { 
-          message: result.message || 'Registration successful. Please wait for admin approval.',
-          isApi: true 
-        }
+      console.log('[RegisterPage] Submitting registration with data:', {
+        email: sanitizedData.email,
+        displayName: sanitizedData.displayName
       });
+      
+      // Call register function
+      let result = null;
+      
+      try {
+        result = await register(
+          sanitizedData.email, 
+          sanitizedData.password, 
+          sanitizedData.displayName, 
+          sanitizedData.companyName, 
+          sanitizedData.phone
+        );
+        
+        console.log('[RegisterPage] Registration result:', result);
+      } catch (apiError) {
+        // If there's an error calling the API, we'll handle it here
+        console.error('[RegisterPage] API call error:', apiError);
+        // Set the error message but KEEP the form data
+        setServerError(apiError.message || 'Registration failed. Please try again.');
+        // Ensure loading state is cleared
+        setLoading(false);
+        // Return early to ensure we don't clear the form
+        return;
+      }
+      
+      // Check if registration was successful
+      if (result && result.success === true) {
+        console.log('[RegisterPage] Registration successful');
+        
+        // Navigate to the verification page
+        navigate('/auth/verification-sent', { 
+          state: { 
+            email: sanitizedData.email,
+            message: result.message || 'Registration successful. Please verify your email address before logging in.'
+          }
+        });
+        
+        // ONLY clear the form on success and AFTER navigating
+        setTimeout(() => {
+          console.log('[RegisterPage] Clearing form data after successful registration');
+          setFormData({
+            email: '',
+            password: '',
+            confirmPassword: '',
+            displayName: '',
+            companyName: '',
+            phone: ''
+          });
+        }, 500);
+      } else {
+        // Any non-success response - show error and KEEP the form data
+        console.error('[RegisterPage] Registration failed:', result || 'No result returned');
+        
+        // Set error message from the result if available
+        setServerError(result?.message || 'Registration failed. Please try again.');
+      }
     } catch (error) {
-      console.error('Registration error:', error);
-      setServerError(error.message || 'Registration failed. Please try again later.');
+      // Unexpected errors - log them but KEEP the form data
+      console.error('[RegisterPage] Unexpected error during registration:', error);
+      setServerError('An unexpected error occurred. Please try again.');
     } finally {
+      // Always reset loading state
       setLoading(false);
     }
   };
@@ -142,6 +212,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.email}
               helperText={errors.email}
+              disabled={loading}
             />
             <TextField
               margin="normal"
@@ -156,6 +227,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.password}
               helperText={errors.password}
+              disabled={loading}
             />
             <TextField
               margin="normal"
@@ -170,6 +242,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.confirmPassword}
               helperText={errors.confirmPassword}
+              disabled={loading}
             />
             <TextField
               margin="normal"
@@ -183,6 +256,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.displayName}
               helperText={errors.displayName}
+              disabled={loading}
             />
             <TextField
               margin="normal"
@@ -194,6 +268,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.companyName}
               helperText={errors.companyName}
+              disabled={loading}
             />
             <TextField
               margin="normal"
@@ -206,6 +281,7 @@ const RegisterPage = () => {
               onChange={handleChange}
               error={!!errors.phone}
               helperText={errors.phone}
+              disabled={loading}
             />
             
             <Button
@@ -215,7 +291,14 @@ const RegisterPage = () => {
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {loading ? 'Registering...' : 'Register'}
+              {loading ? (
+                <>
+                  <CircularProgress size={24} sx={{ mr: 1 }} />
+                  Registering...
+                </>
+              ) : (
+                'Register'
+              )}
             </Button>
             
             <Grid container justifyContent="center">
@@ -232,6 +315,10 @@ const RegisterPage = () => {
       </Box>
     </Container>
   );
+};
+
+RegisterPage.propTypes = {
+  // No props needed for this component
 };
 
 export default RegisterPage; 

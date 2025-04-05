@@ -6,7 +6,7 @@ import {
   ListItemIcon, Switch, Chip, Stack
 } from '@mui/material';
 import { useAuth } from '../hooks/useAuth';
-import api from '../services/api';
+import api from '@/api';
 import { formatPhoneNumber } from '../helpers/formatters';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import EmailIcon from '@mui/icons-material/Email';

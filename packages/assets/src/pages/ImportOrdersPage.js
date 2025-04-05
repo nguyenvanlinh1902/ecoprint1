@@ -10,7 +10,7 @@ import {
   InsertDriveFile as FileIcon,
   Download as DownloadIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 
 const steps = ['Upload CSV File', 'Validate Data', 'Review & Confirm'];
 

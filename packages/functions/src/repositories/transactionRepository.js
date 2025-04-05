@@ -1,15 +1,15 @@
-import { admin } from '../config/firebase.js';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import {Firestore} from '@google-cloud/firestore';
 
-const db = admin.firestore();
-const transactionsCollection = 'transactions';
+const firestore = new Firestore();
+/** @type {CollectionReference} */
+const collection = firestore.collection('transactions');
 
 /**
  * Format a transaction document from Firestore
  * @param {Object} doc - Firestore document
  * @returns {Object} Formatted transaction object
  */
-const formatTransaction = (doc) => {
+export function formatTransaction(doc) {
   if (!doc.exists) return null;
   
   const data = doc.data();
@@ -20,7 +20,7 @@ const formatTransaction = (doc) => {
     updatedAt: data.updatedAt ? data.updatedAt.toDate() : null,
     transferDate: data.transferDate ? data.transferDate.toDate() : null
   };
-};
+}
 
 /**
  * Create a new deposit request
@@ -28,12 +28,12 @@ const formatTransaction = (doc) => {
  * @param {string} userId - User ID
  * @returns {Promise<Object>} Created transaction
  */
-const createDepositRequest = async (data, userId) => {
+export async function createDepositRequest(data, userId) {
   try {
     const { amount, bankName, transferDate, reference } = data;
     
     // Create transaction in Firestore
-    const transactionRef = db.collection(transactionsCollection).doc();
+    const transactionRef = collection.doc();
     await transactionRef.set({
       userId,
       type: 'deposit',
@@ -43,8 +43,8 @@ const createDepositRequest = async (data, userId) => {
       reference: reference || '',
       receiptUrl: '', // Will be updated when receipt is uploaded
       status: 'pending', // pending, approved, rejected
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
     
     return {
@@ -55,7 +55,7 @@ const createDepositRequest = async (data, userId) => {
     console.error('Error creating deposit request:', error);
     throw error;
   }
-};
+}
 
 /**
  * Upload receipt for a transaction
@@ -63,11 +63,11 @@ const createDepositRequest = async (data, userId) => {
  * @param {string} receiptUrl - Receipt URL
  * @returns {Promise<boolean>} Success status
  */
-const updateTransactionReceipt = async (transactionId, receiptUrl) => {
+export async function updateTransactionReceipt(transactionId, receiptUrl) {
   try {
-    await db.collection(transactionsCollection).doc(transactionId).update({
+    await collection.doc(transactionId).update({
       receiptUrl,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: new Date()
     });
     
     return true;
@@ -75,18 +75,18 @@ const updateTransactionReceipt = async (transactionId, receiptUrl) => {
     console.error('Error updating transaction receipt:', error);
     throw error;
   }
-};
+}
 
 /**
  * Get a transaction by ID
  * @param {string} transactionId - Transaction ID
  * @returns {Promise<Object>} Transaction data
  */
-const getTransactionById = async (transactionId) => {
+export async function getTransactionById(transactionId) {
   try {
-    const transactionDoc = await db.collection(transactionsCollection).doc(transactionId).get();
+    const transactionDoc = await collection.doc(transactionId).get();
     
-    // Trả về null nếu không tìm thấy transaction
+    // Return null if transaction not found
     if (!transactionDoc.exists) {
       return null;
     }
@@ -94,9 +94,9 @@ const getTransactionById = async (transactionId) => {
     // Format transaction data
     const transaction = formatTransaction(transactionDoc);
     
-    // Lấy thông tin người dùng liên quan
+    // Get related user information
     if (transaction.userId) {
-      const userDoc = await db.collection('users').doc(transaction.userId).get();
+      const userDoc = await firestore.collection('users').doc(transaction.userId).get();
       if (userDoc.exists) {
         const userData = userDoc.data();
         transaction.user = {
@@ -113,7 +113,7 @@ const getTransactionById = async (transactionId) => {
     console.error('Error getting transaction:', error);
     throw error;
   }
-};
+}
 
 /**
  * Update transaction status
@@ -122,32 +122,32 @@ const getTransactionById = async (transactionId) => {
  * @param {string} [reason] - Rejection reason
  * @returns {Promise<boolean>} Success status
  */
-const updateTransactionStatus = async (transactionId, status, reason = null) => {
+export async function updateTransactionStatus(transactionId, status, reason = null) {
   try {
     const updateData = {
       status,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: new Date()
     };
     
     if (reason && status === 'rejected') {
       updateData.rejectionReason = reason;
     }
     
-    await db.collection(transactionsCollection).doc(transactionId).update(updateData);
+    await collection.doc(transactionId).update(updateData);
     
     return true;
   } catch (error) {
     console.error('Error updating transaction status:', error);
     throw error;
   }
-};
+}
 
 /**
  * Get user transactions with filters
  * @param {Object} options - Filter options
  * @returns {Promise<Object>} Transactions and pagination info
  */
-const getUserTransactions = async (options = {}) => {
+export async function getUserTransactions(options = {}) {
   try {
     const { userId, type, status, limit = 20, page = 1 } = options;
     
@@ -167,7 +167,7 @@ const getUserTransactions = async (options = {}) => {
     const offset = (pageNumber - 1) * limitNumber;
     
     // Create base query with userId filter
-    let query = db.collection(transactionsCollection).where('userId', '==', userId);
+    let query = collection.where('userId', '==', userId);
     
     // Apply additional filters if provided
     if (type) {
@@ -200,14 +200,14 @@ const getUserTransactions = async (options = {}) => {
         total,
         page: pageNumber,
         limit: limitNumber,
-        totalPages: Math.ceil(total / limitNumber) || 1
+        pages: Math.ceil(total / limitNumber)
       }
     };
   } catch (error) {
     console.error('Error getting user transactions:', error);
     throw error;
   }
-};
+}
 
 /**
  * Get all transactions with optional filtering
@@ -239,7 +239,7 @@ const getAllTransactions = async (options = {}) => {
     const offset = (pageNumber - 1) * limitNumber;
     
     // Create base query
-    let query = db.collection(transactionsCollection);
+    let query = collection;
     
     // Apply filters to query if provided
     if (userId) {
@@ -350,7 +350,7 @@ const getAllTransactions = async (options = {}) => {
 const approveTransaction = async (transactionId) => {
   try {
     // Lấy thông tin giao dịch
-    const transactionDoc = await db.collection(transactionsCollection).doc(transactionId).get();
+    const transactionDoc = await collection.doc(transactionId).get();
     
     if (!transactionDoc.exists) {
       throw new Error('Transaction not found');
@@ -363,9 +363,9 @@ const approveTransaction = async (transactionId) => {
     }
     
     // Sử dụng transaction Firestore để đảm bảo tính toàn vẹn dữ liệu
-    await admin.firestore().runTransaction(async (t) => {
+    await firestore.runTransaction(async (t) => {
       // Lấy thông tin user
-      const userDoc = await t.get(db.collection('users').doc(transaction.userId));
+      const userDoc = await t.get(firestore.collection('users').doc(transaction.userId));
       
       if (!userDoc.exists) {
         throw new Error('User not found');
@@ -375,15 +375,15 @@ const approveTransaction = async (transactionId) => {
       const newBalance = (userData.balance || 0) + transaction.amount;
       
       // Cập nhật số dư của user
-      t.update(db.collection('users').doc(transaction.userId), {
+      t.update(firestore.collection('users').doc(transaction.userId), {
         balance: newBalance,
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: new Date()
       });
       
       // Cập nhật trạng thái giao dịch
-      t.update(db.collection(transactionsCollection).doc(transactionId), {
+      t.update(collection.doc(transactionId), {
         status: 'approved',
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: new Date()
       });
     });
     
@@ -404,7 +404,7 @@ const approveTransaction = async (transactionId) => {
 const processOrderPayment = async (orderId, userId, amount) => {
   try {
     // Lấy thông tin đơn hàng để biết số tiền và thông tin thanh toán
-    const orderDoc = await db.collection('orders').doc(orderId).get();
+    const orderDoc = await firestore.collection('orders').doc(orderId).get();
     
     if (!orderDoc.exists) {
       throw new Error('Order not found');
@@ -413,9 +413,9 @@ const processOrderPayment = async (orderId, userId, amount) => {
     const order = orderDoc.data();
     
     // Sử dụng transaction Firestore để đảm bảo tính toàn vẹn dữ liệu
-    await admin.firestore().runTransaction(async (t) => {
+    await firestore.runTransaction(async (t) => {
       // Lấy thông tin user
-      const userDoc = await t.get(db.collection('users').doc(userId));
+      const userDoc = await t.get(firestore.collection('users').doc(userId));
       
       if (!userDoc.exists) {
         throw new Error('User not found');
@@ -431,20 +431,20 @@ const processOrderPayment = async (orderId, userId, amount) => {
       const newBalance = userData.balance - amount;
       
       // Cập nhật số dư của user
-      t.update(db.collection('users').doc(userId), {
+      t.update(firestore.collection('users').doc(userId), {
         balance: newBalance,
-        updatedAt: FieldValue.serverTimestamp()
+        updatedAt: new Date()
       });
       
       // Cập nhật trạng thái thanh toán của đơn hàng
-      t.update(db.collection('orders').doc(orderId), {
+      t.update(firestore.collection('orders').doc(orderId), {
         paymentStatus: 'paid',
-        paidAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
+        paidAt: new Date(),
+        updatedAt: new Date()
       });
       
       // Tạo giao dịch thanh toán
-      const paymentRef = db.collection(transactionsCollection).doc();
+      const paymentRef = collection.doc();
       t.set(paymentRef, {
         userId,
         orderId,
@@ -452,8 +452,8 @@ const processOrderPayment = async (orderId, userId, amount) => {
         amount: -amount, // Số tiền âm cho thanh toán
         status: 'approved',
         description: `Payment for order ${order.orderNumber}`,
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp()
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
     });
     

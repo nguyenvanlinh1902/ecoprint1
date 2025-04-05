@@ -17,7 +17,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Assignment as TrackingIcon
 } from '@mui/icons-material';
-import api from '../../services/api';
+import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
 

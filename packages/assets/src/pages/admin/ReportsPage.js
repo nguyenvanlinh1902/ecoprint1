@@ -10,7 +10,7 @@ import {
   Description as ReportIcon,
   DateRange as DateRangeIcon
 } from '@mui/icons-material';
-import api from '../../services/api';
+import api from '@/api';
 import { formatCurrency, formatDate } from '../../helpers/formatters';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 

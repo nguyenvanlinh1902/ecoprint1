@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Container, Typography } from '@mui/material';
+import PropTypes from 'prop-types';
 
 /**
  * Layout component for authentication pages (login, register)
@@ -61,6 +62,10 @@ const AuthLayout = ({ children }) => {
       </Box>
     </Box>
   );
+};
+
+AuthLayout.propTypes = {
+  children: PropTypes.node.isRequired
 };
 
 export default AuthLayout; 

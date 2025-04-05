@@ -14,7 +14,7 @@ import {
   ArrowBack as ArrowBackIcon,
   CloudUpload as UploadIcon
 } from '@mui/icons-material';
-import api from '../../services/api';
+import api from '@/api';
 
 const ProductFormPage = () => {
   const { productId } = useParams();

@@ -1,21 +1,19 @@
 import { CustomError } from '../exceptions/customError.js';
-import { admin, db, storage } from '../config/firebase.js';
+import { adminStorage } from '../config/firebaseAdmin.js';
 import * as xlsx from 'xlsx';
 import { Readable } from 'stream';
 import multer from '@koa/multer';
 import { v4 as uuidv4 } from 'uuid';
-import * as categoryService from '../services/categoryService.js';
-import * as fileUploadService from '../services/fileUploadService.js';
+import categoryRepository from '../repositories/categoryRepository.js';
+import productRepository from '../repositories/productRepository.js';
+import fileUploadRepository from '../repositories/fileUploadRepository.js';
+import { Firestore } from '@google-cloud/firestore';
+import { Timestamp } from '@google-cloud/firestore';
 
-// Mock services khi chúng ta chưa implement productService
-const productService = {
-  createProduct: async (data) => ({ id: 'mockId', ...data }),
-  updateProduct: async (id, data) => ({ id, ...data }),
-  getProductById: async (id) => ({ id, name: 'Mock Product', basePrice: 100, type: 'paper' }),
-  getAllProducts: async () => [],
-  getProductsByStatus: async () => [],
-  deleteProduct: async () => true
-};
+const firestore = new Firestore();
+
+// Replaced mock service with repository
+const productService = productRepository;
 
 /**
  * Tạo sản phẩm mới (Admin only)
@@ -129,7 +127,7 @@ export const getProduct = async (ctx) => {
     const { productId } = ctx.params;
     
     // Check if product exists
-    const productDoc = await db.collection('products').doc(productId).get();
+    const productDoc = await firestore.collection('products').doc(productId).get();
     if (!productDoc.exists) {
       console.log('[ProductController] Product not found:', productId);
       ctx.status = 404;
@@ -152,7 +150,7 @@ export const getProduct = async (ctx) => {
     // Get category name if categoryId exists
     if (productData.categoryId) {
       try {
-        const categoryDoc = await db.collection('categories').doc(productData.categoryId).get();
+        const categoryDoc = await firestore.collection('categories').doc(productData.categoryId).get();
         if (categoryDoc.exists) {
           product.categoryName = categoryDoc.data().name || 'Unknown';
         }
@@ -461,8 +459,8 @@ export const uploadProductImage = async (ctx) => {
     // Tạo ID tạm thời cho ảnh sản phẩm
     const tempImageId = `temp_${Date.now()}`;
     
-    // Sử dụng service để xử lý upload
-    const uploadResult = await fileUploadService.uploadProductImage(tempImageId, fileData);
+    // Sử dụng repository để xử lý upload
+    const uploadResult = await fileUploadRepository.uploadProductImage(tempImageId, fileData);
     
     if (!uploadResult.success) {
       console.error('[ProductController] Image upload failed:', uploadResult.error);
@@ -500,7 +498,7 @@ export const uploadProductImage = async (ctx) => {
 export const getProductImportTemplate = async (ctx) => {
   try {
     // Lấy danh sách danh mục để có thể tham chiếu trong template
-    const categoriesSnapshot = await db.collection('categories').get();
+    const categoriesSnapshot = await firestore.collection('categories').get();
     const categories = [];
     categoriesSnapshot.forEach(doc => {
       categories.push({
@@ -623,13 +621,13 @@ export const importProducts = async (ctx) => {
     }
     
     // Lấy danh sách danh mục để kiểm tra tính hợp lệ
-    const categoriesSnapshot = await db.collection('categories').get();
+    const categoriesSnapshot = await firestore.collection('categories').get();
     const categories = {};
     categoriesSnapshot.forEach(doc => {
       categories[doc.id] = doc.data().name;
     });
     
-    const batch = db.batch();
+    const batch = firestore.batch();
     const results = {
       total: products.length,
       success: 0,
@@ -661,7 +659,7 @@ export const importProducts = async (ctx) => {
         }
         
         // Kiểm tra SKU đã tồn tại chưa
-        const existingProducts = await db.collection('products')
+        const existingProducts = await firestore.collection('products')
           .where('sku', '==', product.sku)
           .get();
           
@@ -674,7 +672,7 @@ export const importProducts = async (ctx) => {
           isUpdate = true;
         } else {
           // Tạo mới sản phẩm
-          productRef = db.collection('products').doc();
+          productRef = firestore.collection('products').doc();
         }
         
         // Xử lý features (chuyển từ chuỗi sang mảng)
@@ -706,11 +704,11 @@ export const importProducts = async (ctx) => {
           status: product.status === 'inactive' ? 'inactive' : 'active',
           features,
           specifications,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          updatedAt: new Date()
         };
         
         if (!isUpdate) {
-          productData.createdAt = admin.firestore.FieldValue.serverTimestamp();
+          productData.createdAt = new Date();
         }
         
         // Thêm vào batch

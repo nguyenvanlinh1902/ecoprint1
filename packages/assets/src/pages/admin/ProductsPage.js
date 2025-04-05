@@ -48,7 +48,7 @@ import {
   Search as SearchIcon,
   Visibility as VisibilityIcon
 } from '@mui/icons-material';
-import api from '../../services/api';
+import api from '@/api';
 
 const ProductsPage = () => {
   const navigate = useNavigate();

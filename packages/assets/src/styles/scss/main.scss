@@ -1,0 +1,24 @@
+// Main SCSS file
+
+// Import variables
+@import './variables';
+
+// Import mixins
+@import './mixins';
+
+// Import component styles
+@import './components';
+
+// Import layout styles
+@import './layouts';
+
+// Import page styles
+@import './pages';
+
+// Import utility classes
+@import './utilities';
+
+// Import the base styles
+@import './index';
+
+// Other imports can be added here for pages, layouts, etc. 

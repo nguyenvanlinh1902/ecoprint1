@@ -18,7 +18,7 @@ import {
   CheckCircle as ApproveIcon,
   Cancel as RejectIcon
 } from '@mui/icons-material';
-import api from '../../services/api';
+import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../../helpers/formatters';
 

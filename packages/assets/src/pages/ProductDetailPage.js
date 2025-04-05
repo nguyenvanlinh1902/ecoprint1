@@ -9,7 +9,7 @@ import {
   ArrowBack as ArrowBackIcon,
   ShoppingCart as ShoppingCartIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 import { formatCurrency } from '../helpers/formatters';
 
 const TabPanel = (props) => {

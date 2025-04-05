@@ -8,15 +8,29 @@
   ],
   "scripts": {
     "dev:assets": "npm run dev --workspace=packages/assets",
-    "dev:functions": "npm run dev --workspace=packages/functions",
-    "dev": "concurrently \"npm run dev:assets\" \"npm run dev:functions\"",
+    "dev:assets:staging": "npm run dev:staging --workspace=packages/assets",
+    "dev:assets:prod": "npm run dev:production --workspace=packages/assets",
+    "dev:functions": "GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev --workspace=packages/functions",
+    "dev:functions:win": "set GOOGLE_APPLICATION_CREDENTIALS=.\\serviceAccount.json && npm run dev --workspace=packages/functions",
+    "dev": "concurrently \"npm run dev:assets\" \"GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev:functions\"",
+    "dev:win": "concurrently \"npm run dev:assets\" \"npm run dev:functions:win\"",
+    "dev:staging": "concurrently \"npm run dev:assets:staging\" \"GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev:functions\"",
+    "dev:prod": "concurrently \"npm run dev:assets:prod\" \"npm run dev:functions\"",
     "build:assets": "npm run build --workspace=packages/assets",
+    "build:assets:staging": "npm run build:staging --workspace=packages/assets",
+    "build:assets:prod": "npm run build:prod --workspace=packages/assets",
     "build:functions": "npm run build --workspace=packages/functions",
     "build": "npm run build:assets && npm run build:functions",
+    "build:staging": "npm run build:assets:staging && npm run build:functions",
+    "build:prod": "npm run build:assets:prod && npm run build:functions",
     "deploy": "firebase deploy",
     "deploy:hosting": "firebase deploy --only hosting",
     "deploy:functions": "firebase deploy --only functions",
-    "lint": "npm run lint --workspaces"
+    "deploy:staging": "npm run build:staging && firebase deploy -P default",
+    "deploy:prod": "npm run build:prod && firebase deploy -P default",
+    "lint": "npm run lint --workspaces",
+    "emulators": "firebase emulators:start",
+    "test:connectivity": "node scripts/test-connectivity.js"
   },
   "devDependencies": {
     "concurrently": "^8.0.1",
@@ -25,6 +39,7 @@
   "type": "module",
   "dependencies": {
     "busboy": "^1.6.0",
-    "firebase-functions": "^6.3.2"
+    "firebase-functions": "^6.3.2",
+    "koa-body": "^6.0.1"
   }
 }

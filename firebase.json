@@ -59,29 +59,37 @@
   },
   "emulators": {
     "functions": {
-      "port": 5001
+      "port": 5001,
+      "host": "0.0.0.0"
     },
     "hosting": {
-      "port": 5010
+      "port": 5010,
+      "host": "0.0.0.0"
     },
     "auth": {
-      "port": 9099
+      "port": 9098,
+      "host": "0.0.0.0"
     },
     "firestore": {
-      "port": 8080
+      "port": 8081,
+      "host": "0.0.0.0"
     },
     "storage": {
-      "port": 9199
+      "port": 9198,
+      "host": "0.0.0.0"
     },
     "ui": {
       "enabled": true,
-      "port": 4040
+      "port": 4041,
+      "host": "0.0.0.0"
     },
     "hub": {
-      "port": 4400
+      "port": 4401,
+      "host": "0.0.0.0"
     },
     "logging": {
-      "port": 4500
+      "port": 4501,
+      "host": "0.0.0.0"
     }
   }
 } 

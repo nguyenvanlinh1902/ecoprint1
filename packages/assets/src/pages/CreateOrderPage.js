@@ -6,7 +6,7 @@ import {
   RadioGroup, Radio, FormControl, FormLabel, InputAdornment,
   CircularProgress, Alert, Card, CardContent, CardMedia
 } from '@mui/material';
-import api from '../services/api';
+import api from '@/api';
 import { formatCurrency } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
 import { useFetchApi } from '../hooks/useFetchApi';

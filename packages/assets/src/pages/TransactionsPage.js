@@ -14,7 +14,7 @@ import {
   CloudUpload as UploadIcon,
   AccountBalance as AccountBalanceIcon
 } from '@mui/icons-material';
-import api from '../services/api';
+import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';

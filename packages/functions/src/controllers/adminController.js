@@ -1,7 +1,10 @@
-import * as adminService from '../services/adminService.js';
 import { CustomError } from '../exceptions/customError.js';
-import { admin, db } from '../config/firebase.js';
+import { Firestore } from '@google-cloud/firestore';
+import { admin, adminAuth } from '../config/firebaseAdmin.js';
 import transactionRepository from '../repositories/transactionRepository.js';
+import userRepository from '../repositories/userRepository.js';
+
+const firestore = new Firestore();
 
 /**
  * Get admin dashboard data 
@@ -10,35 +13,31 @@ import transactionRepository from '../repositories/transactionRepository.js';
  */
 export const getDashboard = async (ctx) => {
   try {
-    console.log('[AdminController] Fetching dashboard data');
-    
-    // Get users count
-    const usersSnapshot = await db.collection('users').count().get();
+    const usersSnapshot = await firestore.collection('users').count().get();
     const totalUsers = usersSnapshot.data().count;
     
-    // Get new users in the last 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const newUsersSnapshot = await db.collection('users')
+    const newUsersSnapshot = await firestore.collection('users')
       .where('createdAt', '>=', thirtyDaysAgo)
       .count()
       .get();
     const newUsers = newUsersSnapshot.data().count;
     
     // Get orders count
-    const ordersSnapshot = await db.collection('orders').count().get();
+    const ordersSnapshot = await firestore.collection('orders').count().get();
     const totalOrders = ordersSnapshot.data().count;
     
     // Get pending orders count
-    const pendingOrdersSnapshot = await db.collection('orders')
+    const pendingOrdersSnapshot = await firestore.collection('orders')
       .where('status', '==', 'pending')
       .count()
       .get();
     const pendingOrders = pendingOrdersSnapshot.data().count;
     
     // Get total revenue
-    const ordersQuery = await db.collection('orders')
+    const ordersQuery = await firestore.collection('orders')
       .where('status', '!=', 'cancelled')
       .get();
     
@@ -51,7 +50,7 @@ export const getDashboard = async (ctx) => {
     });
     
     // Get recent orders
-    const recentOrdersQuery = await db.collection('orders')
+    const recentOrdersQuery = await firestore.collection('orders')
       .orderBy('createdAt', 'desc')
       .limit(5)
       .get();
@@ -67,7 +66,7 @@ export const getDashboard = async (ctx) => {
     });
     
     // Get recent users
-    const recentUsersQuery = await db.collection('users')
+    const recentUsersQuery = await firestore.collection('users')
       .orderBy('createdAt', 'desc')
       .limit(5)
       .get();
@@ -83,7 +82,7 @@ export const getDashboard = async (ctx) => {
     });
     
     // Get pending approval users count
-    const pendingApprovalsSnapshot = await db.collection('users')
+    const pendingApprovalsSnapshot = await firestore.collection('users')
       .where('status', '==', 'pending_approval')
       .count()
       .get();
@@ -137,8 +136,8 @@ export const getUsers = async (ctx) => {
       throw new CustomError('Invalid pagination parameters', 400);
     }
     
-    // Use the service to get users
-    const result = await adminService.getUsers({
+    // Use the repository to get users
+    const result = await userRepository.getUsers({
       page: pageNumber,
       limit: limitNumber,
       status,
@@ -179,8 +178,8 @@ export const getUserById = async (ctx) => {
       throw new CustomError('User ID is required', 400);
     }
     
-    // Use the service to get user details
-    const user = await adminService.getUserById(userId);
+    // Use the repository to get user details
+    const user = await userRepository.getUserById(userId);
     
     if (!user) {
       throw new CustomError('User not found', 404);
@@ -215,8 +214,8 @@ export const approveUser = async (ctx) => {
       throw new CustomError('User ID is required', 400);
     }
     
-    // Use the service to approve user
-    await adminService.updateUserStatus(userId, 'active');
+    // Use the repository to approve user
+    await userRepository.updateUserStatus(userId, 'active');
     
     // Return success response
     ctx.body = {
@@ -247,8 +246,8 @@ export const rejectUser = async (ctx) => {
       throw new CustomError('User ID is required', 400);
     }
     
-    // Use the service to reject user
-    await adminService.updateUserStatus(userId, 'rejected');
+    // Use the repository to reject user
+    await userRepository.updateUserStatus(userId, 'rejected');
     
     // Return success response
     ctx.body = {
@@ -285,8 +284,8 @@ export const updateUserStatus = async (ctx) => {
       throw new CustomError('Valid status is required', 400);
     }
     
-    // Use the service to update user status
-    await adminService.updateUserStatus(userId, status);
+    // Use the repository to update user status
+    await userRepository.updateUserStatus(userId, status);
     
     // Return success response
     ctx.body = {
@@ -324,8 +323,8 @@ export const getUserOrders = async (ctx) => {
       throw new CustomError('Invalid limit parameter', 400);
     }
     
-    // Use the service to get user orders
-    const orders = await adminService.getUserOrders(userId, limitNumber);
+    // Use the repository to get user orders
+    const orders = await userRepository.getUserOrders(userId, limitNumber);
     
     // Return success response with orders data
     ctx.body = {
@@ -363,8 +362,8 @@ export const getUserTransactions = async (ctx) => {
       throw new CustomError('Invalid limit parameter', 400);
     }
     
-    // Use the service to get user transactions
-    const transactions = await adminService.getUserTransactions(userId, limitNumber);
+    // Use the repository to get user transactions
+    const transactions = await userRepository.getUserTransactions(userId, limitNumber);
     
     // Return success response with transactions data
     ctx.body = {
@@ -401,8 +400,8 @@ export const updateUser = async (ctx) => {
       throw new CustomError('User data is required', 400);
     }
     
-    // Use the service to update user
-    const updatedUser = await adminService.updateUserProfile(userId, userData);
+    // Use the repository to update user
+    const updatedUser = await userRepository.updateUserProfile(userId, userData);
     
     // Return success response
     ctx.body = {
@@ -540,7 +539,7 @@ export const approveTransaction = async (ctx) => {
       // Chỉ cập nhật balance nếu là deposit
       if (transaction.type === 'deposit') {
         // Get user document
-        const userDoc = await t.get(db.collection('users').doc(transaction.userId));
+        const userDoc = await t.get(firestore.collection('users').doc(transaction.userId));
         
         if (!userDoc.exists) {
           throw new Error('User not found');
@@ -550,16 +549,16 @@ export const approveTransaction = async (ctx) => {
         const newBalance = (userData.balance || 0) + parseFloat(transaction.amount);
         
         // Update user balance
-        t.update(db.collection('users').doc(transaction.userId), {
+        t.update(firestore.collection('users').doc(transaction.userId), {
           balance: newBalance,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          updatedAt: new Date()
         });
       }
       
       // Update transaction status
-      t.update(db.collection('transactions').doc(transactionId), {
+      t.update(firestore.collection('transactions').doc(transactionId), {
         status: 'approved',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        updatedAt: new Date()
       });
     });
     
@@ -669,13 +668,13 @@ export const createTransaction = async (ctx) => {
     }
     
     // Check if user exists
-    const userDoc = await db.collection('users').doc(userId).get();
+    const userDoc = await firestore.collection('users').doc(userId).get();
     if (!userDoc.exists) {
       throw new CustomError('User not found', 404);
     }
     
     // Create transaction
-    const transactionRef = db.collection('transactions').doc();
+    const transactionRef = firestore.collection('transactions').doc();
     
     // Handle balance update if transaction is completed
     if (status === 'completed') {
@@ -697,9 +696,9 @@ export const createTransaction = async (ctx) => {
         const newBalance = (userData.balance || 0) + balanceChange;
         
         // Update user balance
-        t.update(db.collection('users').doc(userId), {
+        t.update(firestore.collection('users').doc(userId), {
           balance: newBalance,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          updatedAt: new Date()
         });
         
         // Create transaction
@@ -709,8 +708,8 @@ export const createTransaction = async (ctx) => {
           amount: amountNumber,
           description: description || `Manual ${type} by admin`,
           status,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          createdAt: new Date(),
+          updatedAt: new Date()
         });
       });
     } else {
@@ -721,8 +720,8 @@ export const createTransaction = async (ctx) => {
         amount: amountNumber,
         description: description || `Manual ${type} by admin`,
         status,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
     }
     

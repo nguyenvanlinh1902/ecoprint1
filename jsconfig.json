@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@api": ["packages/assets/src/api"],
+      "@api/*": ["packages/assets/src/api/*"],
+      "@assets/*": ["packages/assets/src/*"]
+    }
+  }
+} 

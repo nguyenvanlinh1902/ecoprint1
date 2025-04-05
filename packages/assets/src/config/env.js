@@ -49,11 +49,5 @@ export const CONFIG = {
   CACHE_TTL: isProd ? 3600 : 0 // 1 hour in production, no cache in development
 };
 
-// Check environment 
-if (!isProd) {
-  console.log('Running in DEVELOPMENT mode with config:', CONFIG);
-} else {
-  console.log('Running in PRODUCTION mode');
-}
 
 export default CONFIG; 

@@ -1,24 +1,29 @@
-// Firebase hooks
-export { useFirestore } from './useFirestore';
-export { useCollection, createWhereConstraint, createOrderConstraint, createLimitConstraint } from './useCollection';
-export { useDocument } from './useDocument';
+// Firebase hooks - Using API hooks instead
+export { useCollection, createFilter, createSort, createPagination } from './useCollection';
 
-// API hooks
-export { useFetchApi } from './useFetchApi';
-export { useCreateApi } from './useCreateApi';
-export { useUpdateApi } from './useUpdateApi';
-export { useDeleteApi } from './useDeleteApi';
+// API hooks - import from ./api instead
+import * as ApiHooks from './api';
+export { ApiHooks };
 
 // Auth hooks
 import { useAuth, AuthProvider } from './useAuth';
-import useRouteProtection from './useRouteProtection';
 import useHistory from './useHistory';
-import useSessionStorage from './useSessionStorage';
+import useNavigationHelper from './useNavigationHelper';
+import useSessionPersistence from './useSessionPersistence';
+import useRouteProtection from './useRouteProtection';
+
+// Error hooks
+import useErrorHandler from './useErrorHandler';
 
 export {
+  // Auth
   useAuth,
   AuthProvider,
-  useRouteProtection,
   useHistory,
-  useSessionStorage
+  useNavigationHelper,
+  useSessionPersistence,
+  useRouteProtection,
+  
+  // Error handling
+  useErrorHandler
 }; 

@@ -1,5 +1,5 @@
 import multer from '@koa/multer';
-import * as requestParserService from '../services/requestParserService.js';
+import { prepareRequest } from '../repositories/activities.js';
 import busboy from 'busboy';
 import { Readable } from 'stream';
 
@@ -120,7 +120,7 @@ export const createFileUploadMiddleware = (options = {}) => {
       console.log(`Processing file upload for field: ${fieldName}`);
       
       // Prepare the request context (ensures headers, body, etc.)
-      requestParserService.prepareRequest(ctx);
+      prepareRequest(ctx);
       
       // Try using raw FormData approach first if available in the request body
       if (ctx.req.body && ctx.req.body[fieldName]) {
