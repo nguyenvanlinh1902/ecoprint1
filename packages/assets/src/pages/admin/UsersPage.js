@@ -57,15 +57,15 @@ const UsersPage = () => {
         params.search = search;
       }
       
-      // Sử dụng admin API endpoint từ service đã cấu hình
+      // Use admin API endpoint from configured service
       const response = await api.admin.getUsers(params);
       
-      // Kiểm tra cấu trúc dữ liệu trả về
+      // Check response data structure
       if (response.data && response.data.data) {
         setUsers(response.data.data.users || []);
         setTotalPages(response.data.data.totalPages || 1);
       } else if (response.data) {
-        // Cấu trúc dữ liệu đơn giản hơn
+        // Simpler data structure
         setUsers(response.data.users || []);
         setTotalPages(response.data.totalPages || 1);
       } else {
@@ -77,7 +77,7 @@ const UsersPage = () => {
       
     } catch (error) {
       console.error('Error fetching users:', error);
-      setError('Không thể tải danh sách người dùng. Vui lòng thử lại sau.');
+      setError('Unable to load user list. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ const UsersPage = () => {
   
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    setPage(1); // Reset về trang 1 khi tìm kiếm
+    setPage(1); // Reset to page 1 when searching
     fetchUsers();
   };
   
@@ -196,6 +196,23 @@ const UsersPage = () => {
     }
   };
   
+  const renderStatus = (status) => {
+    switch (status) {
+      case 'active':
+        return <StatusBadge status="active" label="Active" />;
+      case 'inactive':
+        return <StatusBadge status="inactive" label="Inactive" />;
+      case 'pending':
+        return <StatusBadge status="pending" label="Pending" />;
+      case 'suspended':
+        return <StatusBadge status="suspended" label="Suspended" />;
+      case 'deleted':
+        return <StatusBadge status="deleted" label="Deleted" />;
+      default:
+        return <StatusBadge status="unknown" label="Unknown" />;
+    }
+  };
+  
   return (
     <Box>
       <Typography variant="h4" sx={{ mb: 3 }}>
@@ -249,139 +266,181 @@ const UsersPage = () => {
                 <MenuItem value="">All Statuses</MenuItem>
                 <MenuItem value="active">Active</MenuItem>
                 <MenuItem value="inactive">Inactive</MenuItem>
-                <MenuItem value="pending">Pending Approval</MenuItem>
-                <MenuItem value="rejected">Rejected</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="suspended">Suspended</MenuItem>
               </Select>
             </FormControl>
           </Grid>
           
-          <Grid item xs={12} md={4}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button 
-                variant="contained"
-                onClick={fetchUsers}
-              >
-                Filter
-              </Button>
-            </Box>
+          <Grid item xs={12} sm={6} md={4}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleSearchSubmit}
+              sx={{ height: 40 }}
+            >
+              Search
+            </Button>
+            
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setSearch('');
+                setStatus('');
+                setPage(1);
+              }}
+              sx={{ ml: 1, height: 40 }}
+            >
+              Reset
+            </Button>
           </Grid>
         </Grid>
       </Paper>
       
-      {/* Users List */}
+      {/* Users Table */}
       <Paper>
         <TableContainer>
           <Table>
             <TableHead>
               <TableRow>
-                <TableCell>Company</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Contact</TableCell>
-                <TableCell>Registration</TableCell>
+                <TableCell>ID</TableCell>
+                <TableCell>User Details</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell align="center">Actions</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Registration Date</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
+            
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
-                    <CircularProgress size={30} sx={{ my: 2 }} />
+                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                    <CircularProgress size={40} />
                   </TableCell>
                 </TableRow>
-              ) : users.length > 0 ? (
+              ) : users.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                    <Typography variant="body1">No users found</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
                 users.map((user) => (
-                  <TableRow key={user.id} hover>
-                    <TableCell>{user.companyName}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.phone || 'N/A'}</TableCell>
-                    <TableCell>{formatDate(user.createdAt)}</TableCell>
+                  <TableRow key={user.id}>
                     <TableCell>
-                      <StatusBadge status={user.status} />
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                        {user.id.substring(0, 8)}...
+                      </Typography>
                     </TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <IconButton 
-                          component={Link} 
-                          to={`/admin/users/${user.id}`}
-                          title="View Details"
-                          size="small"
-                        >
-                          <VisibilityIcon fontSize="small" />
-                        </IconButton>
-                        
-                        {user.status === 'pending' && (
-                          <>
-                            <IconButton 
-                              title="Approve"
-                              size="small"
-                              color="success"
-                              onClick={() => handleDialogOpen('approve', user)}
-                            >
-                              <ApproveIcon fontSize="small" />
-                            </IconButton>
-                            
-                            <IconButton 
-                              title="Reject"
-                              size="small"
-                              color="error"
-                              onClick={() => handleDialogOpen('reject', user)}
-                            >
-                              <RejectIcon fontSize="small" />
-                            </IconButton>
-                          </>
-                        )}
-                        
-                        {user.status === 'active' && (
-                          <IconButton 
-                            title="Deactivate"
-                            size="small"
-                            color="warning"
-                            onClick={() => handleDialogOpen('deactivate', user)}
-                          >
-                            <BlockIcon fontSize="small" />
-                          </IconButton>
-                        )}
-                        
-                        {user.status === 'inactive' && (
-                          <IconButton 
-                            title="Activate"
-                            size="small"
+                    
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                        {user.companyName || user.displayName || 'N/A'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {user.email}
+                      </Typography>
+                      {user.phone && (
+                        <Typography variant="body2" color="text.secondary">
+                          {user.phone}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    
+                    <TableCell>
+                      {renderStatus(user.status)}
+                    </TableCell>
+                    
+                    <TableCell>
+                      <Chip
+                        size="small"
+                        label={user.role === 'admin' ? 'Admin' : 'User'}
+                        color={user.role === 'admin' ? 'secondary' : 'default'}
+                        variant="outlined"
+                      />
+                    </TableCell>
+                    
+                    <TableCell>
+                      {formatDate(user.createdAt)}
+                    </TableCell>
+                    
+                    <TableCell>
+                      <IconButton
+                        component={Link}
+                        to={`/admin/users/${user.id}`}
+                        color="primary"
+                        size="small"
+                        title="View Details"
+                      >
+                        <VisibilityIcon fontSize="small" />
+                      </IconButton>
+                      
+                      {user.status === 'pending' && (
+                        <>
+                          <IconButton
                             color="success"
-                            onClick={() => handleDialogOpen('activate', user)}
+                            size="small"
+                            title="Approve User"
+                            onClick={() => handleDialogOpen('approve', user)}
                           >
                             <ApproveIcon fontSize="small" />
                           </IconButton>
-                        )}
-                      </Box>
+                          
+                          <IconButton
+                            color="error"
+                            size="small"
+                            title="Reject User"
+                            onClick={() => handleDialogOpen('reject', user)}
+                          >
+                            <RejectIcon fontSize="small" />
+                          </IconButton>
+                        </>
+                      )}
+                      
+                      {user.status === 'active' && (
+                        <IconButton
+                          color="warning"
+                          size="small"
+                          title="Deactivate User"
+                          onClick={() => handleDialogOpen('deactivate', user)}
+                        >
+                          <BlockIcon fontSize="small" />
+                        </IconButton>
+                      )}
+                      
+                      {user.status === 'inactive' && (
+                        <IconButton
+                          color="success"
+                          size="small"
+                          title="Activate User"
+                          onClick={() => handleDialogOpen('activate', user)}
+                        >
+                          <ApproveIcon fontSize="small" />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} align="center">
-                    No users found.
-                  </TableCell>
-                </TableRow>
               )}
             </TableBody>
           </Table>
         </TableContainer>
         
         {/* Pagination */}
-        {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-            <Pagination 
-              count={totalPages} 
-              page={page} 
-              onChange={handlePageChange} 
-              color="primary" 
+        {!loading && users.length > 0 && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+            <Pagination
+              count={totalPages}
+              page={page}
+              onChange={handlePageChange}
+              color="primary"
             />
           </Box>
         )}
       </Paper>
       
-      {/* Action Dialog */}
+      {/* Confirmation Dialog */}
       <Dialog
         open={dialogOpen}
         onClose={handleDialogClose}
@@ -390,23 +449,26 @@ const UsersPage = () => {
         <DialogTitle id="user-action-dialog-title">
           {getDialogTitle()}
         </DialogTitle>
+        
         <DialogContent>
           <DialogContentText>
             {getDialogContent()}
           </DialogContentText>
         </DialogContent>
+        
         <DialogActions>
           <Button onClick={handleDialogClose} disabled={actionLoading}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleUserAction} 
-            color={dialogAction === 'reject' || dialogAction === 'deactivate' ? 'error' : 'primary'}
+          
+          <Button
+            onClick={handleUserAction}
             variant="contained"
+            color={dialogAction === 'reject' || dialogAction === 'deactivate' ? 'error' : 'primary'}
             disabled={actionLoading}
-            autoFocus
+            startIcon={actionLoading ? <CircularProgress size={20} /> : null}
           >
-            {actionLoading ? <CircularProgress size={24} /> : 'Confirm'}
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>

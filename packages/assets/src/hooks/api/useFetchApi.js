@@ -26,9 +26,6 @@ const useFetchApi = (endpoint, options = {}) => {
     totalPages: 0
   });
 
-  // Log khi initialize hook để debug
-  console.log(`[useFetchApi] Initialized with endpoint: ${endpoint}`);
-
   /**
    * Fetch resource data
    * @param {string|number} id - Optional resource ID
@@ -42,13 +39,21 @@ const useFetchApi = (endpoint, options = {}) => {
       (id.toString().startsWith('/') ? id : `${endpoint}/${id}`) : 
       endpoint;
     
-    const requestKey = `${url}${JSON.stringify(queryParams)}`;
-    console.log(`[useFetchApi] Preparing request to: ${url}`, { params: queryParams });
+    // Tự động thêm email và role vào tất cả các request
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    const enhancedParams = {
+      ...params,
+      ...queryParams,
+      email: userEmail || '',
+      role: userRole || 'user'
+    };
+    
+    const requestKey = `${url}${JSON.stringify(enhancedParams)}`;
     
     // Don't attempt to fetch if we're already loading
     if (loading) {
-      console.log('[useFetchApi] Fetch already in progress, skipping duplicate request');
-      
       // For duplicate requests, return a Promise that resolves with existing data if available
       // instead of rejecting with an error (which causes cascading error handlers to fire)
       if (data) {
@@ -69,8 +74,6 @@ const useFetchApi = (endpoint, options = {}) => {
     setError(null);
 
     try {
-      const mergedParams = { ...params, ...queryParams };
-      
       // Check if navigator is online before making the request
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         const offlineError = new Error('You appear to be offline. Please check your internet connection.');
@@ -78,17 +81,9 @@ const useFetchApi = (endpoint, options = {}) => {
         throw offlineError;
       }
       
-      // Log request for debugging
-      console.log(`[useFetchApi] Sending request to: ${url}`, { 
-        params: mergedParams,
-        headers: {
-          'Authorization': localStorage.getItem('auth_token') ? 'Bearer [TOKEN]' : 'None'
-        }
-      });
-      
       // Add timeout to prevent hanging requests
       const response = await apiClient.get(url, { 
-        params: mergedParams,
+        params: enhancedParams,
         timeout: 10000 // 10 seconds timeout
       });
       
@@ -102,12 +97,27 @@ const useFetchApi = (endpoint, options = {}) => {
       
       // Ensure we have data
       if (responseData === undefined || responseData === null) {
-        console.warn('[useFetchApi] API returned empty data', response);
-      } else {
-        console.log(`[useFetchApi] Success response from ${url}:`, {
-          status: response.status,
-          hasData: !!responseData
-        });
+        // For transactions endpoint, provide default structure with empty array
+        if (url === 'transactions' || url.startsWith('transactions/')) {
+          setData({
+            transactions: [],
+            pagination: {
+              total: 0,
+              totalPages: 1,
+              currentPage: 1,
+              limit: params.limit || 10
+            }
+          });
+          return {
+            transactions: [],
+            pagination: {
+              total: 0,
+              totalPages: 1,
+              currentPage: 1,
+              limit: params.limit || 10
+            }
+          };
+        }
       }
       
       const formattedData = transformResponse ? transformResponse(responseData) : responseData;
@@ -115,8 +125,6 @@ const useFetchApi = (endpoint, options = {}) => {
       setData(formattedData);
       return response.data;
     } catch (err) {
-      console.error('[useFetchApi] API fetch error for', url, err);
-      
       let errorMessage = 'Failed to fetch data';
       
       // Handle different error scenarios
@@ -124,11 +132,6 @@ const useFetchApi = (endpoint, options = {}) => {
         // The server responded with an error status
         const status = err.response.status;
         errorMessage = err.response.data?.message || `Server error (${status}): Failed to fetch data`;
-        
-        console.log(`[useFetchApi] Server error response ${status} from ${url}:`, {
-          data: err.response.data,
-          status: status
-        });
         
         // Special handling for common status codes
         if (status === 401) {
@@ -143,17 +146,9 @@ const useFetchApi = (endpoint, options = {}) => {
       } else if (err.request) {
         // Request was made but no response received
         errorMessage = 'No response from server. Please check your internet connection.';
-        console.log('[useFetchApi] No response received:', {
-          url: url,
-          message: err.message
-        });
       } else {
         // Something else caused the error
         errorMessage = err.message || errorMessage;
-        console.log('[useFetchApi] Error before sending request:', {
-          url: url,
-          message: err.message
-        });
       }
       
       setError(errorMessage);

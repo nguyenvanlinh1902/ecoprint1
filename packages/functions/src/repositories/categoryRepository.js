@@ -1,6 +1,6 @@
-import {Firestore} from '@google-cloud/firestore';
+import { admin } from '../config/firebaseAdmin.js';
 
-const firestore = new Firestore();
+const firestore = admin.firestore();
 const collection = firestore.collection('categories');
 const productsCollection = firestore.collection('products');
 

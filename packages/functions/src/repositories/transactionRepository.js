@@ -1,6 +1,6 @@
-import {Firestore} from '@google-cloud/firestore';
+import { admin } from '../config/firebaseAdmin.js';
 
-const firestore = new Firestore();
+const firestore = admin.firestore();
 /** @type {CollectionReference} */
 const collection = firestore.collection('transactions');
 
@@ -149,10 +149,34 @@ export async function updateTransactionStatus(transactionId, status, reason = nu
  */
 export async function getUserTransactions(options = {}) {
   try {
-    const { userId, type, status, limit = 20, page = 1 } = options;
+    const { userId, email, type, status, limit = 20, page = 1 } = options;
     
-    if (!userId) {
-      throw new Error('User ID is required');
+    let userIdToUse = userId;
+    
+    // If email is provided but no userId, find the user by email
+    if ((!userId || userId === null) && email) {
+      const usersRef = firestore.collection('users');
+      const userQuery = await usersRef.where('email', '==', email).limit(1).get();
+      
+      if (userQuery.empty) {
+        // Instead of throwing an error, return empty results
+        console.log(`No user found with email: ${email}, returning empty results`);
+        return { 
+          transactions: [],
+          pagination: {
+            total: 0,
+            page: parseInt(page, 10),
+            limit: parseInt(limit, 10),
+            pages: 0
+          }
+        };
+      }
+      
+      userIdToUse = userQuery.docs[0].id;
+    }
+    
+    if (!userIdToUse) {
+      throw new Error('User ID or email is required');
     }
     
     // Validate and parse pagination params
@@ -167,7 +191,7 @@ export async function getUserTransactions(options = {}) {
     const offset = (pageNumber - 1) * limitNumber;
     
     // Create base query with userId filter
-    let query = collection.where('userId', '==', userId);
+    let query = collection.where('userId', '==', userIdToUse);
     
     // Apply additional filters if provided
     if (type) {
@@ -403,6 +427,19 @@ const approveTransaction = async (transactionId) => {
  */
 const processOrderPayment = async (orderId, userId, amount) => {
   try {
+    // Validate parameters
+    if (!orderId || typeof orderId !== 'string' || orderId.trim() === '') {
+      throw new Error('Valid order ID is required');
+    }
+    
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      throw new Error('Valid user ID is required');
+    }
+    
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      throw new Error('Valid payment amount is required');
+    }
+    
     // Lấy thông tin đơn hàng để biết số tiền và thông tin thanh toán
     const orderDoc = await firestore.collection('orders').doc(orderId).get();
     

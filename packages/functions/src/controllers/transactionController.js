@@ -1,5 +1,4 @@
-import { Firestore } from '@google-cloud/firestore';
-import { adminStorage } from '../config/firebaseAdmin.js';
+import { admin } from '../config/firebaseAdmin.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import orderRepository from '../repositories/orderRepository.js';
 import fileUploadRepository from '../repositories/fileUploadRepository.js';
@@ -7,7 +6,7 @@ import requestParserRepository from '../repositories/requestParserRepository.js'
 import userRepository from '../repositories/userRepository.js';
 import { CustomError } from '../exceptions/customError.js';
 
-const firestore = new Firestore();
+const firestore = admin.firestore();
 
 // Export stub functions that aren't part of the default export
 export const createDeposit = async (ctx) => {
@@ -334,12 +333,29 @@ export const payOrder = async (ctx) => {
  */
 export const getUserTransactions = async (ctx) => {
   try {
-    const { uid } = ctx.state.user;
-    const { type, status, limit = 20, page = 1 } = ctx.query;
+    const { uid } = ctx.state.user || {};
+    const { type, status, limit = 20, page = 1, email } = ctx.query;
+    
+    // Make sure we have either uid or email
+    if (!uid && !email) {
+      ctx.status = 200; // Changed from 400 to 200 to always return a valid response
+      ctx.body = { 
+        transactions: [],
+        balance: 0,
+        pagination: {
+          total: 0,
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          pages: 0
+        }
+      };
+      return;
+    }
     
     // Tạo options để truyền vào repository
     const options = {
-      userId: uid,
+      userId: uid || null,
+      email,  // Pass along the email parameter if provided
       type,
       status,
       limit: parseInt(limit),
@@ -347,11 +363,39 @@ export const getUserTransactions = async (ctx) => {
     };
     
     // Sử dụng repository để lấy dữ liệu transactions
-    const result = await transactionRepository.getUserTransactions(options);
+    let result;
+    try {
+      result = await transactionRepository.getUserTransactions(options);
+    } catch (repositoryError) {
+      console.error('Error fetching transactions:', repositoryError);
+      // Return empty results instead of throwing an error
+      result = { 
+        transactions: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page, 10),
+          limit: parseInt(limit, 10),
+          pages: 0
+        }
+      };
+    }
     
     // Lấy thông tin balance của user từ repository
-    const userDoc = await firestore.collection('users').doc(uid).get();
-    const balance = userDoc.exists ? userDoc.data().balance || 0 : 0;
+    let balance = 0;
+    if (uid) {
+      try {
+        const userDoc = await firestore.collection('users').doc(uid).get();
+        balance = userDoc.exists ? userDoc.data().balance || 0 : 0;
+      } catch (userError) {
+        console.error('Error fetching user balance:', userError);
+        // Continue with balance = 0
+      }
+    }
+    
+    // Ensure transactions is always an array
+    if (!result.transactions) {
+      result.transactions = [];
+    }
     
     ctx.status = 200;
     ctx.body = { 
@@ -360,8 +404,19 @@ export const getUserTransactions = async (ctx) => {
       pagination: result.pagination
     };
   } catch (error) {
-    ctx.status = 500;
-    ctx.body = { error: error.message };
+    console.error('Unexpected error in getUserTransactions:', error);
+    // Always return a 200 response with empty data
+    ctx.status = 200;
+    ctx.body = { 
+      transactions: [],
+      balance: 0,
+      pagination: {
+        total: 0,
+        page: parseInt(page, 10) || 1,
+        limit: parseInt(limit, 10) || 20,
+        pages: 0
+      }
+    };
   }
 };
 

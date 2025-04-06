@@ -114,7 +114,6 @@ export {
   useUploadFile
 };
 
-// Default export for convenience
 export default {
   useFetchApi,
   useCreateApi,

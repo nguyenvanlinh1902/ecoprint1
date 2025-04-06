@@ -18,8 +18,8 @@ export const simpleUploadMiddleware = (options = {}) => {
     console.log(`[SimpleUploadMiddleware] Processing upload request for ${fieldName}`);
     
     // Check if this is a file upload from body (e.g. base64 encoded)
-    if (ctx.request && ctx.request.body) {
-      console.log('[SimpleUploadMiddleware] Checking request.body for file data');
+    if (ctx.req && ctx.req.body) {
+      console.log('[SimpleUploadMiddleware] Checking req.body for file data');
       await handleBodyUpload(ctx, fieldName);
     }
     
@@ -47,11 +47,11 @@ async function handleBodyUpload(ctx, fieldName) {
     }
     
     // Check if field exists in body
-    if (ctx.request.body && ctx.request.body[fieldName]) {
-      console.log(`[SimpleUploadMiddleware] Found ${fieldName} in request body`);
+    if (ctx.req.body && ctx.req.body[fieldName]) {
+      console.log(`[SimpleUploadMiddleware] Found ${fieldName} in req.body`);
       
       // Handle base64 data
-      const fieldData = ctx.request.body[fieldName];
+      const fieldData = ctx.req.body[fieldName];
       if (typeof fieldData === 'string' && fieldData.includes('base64')) {
         console.log(`[SimpleUploadMiddleware] Processing base64 data for ${fieldName}`);
         
@@ -230,20 +230,116 @@ function parseMultipartForm(req, options = {}) {
 }
 
 /**
+ * Handle file upload from both form uploads and base64 encoded data
+ * @param {Object} ctx - Koa context
+ * @param {string} fieldName - Name of the field containing file data
+ * @returns {Promise<void>}
+ */
+async function handleUpload(ctx, fieldName) {
+  try {
+    console.log(`[SimpleUploadMiddleware] Processing ${fieldName} upload`);
+    
+    // Get the body from either source
+    const body = ctx.req.body || ctx.request.body || {};
+    
+    // Check if field exists in body
+    if (body[fieldName]) {
+      console.log(`[SimpleUploadMiddleware] Found ${fieldName} in body`);
+      
+      // Handle base64 data
+      const fieldData = body[fieldName];
+      if (typeof fieldData === 'string' && fieldData.includes('base64')) {
+        console.log(`[SimpleUploadMiddleware] Processing base64 data for ${fieldName}`);
+        
+        // Extract mime type and base64 data
+        const matches = fieldData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        
+        if (matches && matches.length === 3) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          const buffer = Buffer.from(base64Data, 'base64');
+          
+          // Create a file object that mimics a file upload
+          const file = {
+            fieldname: fieldName,
+            originalname: `upload_${Date.now()}.${mimeType.split('/')[1] || 'bin'}`,
+            encoding: '7bit',
+            mimetype: mimeType,
+            buffer: buffer,
+            size: buffer.length,
+          };
+          
+          // Attach to context
+          ctx.state.uploadedFile = file;
+          console.log(`[SimpleUploadMiddleware] Processed ${fieldName} file:`, file.originalname);
+        } else {
+          console.warn(`[SimpleUploadMiddleware] Invalid base64 data format for ${fieldName}`);
+        }
+      } else if (fieldData && typeof fieldData === 'object') {
+        // It might be a file object from multipart form
+        console.log(`[SimpleUploadMiddleware] Processing file object for ${fieldName}`);
+        ctx.state.uploadedFile = fieldData;
+      }
+    } else {
+      console.log(`[SimpleUploadMiddleware] No ${fieldName} found in request body`);
+    }
+  } catch (error) {
+    console.error(`[SimpleUploadMiddleware] Error handling ${fieldName} upload:`, error);
+    throw error;
+  }
+}
+
+/**
  * Receipt upload middleware
  */
-export const receiptUploadMiddleware = simpleUploadMiddleware({
-  fieldName: 'receipt',
-  maxSize: 5 * 1024 * 1024 // 5MB
-});
+export const receiptUploadMiddleware = async (ctx, next) => {
+  try {
+    console.log('[SimpleUploadMiddleware] Handling receipt upload middleware');
+    
+    // Make sure we have access to a parsed body
+    if (!ctx.request.body && !ctx.req.body) {
+      console.log('[SimpleUploadMiddleware] No body found, continuing...');
+      return await next();
+    }
+    
+    await handleUpload(ctx, 'receipt');
+    await next();
+  } catch (error) {
+    console.error('[SimpleUploadMiddleware] Error:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Error processing receipt upload',
+      timestamp: new Date().toISOString()
+    };
+  }
+};
 
 /**
  * Image upload middleware
  */
-export const imageUploadMiddleware = simpleUploadMiddleware({
-  fieldName: 'image',
-  maxSize: 5 * 1024 * 1024 // 5MB
-});
+export const imageUploadMiddleware = async (ctx, next) => {
+  try {
+    console.log('[SimpleUploadMiddleware] Handling image upload middleware');
+    
+    // Make sure we have access to a parsed body
+    if (!ctx.request.body && !ctx.req.body) {
+      console.log('[SimpleUploadMiddleware] No body found, continuing...');
+      return await next();
+    }
+    
+    await handleUpload(ctx, 'image');
+    await next();
+  } catch (error) {
+    console.error('[SimpleUploadMiddleware] Error:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Error processing image upload',
+      timestamp: new Date().toISOString()
+    };
+  }
+};
 
 /**
  * Profile photo upload middleware

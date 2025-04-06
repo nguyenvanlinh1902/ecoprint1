@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TextField, Button, Typography, Paper, Container, Box, Alert } from '@mui/material';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 
 const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { resetPassword, resetPasswordViaApi } = useAuth();
+  const { resetPassword, resetPasswordViaApi } = useApp();
 
   const handleSubmit = async (e) => {
     e.preventDefault();

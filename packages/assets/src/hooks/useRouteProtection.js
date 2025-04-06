@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import useHistory from './useHistory'; // Import our compatibility hook
-import { useAuth } from './useAuth';
+import { useApp } from '../context/AppContext';
 
 /**
  * Custom hook for protecting routes and preserving location on page refreshes
@@ -13,7 +13,7 @@ import { useAuth } from './useAuth';
  * @returns {Object} Auth status information
  */
 export const useRouteProtection = () => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { user, token, loading, isAdmin } = useApp();
   const location = useLocation();
   const history = useHistory(); // Use our compatibility hook
   
@@ -22,23 +22,13 @@ export const useRouteProtection = () => {
       if (loading) return;
       const currentPath = location.pathname;
       
-      const isAuthenticated = !!currentUser;
+      const isAuthenticated = !!token && !!user;
       
-      const hasProfile = !!userProfile;
+      const requiresAuth = !['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'].includes(currentPath);
       
-      const requiresAuth = !['/', '/login', '/register', '/forgot-password', '/reset-password'].includes(currentPath);
-      
-      // Check if user is admin
-      const isAdmin = userProfile?.role === 'admin';
-
       if (requiresAuth && !isAuthenticated) {
         sessionStorage.setItem('intendedPath', currentPath + location.search);
-        history.replace('/login');
-        return;
-      }
-      
-      if (requiresAuth && isAuthenticated && !hasProfile) {
-        history.replace('/login');
+        history.replace('/auth/login');
         return;
       }
       
@@ -47,14 +37,14 @@ export const useRouteProtection = () => {
         return;
       }
       
-      if (isAuthenticated && hasProfile && ['/', '/login', '/register', '/forgot-password', '/reset-password'].includes(currentPath)) {
+      if (isAuthenticated && ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'].includes(currentPath)) {
         history.replace(isAdmin ? '/admin/dashboard' : '/dashboard');
         return;
       }
     };
 
     checkAuth();
-  }, [currentUser, userProfile, loading, location, history]);
+  }, [user, token, loading, isAdmin, location, history]);
 
   const redirectToSavedPath = () => {
     const intendedPath = sessionStorage.getItem('intendedPath');
@@ -71,8 +61,8 @@ export const useRouteProtection = () => {
   };
   
   return {
-    isAuthenticated: !!currentUser && !!userProfile,
-    isAdmin: userProfile?.role === 'admin',
+    isAuthenticated: !!user && !!token,
+    isAdmin,
     loading,
     redirectToSavedPath
   };

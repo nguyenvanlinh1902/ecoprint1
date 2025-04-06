@@ -24,11 +24,11 @@ import {
   AlertTitle,
   Paper
 } from '@mui/material';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 
 const drawerWidth = 240;
 
-// Icon components được thay thế bằng React components đơn giản
+// Icon components are replaced with simple React components
 const MenuIcon = () => <span style={{ fontFamily: 'monospace' }}>☰</span>;
 const ChevronLeftIcon = () => <span style={{ fontFamily: 'monospace' }}>←</span>;
 const DashboardIcon = () => <span>📊</span>;
@@ -45,7 +45,7 @@ const RefreshIcon = () => <span>🔄</span>;
 const FileIcon = () => <span>📂</span>;
 
 const MainLayout = ({ children }) => {
-  const { userProfile, signOut, isAdmin } = useAuth();
+  const { user, logout, isAdmin } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(true);
@@ -53,13 +53,12 @@ const MainLayout = ({ children }) => {
   const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Kiểm tra profile
+  // Check profile
   useEffect(() => {
-    /* log removed */
-    if (!userProfile) {
-      /* log removed */
+    if (!user) {
+      // User profile not loaded
     }
-  }, [userProfile]);
+  }, [user]);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -84,32 +83,24 @@ const MainLayout = ({ children }) => {
   const handleLogout = async () => {
     try {
       setLoading(true);
-      /* log removed */
-      const success = await signOut();
+      logout();
       
-      if (success) {
-        /* log removed */
-        // Đóng menu nếu đang mở
-        if (anchorEl) {
-          handleProfileMenuClose();
-        }
-        
-        // Điều hướng về trang đăng nhập
-        navigate('/login', { replace: true });
-      } else {
-        /* error removed */
-        alert('An error occurred during logout. Please try again.');
+      // Close menu if open
+      if (anchorEl) {
+        handleProfileMenuClose();
       }
+      
+      // Navigate to login page
+      navigate('/auth/login', { replace: true });
     } catch (error) {
-      /* error removed */
       alert('An error occurred during logout. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Fallback UI if userProfile is not available
-  if (!userProfile) {
+  // Fallback UI if user is not available
+  if (!user) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
         <Box sx={{ textAlign: 'center', maxWidth: 600, p: 3 }}>
@@ -151,7 +142,7 @@ const MainLayout = ({ children }) => {
                   currentPath: location.pathname,
                   authState: {
                     isAdmin: isAdmin,
-                    userProfile: userProfile || 'null',
+                    user: user || 'null',
                   }
                 }, null, 2)}
               </Box>
@@ -180,7 +171,7 @@ const MainLayout = ({ children }) => {
     );
   }
 
-  // Menu dành cho người dùng thường
+  // Menu for regular users
   const userMenuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Products', icon: <CategoryIcon />, path: '/products' },
@@ -189,7 +180,7 @@ const MainLayout = ({ children }) => {
     { text: 'Transactions', icon: <AccountBalanceIcon />, path: '/transactions' },
   ];
 
-  // Menu dành cho admin khi vào trang admin
+  // Menu for admins in admin section
   const adminNavItems = [
     { text: 'Admin Dashboard', icon: <DashboardIcon />, path: '/admin/dashboard' },
     { text: 'Manage Users', icon: <PeopleIcon />, path: '/admin/users' },
@@ -333,7 +324,7 @@ const MainLayout = ({ children }) => {
               color="inherit"
             >
               <Avatar sx={{ width: 32, height: 32, bgcolor: 'secondary.main' }}>
-                {userProfile?.displayName?.charAt(0) || 'U'}
+                {user?.displayName?.charAt(0) || 'U'}
               </Avatar>
             </IconButton>
           </Tooltip>
@@ -481,7 +472,7 @@ const MainLayout = ({ children }) => {
         {open && (
           <Box sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">
-              Balance: ${userProfile?.balance || 0}
+              Balance: ${user?.balance || 0}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
               v1.0.0
@@ -512,7 +503,7 @@ const MainLayout = ({ children }) => {
                 Debug User Data:
               </Typography>
               <pre style={{ fontSize: '0.75rem' }}>
-                {JSON.stringify({ userProfile }, null, 2)}
+                {JSON.stringify({ user }, null, 2)}
               </pre>
             </Box>
           )}

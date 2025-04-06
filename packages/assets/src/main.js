@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import App from './App';
 import './styles/scss/main.scss';
-import { AuthProvider } from "@/hooks";
 import { StoreProvider } from './reducers/storeReducer';
 
-// Tạo theme
+// Create theme
 const theme = createTheme({
   palette: {
     primary: {
@@ -20,7 +21,7 @@ const theme = createTheme({
   },
 });
 
-// Lấy container và render app
+// Get container and render app
 const container = document.getElementById('root');
 const root = createRoot(container);
 
@@ -31,9 +32,18 @@ try {
         <CssBaseline />
         <BrowserRouter>
           <StoreProvider>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
+            <App />
+            <ToastContainer 
+              position="top-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+            />
           </StoreProvider>
         </BrowserRouter>
       </ThemeProvider>
@@ -42,7 +52,7 @@ try {
 } catch (error) {
   console.error('Error initializing app:', error);
   
-  // Hiển thị lỗi cho người dùng
+  // Show error to user
   if (container) {
     container.innerHTML = `
       <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">

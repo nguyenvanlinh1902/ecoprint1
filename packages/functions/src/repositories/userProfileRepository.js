@@ -1,8 +1,9 @@
 /**
  * Repository for user profile operations
  */
-import {Firestore} from '@google-cloud/firestore';
-const firestore = new Firestore();
+import { admin } from '../config/firebaseAdmin.js';
+
+const firestore = admin.firestore();
 const collection = firestore.collection('userProfiles');
 /**
  * Format user profile document
@@ -28,6 +29,16 @@ const formatUserProfile = (doc) => {
  */
 const createUserProfile = async (userData) => {
   try {
+    if (!userData.email) {
+      throw new Error('Email is required');
+    }
+    
+    // Kiểm tra xem email đã tồn tại chưa
+    const existingUser = await getUserProfileByEmail(userData.email);
+    if (existingUser) {
+      throw new Error('Email already exists');
+    }
+    
     const {id} = await collection.add({
       ...userData,
       createdAt: new Date(),
@@ -72,6 +83,10 @@ const getUserProfileById = async (id) => {
  */
 const getUserProfileByEmail = async (email) => {
   try {
+    if (!email) {
+      return null;
+    }
+    
     const snapshot = await collection
       .where('email', '==', email)
       .limit(1)
@@ -82,6 +97,26 @@ const getUserProfileByEmail = async (email) => {
     }
     
     return formatUserProfile(snapshot.docs[0]);
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Update user profile by email
+ * @param {string} email - User email
+ * @param {Object} data - User profile data to update
+ * @returns {Promise<Object>} Updated user profile
+ */
+const updateUserProfileByEmail = async (email, data) => {
+  try {
+    // Find user by email
+    const userProfile = await getUserProfileByEmail(email);
+    if (!userProfile) {
+      throw new Error(`User profile with email ${email} not found`);
+    }
+    
+    return await updateUserProfile(userProfile.id, data);
   } catch (error) {
     throw error;
   }
@@ -114,6 +149,26 @@ const updateUserProfile = async (id, data) => {
 };
 
 /**
+ * Update user status by email
+ * @param {string} email - User email
+ * @param {string} status - New status
+ * @returns {Promise<Object>} Updated user profile
+ */
+const updateUserStatusByEmail = async (email, status) => {
+  try {
+    // Find user by email
+    const userProfile = await getUserProfileByEmail(email);
+    if (!userProfile) {
+      throw new Error(`User profile with email ${email} not found`);
+    }
+    
+    return await updateUserStatus(userProfile.id, status);
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
  * Update user status
  * @param {string} id - User profile ID
  * @param {string} status - New status
@@ -133,6 +188,25 @@ const updateUserStatus = async (id, status) => {
     
     const doc = await collection.doc(id).get();
     return formatUserProfile(doc);
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Delete user profile by email
+ * @param {string} email - User email
+ * @returns {Promise<boolean>} Success status
+ */
+const deleteUserProfileByEmail = async (email) => {
+  try {
+    // Find user by email
+    const userProfile = await getUserProfileByEmail(email);
+    if (!userProfile) {
+      throw new Error(`User profile with email ${email} not found`);
+    }
+    
+    return await deleteUserProfile(userProfile.id);
   } catch (error) {
     throw error;
   }
@@ -225,6 +299,27 @@ const queryUserProfiles = async (options = {}) => {
 };
 
 /**
+ * Store password reset token by email
+ * @param {string} email - User email
+ * @param {string} resetToken - Password reset token
+ * @param {number} expiryMinutes - Token expiry time in minutes
+ * @returns {Promise<boolean>} Success status
+ */
+const storePasswordResetByEmail = async (email, resetToken, expiryMinutes = 60) => {
+  try {
+    // Find user by email
+    const userProfile = await getUserProfileByEmail(email);
+    if (!userProfile) {
+      throw new Error(`User profile with email ${email} not found`);
+    }
+    
+    return await storePasswordReset(userProfile.id, resetToken, expiryMinutes);
+  } catch (error) {
+    throw error;
+  }
+};
+
+/**
  * Store password reset token
  * @param {string} userId - User ID
  * @param {string} resetToken - Password reset token
@@ -253,8 +348,12 @@ export default {
   getUserProfileById,
   getUserProfileByEmail,
   updateUserProfile,
+  updateUserProfileByEmail,
   updateUserStatus,
+  updateUserStatusByEmail,
   deleteUserProfile,
+  deleteUserProfileByEmail,
   queryUserProfiles,
-  storePasswordReset
+  storePasswordReset,
+  storePasswordResetByEmail
 }; 

@@ -17,11 +17,11 @@ import {
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../helpers/formatters';
-import { useAuth } from '../hooks/useAuth';
-import { useFetchApi } from '../hooks/useFetchApi';
+import { useApp } from '../context/AppContext';
+import useFetchApi from '../hooks/api/useFetchApi';
 
 const TransactionsPage = () => {
-  const { userProfile } = useAuth();
+  const { user } = useApp();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -51,21 +51,44 @@ const TransactionsPage = () => {
     loading: fetchLoading,
     error: fetchError,
     refetch: refetchTransactions
-  } = useFetchApi({
-    resource: 'transactions',
-    autoFetch: false,
-    params: queryParams
+  } = useFetchApi('transactions', {
+    fetchOnMount: false,
+    initialParams: queryParams
   });
 
   // Update state when data is fetched
   useEffect(() => {
     if (transactionsData) {
-      setTransactions(transactionsData.transactions || []);
-      setTotalPages(transactionsData.totalPages || 1);
+      // Ensure transactions is always an array
+      if (Array.isArray(transactionsData.transactions)) {
+        setTransactions(transactionsData.transactions);
+      } else if (transactionsData.transactions === null || transactionsData.transactions === undefined) {
+        // If null or undefined, set empty array
+        setTransactions([]);
+      } else {
+        // Handle unexpected data by setting empty array
+        console.warn('Unexpected transactions data format:', transactionsData.transactions);
+        setTransactions([]);
+      }
+      
+      // Handle pagination data
+      if (transactionsData.pagination) {
+        setTotalPages(transactionsData.pagination.totalPages || transactionsData.pagination.pages || 1);
+      } else {
+        setTotalPages(1);
+      }
+    } else {
+      // If no data at all, set empty array
+      setTransactions([]);
+      setTotalPages(1);
     }
+    
     if (fetchError) {
       setError('Failed to load transactions. Please try again later.');
+      // Ensure we still have empty transactions array on error
+      setTransactions([]);
     }
+    
     setLoading(fetchLoading);
   }, [transactionsData, fetchError, fetchLoading]);
 
@@ -231,7 +254,7 @@ const TransactionsPage = () => {
             Current Balance:
           </Typography>
           <Typography variant="h6" color="primary" sx={{ mr: 2 }}>
-            {formatCurrency(userProfile?.balance || 0)}
+            {formatCurrency(user?.balance || 0)}
           </Typography>
           <Button
             variant="contained"
@@ -513,7 +536,7 @@ const TransactionsPage = () => {
                     Routing/Swift Code: EXBKUS123
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Reference:</strong> Please include your user ID ({userProfile?.id?.substring(0, 8) || 'User ID'}) as the payment reference.
+                    <strong>Reference:</strong> Please include your user ID ({user?.id?.substring(0, 8) || 'User ID'}) as the payment reference.
                   </Typography>
                 </Stack>
               </Box>

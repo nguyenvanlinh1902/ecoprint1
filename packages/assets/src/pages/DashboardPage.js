@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Grid, Paper, Box, Button, Card, CardContent,
@@ -11,12 +11,13 @@ import {
   AddShoppingCart as CreateOrderIcon
 } from '@mui/icons-material';
 import api from '@/api';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 
 const DashboardPage = () => {
-  const { userProfile, currentUser, isLoggedIn } = useAuth();
+  const { user, isAuthenticated, token } = useApp();
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [orderStats, setOrderStats] = useState({
@@ -28,57 +29,153 @@ const DashboardPage = () => {
   });
   const [recentOrders, setRecentOrders] = useState([]);
   const [recentTransactions, setRecentTransactions] = useState([]);
-  const [dataFetched, setDataFetched] = useState(false);
 
-  // Prevent multiple api calls triggered by auth state changes
-  const fetchDashboardData = useCallback(async () => {
-    if (dataFetched) return; // Only fetch once per component mount
-    
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Get recent orders
-      try {
-        const ordersResponse = await api.get('/api/orders?limit=5');
-        setRecentOrders(ordersResponse.data.data?.orders || []);
-        
-        // Calculate order stats
-        const allOrders = ordersResponse.data.data?.orders || [];
-        const stats = {
-          total: allOrders.length,
-          pending: allOrders.filter(order => order.status === 'pending').length,
-          processing: allOrders.filter(order => order.status === 'processing').length,
-          shipped: allOrders.filter(order => order.status === 'shipped').length,
-          delivered: allOrders.filter(order => order.status === 'delivered').length
-        };
-        setOrderStats(stats);
-      } catch (orderError) {
-        // Continue with other requests even if orders fail
-      }
-      
-      // Get recent transactions
-      try {
-        const transactionsResponse = await api.get('/api/transactions?limit=5');
-        setRecentTransactions(transactionsResponse.data.data?.transactions || []);
-      } catch (transactionError) {
-        // Continue even if transactions fail
-      }
-      
-      setDataFetched(true);
-    } catch (error) {
-      setError('Failed to load dashboard data. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  }, [dataFetched]);
-
+  // Fetch dashboard data once when component mounts and user is authenticated
   useEffect(() => {
-    // Only fetch data when user is properly logged in and we have their profile
-    if (isLoggedIn() && userProfile && !dataFetched) {
-      fetchDashboardData();
-    }
-  }, [userProfile, isLoggedIn, fetchDashboardData, dataFetched]);
+    let isMounted = true;
+    
+    const loadDashboardData = async () => {
+      // Only fetch if user is authenticated and we have a token
+      if (!isAuthenticated || !token || !user) {
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get recent orders
+        try {
+          // Use direct API client rather than hook-based API
+          const ordersResponse = await api.get('/orders', { 
+            params: { 
+              limit: 5,
+              email: user.email  // Add user email parameter
+            },
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (isMounted) {
+            const orders = ordersResponse.data.data?.orders || [];
+            setRecentOrders(orders);
+            
+            // Calculate order stats
+            const stats = {
+              total: orders.length,
+              pending: orders.filter(order => order.status === 'pending').length,
+              processing: orders.filter(order => order.status === 'processing').length,
+              shipped: orders.filter(order => order.status === 'shipped').length,
+              delivered: orders.filter(order => order.status === 'delivered').length
+            };
+            setOrderStats(stats);
+          }
+        } catch (orderError) {
+          console.error('Error fetching orders:', orderError);
+        }
+        
+        // Get recent transactions via API endpoint directly
+        try {
+          // Only fetch transactions if we're still mounted
+          if (isMounted) {
+            const transactionsResponse = await api.get('/transactions', {
+              params: { 
+                limit: 5,
+                email: user.email  // Add user email as parameter
+              },
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (transactionsResponse.status === 200) {
+              setRecentTransactions(transactionsResponse.data.data?.transactions || []);
+            } else {
+              console.log('Failed to fetch transactions:', transactionsResponse.status);
+            }
+          }
+        } catch (transactionError) {
+          console.error('Error fetching transactions:', transactionError);
+        }
+        
+      } catch (error) {
+        if (isMounted) {
+          setError('Failed to load dashboard data. Please try again later.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboardData();
+    
+    // Cleanup function to prevent state updates if component unmounts
+    return () => {
+      isMounted = false;
+    };
+  }, [user, isAuthenticated, token]);
+
+  // Handler for retry button
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    
+    // Re-fetch dashboard data
+    const loadData = async () => {
+      try {
+        // Get recent orders
+        try {
+          const ordersResponse = await api.get('/orders', { 
+            params: { 
+              limit: 5,
+              email: user.email  // Add user email parameter
+            },
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          const orders = ordersResponse.data.data?.orders || [];
+          setRecentOrders(orders);
+          
+          // Calculate order stats
+          const stats = {
+            total: orders.length,
+            pending: orders.filter(order => order.status === 'pending').length,
+            processing: orders.filter(order => order.status === 'processing').length,
+            shipped: orders.filter(order => order.status === 'shipped').length,
+            delivered: orders.filter(order => order.status === 'delivered').length
+          };
+          setOrderStats(stats);
+        } catch (orderError) {
+          console.error('Error fetching orders:', orderError);
+        }
+        
+        // Get recent transactions
+        try {
+          const transactionsResponse = await api.get('/transactions', {
+            params: { 
+              limit: 5,
+              email: user.email  // Add user email as parameter
+            },
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          
+          if (transactionsResponse.status === 200) {
+            setRecentTransactions(transactionsResponse.data.data?.transactions || []);
+          } else {
+            console.log('Failed to fetch transactions:', transactionsResponse.status);
+          }
+        } catch (transactionError) {
+          console.error('Error fetching transactions:', transactionError);
+        }
+      } catch (error) {
+        setError('Failed to load dashboard data. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  };
 
   if (loading) {
     return (
@@ -102,10 +199,7 @@ const DashboardPage = () => {
         </Typography>
         <Button
           variant="contained"
-          onClick={() => {
-            setDataFetched(false);
-            fetchDashboardData();
-          }}
+          onClick={handleRetry}
           sx={{ mt: 2 }}
         >
           Retry
@@ -117,7 +211,7 @@ const DashboardPage = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Welcome, {userProfile?.displayName || userProfile?.companyName || 'User'}
+        Welcome, {user?.displayName || user?.companyName || 'User'}
       </Typography>
       
       {/* Summary Cards */}
@@ -139,7 +233,7 @@ const DashboardPage = () => {
               <BalanceIcon color="primary" />
             </Box>
             <Typography component="p" variant="h4">
-              {formatCurrency(userProfile?.balance || 0)}
+              {formatCurrency(user?.balance || 0)}
             </Typography>
             <Box sx={{ mt: 'auto' }}>
               <Button component={Link} to="/deposit" size="small" variant="outlined">

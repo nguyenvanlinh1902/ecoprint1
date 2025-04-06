@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Tabs, Tab, Table, TableBody,
@@ -15,10 +15,10 @@ import {
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 
 const OrdersPage = () => {
-  const { userProfile, currentUser } = useAuth();
+  const { user, token, isAuthenticated } = useApp();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,61 +46,63 @@ const OrdersPage = () => {
   
   const statusFilters = ['', 'pending', 'processing', 'shipped', 'delivered', 'cancelled'];
   
-  // Log user data for debugging
-  useEffect(() => {
-    /* log removed */
-    /* log removed */
-  }, [userProfile, currentUser]);
-  
-  const fetchOrders = async () => {
+  const loadOrders = useCallback(async () => {
+    // Prevent API calls if not authenticated
+    if (!isAuthenticated || !user || !token) {
+      setLoading(false);
+      return;
+    }
+    
     try {
       setLoading(true);
       
       // Build query parameters
-      const params = new URLSearchParams();
-      params.append('page', page);
-      params.append('limit', 10); // Orders per page
+      const queryParams = {
+        page,
+        limit: 10, // Orders per page
+        sort: sortBy.split('_')[0],
+        direction: sortBy.split('_')[1]
+      };
       
       const status = statusFilters[tabValue];
       if (status) {
-        params.append('status', status);
+        queryParams.status = status;
       }
       
       if (search) {
-        params.append('search', search);
+        queryParams.search = search;
       }
       
-      const [sortField, sortDirection] = sortBy.split('_');
-      params.append('sort', sortField);
-      params.append('direction', sortDirection);
-      
-      // Add user ID filter for regular users (not admin)
-      if (userProfile && userProfile.role !== 'admin') {
-        params.append('userId', userProfile.uid);
+      // Add email for user filtering instead of userId
+      if (user) {
+        queryParams.email = user.email;
       }
       
-      const response = await api.get(`/api/orders?${params.toString()}`);
+      const response = await api.get('/orders', {
+        params: queryParams,
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       
-      setOrders(response.data.data.orders || []);
-      setTotalPages(response.data.data.totalPages || 1);
+      setOrders(response.data.data?.orders || []);
+      setTotalPages(response.data.data?.totalPages || 1);
       
       // Update stats if provided in response
-      if (response.data.data.stats) {
+      if (response.data.data?.stats) {
         setStats(response.data.data.stats);
       }
     } catch (error) {
-      /* error removed */
+      console.error('Error fetching orders:', error);
       setError('Failed to load orders. Please try again later.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, tabValue, sortBy, search, user, isAuthenticated, token]);
   
+  // Effect to load orders when dependencies change
   useEffect(() => {
-    if (userProfile) {
-      fetchOrders();
-    }
-  }, [page, tabValue, sortBy, userProfile]);
+    loadOrders();
+    // No need for the isMounted pattern here as we're using useCallback
+  }, [page, tabValue, sortBy, user, isAuthenticated, token]);
   
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -114,11 +116,12 @@ const OrdersPage = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1); // Reset to first page when searching
-    fetchOrders();
+    // loadOrders() is removed from here as it will be triggered by the useEffect when page changes
   };
   
   const handleSortChange = (e) => {
     setSortBy(e.target.value);
+    setPage(1); // Reset to page 1 when sorting changes
   };
   
   return (
@@ -132,7 +135,7 @@ const OrdersPage = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Orders</Typography>
         <Box>
-          {userProfile?.role === 'admin' && (
+          {user?.role === 'admin' && (
             <Button
               variant="outlined"
               component={Link}

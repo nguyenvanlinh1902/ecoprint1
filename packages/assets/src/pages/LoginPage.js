@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Link } from 'react-router-dom';
 import Logo from '../components/Logo';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 
 const LoginPage = () => {
   // Get email from localStorage if available
@@ -31,7 +31,7 @@ const LoginPage = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
-  const { login, resendVerification } = useAuth(); 
+  const { login, resendVerification } = useApp();
 
   // Update email in localStorage when it changes
   useEffect(() => {
@@ -40,7 +40,7 @@ const LoginPage = () => {
     }
   }, [email]);
 
-  // Reset messages when component mounts
+  // Reset messages but NOT form data when component updates due to location change
   useEffect(() => {
     // Extract any error or success from query params
     const params = new URLSearchParams(location.search);
@@ -58,12 +58,12 @@ const LoginPage = () => {
     
     if (emailParam) {
       setEmail(decodeURIComponent(emailParam));
+      localStorage.setItem('login_email', decodeURIComponent(emailParam));
     }
   }, [location]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    e.stopPropagation();
     
     // Validate form fields
     if (!email || !password) {
@@ -77,12 +77,12 @@ const LoginPage = () => {
     
     try {
       const result = await login(email, password);
-      console.log('Login result:', result); // Debug log
       
       if (result.success) {
         // Redirect to dashboard or requested page
-        const from = location.state?.from?.pathname || '/';
-        navigate(from);
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from, { replace: true });
+        return; // Important: Exit the function after navigation
       } else if (result.message?.includes('email not verified')) {
         // Show option to resend verification
         setVerifyEmailSent(true);
@@ -91,13 +91,8 @@ const LoginPage = () => {
         // Extract the most accurate error message
         let message = result.message;
         
-        // Try to get the message from original response if available
-        if (result.originalResponse && result.originalResponse.message) {
-          message = result.originalResponse.message;
-        }
-        
         // Special error handling based on error code
-        const errorCode = result.code || result.originalResponse?.code;
+        const errorCode = result.code;
         
         // Handle specific error codes
         if (errorCode === 'account-inactive' || message?.includes('not active')) {
@@ -106,6 +101,8 @@ const LoginPage = () => {
           message = 'Your account requires additional setup. Please contact support for assistance.';
         } else if (errorCode === 'auth-error') {
           message = 'Authentication failed. Please verify your credentials or contact support.';
+        } else if (errorCode === 'profile-not-found') {
+          message = 'Your user profile could not be found. Please contact support.';
         }
         setErrorMessage(message || 'Login failed. Please try again.');
       }
@@ -116,12 +113,7 @@ const LoginPage = () => {
       } else {
         let message = error.message;
         
-        if (error.originalResponse?.message) {
-          message = error.originalResponse.message;
-        } else if (error.response?.data?.message) {
-          message = error.response.data.message;
-        }
-        const errorCode = error.code || error.originalResponse?.code;
+        const errorCode = error.code;
         
         if (errorCode === 'account-inactive' || message?.includes('not active')) {
           message = 'Your account is not active. Please contact support for assistance.';
@@ -129,15 +121,30 @@ const LoginPage = () => {
           message = 'Your account requires additional setup. Please contact support for assistance.';
         } else if (errorCode === 'auth-error') {
           message = 'Authentication failed. Please verify your credentials or contact support.';
+        } else if (errorCode === 'profile-not-found') {
+          message = 'Your user profile could not be found. Please contact support.';
+        } else if (errorCode === 'missing-credentials') {
+          message = 'Email and password are required.';
         }
         
-        // Show error message
-        console.log('Setting error message from caught error:', message);
         setErrorMessage(message || 'Login failed. Please try again.');
       }
     } finally {
       setLoading(false);
+      // Never clear email/password inputs here to preserve user input
     }
+  };
+
+  // Make sure input values persist
+  const handleEmailChange = (e) => {
+    const newEmail = e.target.value;
+    setEmail(newEmail);
+    localStorage.setItem('login_email', newEmail); // Save to localStorage
+  };
+  
+  const handlePasswordChange = (e) => {
+    setPassword(e.target.value);
+    // Don't save password to localStorage for security reasons
   };
 
   const handleResendVerification = async () => {
@@ -158,17 +165,6 @@ const LoginPage = () => {
     } finally {
       setResendLoading(false);
     }
-  };
-
-  // Update handlers for email and password
-  const handleEmailChange = (e) => {
-    const newEmail = e.target.value;
-    setEmail(newEmail);
-    localStorage.setItem('login_email', newEmail);
-  };
-  
-  const handlePasswordChange = (e) => {
-    setPassword(e.target.value);
   };
 
   return (

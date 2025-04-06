@@ -16,6 +16,7 @@ const projectId = process.env.GCLOUD_PROJECT || 'ecoprint1-3cd5c';
 let adminApp;
 let adminAuth;
 let adminStorage;
+let adminFirestore;
 
 function initializeAdmin() {
   // If already initialized, return the existing instances
@@ -23,7 +24,8 @@ function initializeAdmin() {
     return {
       app: admin.app(),
       auth: getAuth(),
-      storage: getStorage().bucket()
+      storage: getStorage().bucket(),
+      firestore: admin.firestore()
     };
   }
 
@@ -42,7 +44,8 @@ function initializeAdmin() {
     return {
       app,
       auth: getAuth(app),
-      storage: getStorage(app).bucket()
+      storage: getStorage(app).bucket(),
+      firestore: admin.firestore()
     };
   }
   
@@ -57,52 +60,71 @@ function initializeAdmin() {
   ];
   
   let serviceAccountPath = null;
-  
   for (const p of paths) {
-    console.log(`Checking for service account at: ${p}`);
     if (fs.existsSync(p)) {
       serviceAccountPath = p;
-      console.log(`Found service account at: ${p}`);
       break;
     }
   }
   
   if (serviceAccountPath) {
+    console.log(`Found service account at: ${serviceAccountPath}`);
+    
     try {
-      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath));
-      console.log("Service account loaded successfully");
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+      
+      const app = admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        storageBucket: `${projectId}.appspot.com`,
+        projectId
+      });
+      
+      return {
+        app,
+        auth: getAuth(app),
+        storage: getStorage(app).bucket(),
+        firestore: admin.firestore()
+      };
     } catch (error) {
-      console.error("Error loading service account:", error);
+      console.error('Error initializing with service account:', error);
     }
-  } else {
-    console.error("Service account file not found in any of the checked paths");
   }
   
-  // Configure Firebase
-  const config = {
-    projectId: projectId,
-    storageBucket: `${projectId}.appspot.com`
-  };
+  // Last resort: initialize without credentials (for emulator)
+  console.log('Initializing Firebase Admin without credentials (emulator mode)');
   
-  // Add credential from serviceAccount if available
-  if (serviceAccount) {
-    config.credential = admin.credential.cert(serviceAccount);
+  try {
+    const app = admin.initializeApp({
+      projectId: projectId,
+      storageBucket: `${projectId}.appspot.com`
+    });
+    
+    return {
+      app,
+      auth: getAuth(app),
+      storage: getStorage(app).bucket(),
+      firestore: admin.firestore()
+    };
+  } catch (error) {
+    console.error('Error initializing in emulator mode:', error);
+    throw error;
   }
-  
-  // Initialize app
-  const app = admin.initializeApp(config);
-  
-  return {
-    app,
-    auth: getAuth(app),
-    storage: getStorage(app).bucket()
-  };
 }
 
-// Initialize services
-const services = initializeAdmin();
-adminApp = services.app;
-adminAuth = services.auth;
-adminStorage = services.storage;
+// Initialize Firebase Admin
+const adminServices = initializeAdmin();
+adminApp = adminServices.app;
+adminAuth = adminServices.auth;
+adminStorage = adminServices.storage;
+adminFirestore = adminServices.firestore;
 
-export { adminApp, adminAuth, adminStorage, admin }; 
+// Export initialized services
+export { 
+  adminApp as app, 
+  adminAuth, 
+  adminStorage,
+  adminFirestore,
+  admin 
+};
+
+export default admin; 

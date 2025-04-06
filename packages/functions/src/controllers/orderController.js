@@ -19,7 +19,7 @@ export const createOrder = async (ctx) => {
       shippingAddress, 
       notes,
       customizations = []
-    } = ctx.request.body;
+    } = ctx.req.body;
     
     // Validate required fields
     if (!items || !items.length || !shippingAddress) {
@@ -523,9 +523,49 @@ export const getAllOrders = async (ctx) => {
 export const getUserOrders = async (ctx) => {
   try {
     const { uid } = ctx.state.user;
-    const { status, limit = 20, page = 1 } = ctx.query;
+    const { status, limit = 20, page = 1, email } = ctx.query;
     
-    let query = firestore.collection('orders').where('userId', '==', uid);
+    // If email is provided, first get the userId associated with that email
+    let userIdForQuery = uid;
+    let userNotFound = false;
+    
+    if (email) {
+      try {
+        // Find user by email
+        const userSnapshot = await firestore.collection('users')
+          .where('email', '==', email)
+          .limit(1)
+          .get();
+          
+        if (userSnapshot.empty) {
+          // User with this email doesn't exist, return empty results
+          console.log(`No user found with email: ${email}, returning empty results`);
+          userNotFound = true;
+        } else {
+          userIdForQuery = userSnapshot.docs[0].id;
+        }
+      } catch (error) {
+        console.error('Error finding user by email:', error);
+        // Continue with current user ID if email lookup fails
+      }
+    }
+    
+    // If email was provided but user not found, return empty results
+    if (userNotFound) {
+      ctx.status = 200;
+      ctx.body = { 
+        orders: [],
+        pagination: {
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          totalPages: 0
+        }
+      };
+      return;
+    }
+    
+    let query = firestore.collection('orders').where('userId', '==', userIdForQuery);
     
     if (status) {
       query = query.where('status', '==', status);
@@ -565,6 +605,7 @@ export const getUserOrders = async (ctx) => {
       }
     };
   } catch (error) {
+    console.error('Error getting user orders:', error);
     ctx.status = 500;
     ctx.body = { error: error.message };
   }
@@ -586,7 +627,7 @@ export const getOrderDetails = async (ctx) => {
 export const updateOrderStatus = async (ctx) => {
   try {
     const { orderId } = ctx.params;
-    const { status } = ctx.request.body;
+    const { status } = ctx.req.body;
     
     if (!status) {
       ctx.status = 400;

@@ -25,10 +25,6 @@
         "function": "api"
       },
       {
-        "source": "/auth/**",
-        "function": "auth"
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }

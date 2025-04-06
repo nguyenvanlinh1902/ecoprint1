@@ -17,7 +17,7 @@ import {
   Notifications as NotificationsIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 
 const drawerWidth = 240;
 
@@ -67,7 +67,7 @@ const AdminLayout = ({ children }) => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsEl, setNotificationsEl] = useState(null);
-  const { userDetails, signOut } = useAuth();
+  const { user, logout } = useApp();
   const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
@@ -92,24 +92,16 @@ const AdminLayout = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      /* log removed */
-      const success = await signOut();
+      await logout();
       
-      if (success) {
-        /* log removed */
-        // Đóng menu nếu đang mở
-        if (anchorEl) {
-          setAnchorEl(null);
-        }
-        
-        // Điều hướng về trang đăng nhập
-        navigate('/login', { replace: true });
-      } else {
-        /* error removed */
-        alert('An error occurred during logout. Please try again.');
+      // Đóng menu nếu đang mở
+      if (anchorEl) {
+        setAnchorEl(null);
       }
+      
+      // Điều hướng về trang đăng nhập
+      navigate('/login', { replace: true });
     } catch (error) {
-      /* error removed */
       alert('An error occurred during logout. Please try again.');
     }
   };
@@ -139,7 +131,7 @@ const AdminLayout = ({ children }) => {
             Admin Dashboard
           </Typography>
 
-          {userDetails && (
+          {user && (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <Tooltip title="Notifications">
                 <IconButton color="inherit" onClick={handleNotificationsOpen}>
@@ -163,7 +155,7 @@ const AdminLayout = ({ children }) => {
               <Tooltip title="Account settings">
                 <IconButton onClick={handleMenu} color="inherit">
                   <Avatar
-                    alt={userDetails?.companyName || userDetails?.name || 'Admin User'}
+                    alt={user?.companyName || user?.name || 'Admin User'}
                     src="/static/avatar/admin.jpg"
                     sx={{ width: 32, height: 32 }}
                   />

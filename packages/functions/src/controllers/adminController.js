@@ -1,10 +1,9 @@
 import { CustomError } from '../exceptions/customError.js';
-import { Firestore } from '@google-cloud/firestore';
-import { admin, adminAuth } from '../config/firebaseAdmin.js';
+import { admin } from '../config/firebaseAdmin.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import userRepository from '../repositories/userRepository.js';
 
-const firestore = new Firestore();
+const firestore = admin.firestore();
 
 /**
  * Get admin dashboard data 
@@ -538,6 +537,11 @@ export const approveTransaction = async (ctx) => {
     await admin.firestore().runTransaction(async (t) => {
       // Chỉ cập nhật balance nếu là deposit
       if (transaction.type === 'deposit') {
+        // Validate userId exists
+        if (!transaction.userId || typeof transaction.userId !== 'string' || transaction.userId.trim() === '') {
+          throw new Error('Transaction has invalid user ID');
+        }
+        
         // Get user document
         const userDoc = await t.get(firestore.collection('users').doc(transaction.userId));
         

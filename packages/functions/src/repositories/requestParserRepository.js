@@ -139,9 +139,39 @@ const getExtensionFromMimeType = (mimeType) => {
   return mimeToExt[mimeType] || 'bin';
 };
 
+/**
+ * Parse request body and ensure it's available in ctx.req.body
+ * @param {Object} ctx - Koa context
+ * @returns {Object} The parsed body
+ */
+export const parseRequestBody = (ctx) => {
+  try {
+    // If body has already been parsed by koa-bodyparser, use it
+    if (ctx.request && ctx.request.body) {
+      // Make sure we assign to ctx.req.body for consistency
+      if (!ctx.req.body) {
+        ctx.req.body = ctx.request.body;
+      }
+      return ctx.req.body;
+    }
+
+    // If we have ctx.req.body already, use that
+    if (ctx.req && ctx.req.body) {
+      return ctx.req.body;
+    }
+
+    // Return empty object if no body found
+    return {};
+  } catch (error) {
+    console.error('Error parsing request body:', error);
+    return {};
+  }
+};
+
 export default {
   prepareRequest,
   isMultipartRequest,
   isJsonRequest,
-  extractFileFromRequest
+  extractFileFromRequest,
+  parseRequestBody
 }; 

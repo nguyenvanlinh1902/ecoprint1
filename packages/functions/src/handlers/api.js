@@ -1,41 +1,76 @@
-import App from 'koa';
+import Koa from 'koa';
+import bodyParser from 'koa-bodyparser';
 import cors from '@koa/cors';
-import { koaBody } from 'koa-body';
-import errorRepository from '../repositories/errorRepository.js';
-import render from 'koa-ejs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import helmet from 'koa-helmet';
 import apiRoutes from '../routes/apiRoutes.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const app = new Koa();
 
-const isProd = process.env.NODE_ENV === 'production';
-
-const app = new App();
-app.proxy = true;
-
-render(app, {
-  cache: isProd,  // Enable cache in production
-  debug: !isProd, // Disable debug in production
-  layout: false,
-  root: path.resolve(__dirname, '../../../views'),
-  viewExt: 'html'
-});
-
-
-app.use(cors({
-  origin: '*',
-  allowMethods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposeHeaders: ['Content-Length', 'Date', 'X-Request-Id'],
+const corsOptions = {
+  origin: ['https://ecoprint1-3cd5c.web.app', 'https://ecoprint1-3cd5c.firebaseapp.com'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-User-Email', 'X-Requested-With'],
   credentials: true,
-  maxAge: 86400
+  maxAge: 86400 // 24 hours
+};
+
+// Body parser first to avoid stream issues
+app.use(bodyParser({
+  enableTypes: ['json', 'form', 'text'],
+  onerror: (err, ctx) => {
+    if (err.type === 'stream.not.readable') {
+      ctx.status = 200;
+      return;
+    }
+    
+    ctx.status = 400;
+    ctx.body = {
+      success: false,
+      message: 'Invalid request body',
+      timestamp: new Date().toISOString()
+    };
+  }
 }));
 
-app.use(apiRoutes.allowedMethods());
-app.use(apiRoutes.routes());
+app.use(cors(corsOptions));
+app.use(helmet({ crossOriginResourcePolicy: false }));
 
-app.on('error', errorRepository.handleError);
+app.use(async (ctx, next) => {
+  if (ctx.request.body) {
+    ctx.req.body = ctx.request.body;
+  }
+  await next();
+});
+
+// Request logging
+app.use(async (ctx, next) => {
+  const start = Date.now();
+  try {
+    await next();
+  } catch (error) {
+    ctx.status = error.status || 500;
+    ctx.body = {
+      success: false,
+      message: error.message || 'Internal Server Error',
+      code: error.code || 'internal_error',
+      timestamp: new Date().toISOString()
+    };
+  }
+});
+
+// API routes
+app.use(apiRoutes.routes());
+app.use(apiRoutes.allowedMethods());
+
+// 404 handler
+app.use(async (ctx) => {
+  ctx.status = 404;
+  ctx.body = {
+    success: false,
+    message: 'Endpoint not found',
+    code: 'not_found',
+    timestamp: new Date().toISOString()
+  };
+});
 
 export default app;

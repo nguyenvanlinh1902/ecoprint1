@@ -11,7 +11,7 @@ import {
   Grid,
   CircularProgress  // Added CircularProgress for loading indication
 } from '@mui/material';
-import { useAuth } from '../hooks/useAuth';
+import { useApp } from '../context/AppContext';
 import { validateInput, stripHTML } from '../helpers/validation';
 import PropTypes from 'prop-types';
 
@@ -32,7 +32,7 @@ const RegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register } = useApp();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -112,24 +112,32 @@ const RegisterPage = () => {
         displayName: sanitizedData.displayName
       });
       
-      // Call register function
+      // Call register function with the userData object
       let result = null;
       
       try {
-        result = await register(
-          sanitizedData.email, 
-          sanitizedData.password, 
-          sanitizedData.displayName, 
-          sanitizedData.companyName, 
-          sanitizedData.phone
-        );
+        result = await register(sanitizedData);
         
         console.log('[RegisterPage] Registration result:', result);
       } catch (apiError) {
         // If there's an error calling the API, we'll handle it here
         console.error('[RegisterPage] API call error:', apiError);
+        
+        // Get the most accurate error message
+        let errorMessage = apiError.message || 'Registration failed. Please try again.';
+        
+        if (apiError.response?.data?.message) {
+          errorMessage = apiError.response.data.message;
+        }
+        
+        // Handle specific error codes
+        const errorCode = apiError.code || apiError.response?.data?.code;
+        if (errorCode === 'email_exists') {
+          errorMessage = 'A user with this email already exists.';
+        }
+        
         // Set the error message but KEEP the form data
-        setServerError(apiError.message || 'Registration failed. Please try again.');
+        setServerError(errorMessage);
         // Ensure loading state is cleared
         setLoading(false);
         // Return early to ensure we don't clear the form
@@ -165,7 +173,15 @@ const RegisterPage = () => {
         console.error('[RegisterPage] Registration failed:', result || 'No result returned');
         
         // Set error message from the result if available
-        setServerError(result?.message || 'Registration failed. Please try again.');
+        let errorMessage = result?.message || 'Registration failed. Please try again.';
+        
+        // Handle specific error codes
+        const errorCode = result?.code;
+        if (errorCode === 'email_exists') {
+          errorMessage = 'A user with this email already exists.';
+        }
+        
+        setServerError(errorMessage);
       }
     } catch (error) {
       // Unexpected errors - log them but KEEP the form data
@@ -174,6 +190,7 @@ const RegisterPage = () => {
     } finally {
       // Always reset loading state
       setLoading(false);
+      // Note: We do not reset the form data here to preserve user input on errors
     }
   };
 

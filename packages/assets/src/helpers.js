@@ -1,5 +1,7 @@
 import axios from 'axios';
+import { toast } from 'react-toastify';
 
+// Đây là URL chính xác để truy cập Firebase Functions qua emulator
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
 
 export const apiClient = axios.create({
@@ -35,94 +37,121 @@ apiClient.interceptors.response.use(
           window.location.href = '/auth/login';
         }
       }
-
-      switch (error.response.status) {
-        case 403:
-          console.error('Access denied. You do not have permission to access this resource.');
-          break;
-        case 404:
-          console.error('Resource not found.');
-          break;
-        case 500:
-          console.error('Server error. Please try again later.');
-          break;
-        default:
-          console.error('An unexpected error occurred.');
-      }
-    } else if (error.request) {
-      console.error('Network error. Please check your connection.');
-    } else {
-      console.error('Error setting up request:', error.message);
     }
-
     return Promise.reject(error);
   }
 );
 
 /**
- * Main API function for making requests
- * @param {string} url - URL to fetch
- * @param {Object} options - Additional options
- * @returns {Promise<Object>} - API response
+ * Hàm gọi API chung
+ * @param {string} endpoint - Đường dẫn API (không bao gồm base URL)
+ * @param {string} method - Phương thức HTTP (GET, POST, PUT, DELETE)
+ * @param {Object} data - Dữ liệu gửi lên server
+ * @param {boolean} authorized - Có yêu cầu xác thực không
+ * @returns {Promise<any>} - Dữ liệu trả về từ API
  */
-export const api = async (url, options = {}) => {
+export const api = async (endpoint, method = 'GET', data = null, authorized = false) => {
   try {
-    const { method = 'GET', body = null, headers = {} } = options;
-    
+    // Base URL dựa vào môi trường
+    const isProduction = process.env.NODE_ENV === 'production';
+    const BASE_URL = isProduction
+      ? 'https://us-central1-ecoprint1-3cd5c.cloudfunctions.net/api'
+      : 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
+
+    // Cấu hình request
     const config = {
       method,
       headers: {
         'Content-Type': 'application/json',
-        ...headers
-      }
+      },
+      mode: 'cors',
+      credentials: 'include',
     };
 
-    // For GET requests, we don't need to include a body
-    if (method !== 'GET' && body) {
-      if (body instanceof FormData) {
-        config.body = body;
-        // Remove content-type to let the browser set it with boundary
-        delete config.headers['Content-Type'];
-      } else {
-        config.body = JSON.stringify(body);
+    // Thêm token xác thực và email nếu cần
+    if (authorized) {
+      const token = localStorage.getItem('auth_token');
+      const userEmail = localStorage.getItem('user_email');
+      
+      if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      if (userEmail) {
+        config.headers['X-User-Email'] = userEmail;
       }
     }
 
-    // Add the authorization header if token exists
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`;
+    // Thêm body nếu không phải GET
+    if (method !== 'GET' && data) {
+      config.body = JSON.stringify(data);
     }
 
-    // For API calls that use the full URL, we need to handle them differently
-    const baseUrl = url.startsWith('http') ? '' : apiClient.defaults.baseURL;
-    const fullUrl = `${baseUrl}${url}`;
+    // Tạo URL đầy đủ
+    const fullUrl = `${BASE_URL}${endpoint}`;
 
-    const response = await fetch(fullUrl, config);
-    
-    let data;
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      data = await response.text();
-    }
-
-    if (!response.ok) {
-      return { 
-        success: false, 
-        error: data.message || 'API request failed', 
-        statusCode: response.status 
+    // Try with axios first to handle CORS better
+    try {
+      const axiosConfig = {
+        method: method,
+        url: fullUrl,
+        headers: config.headers,
+        data: method !== 'GET' ? data : undefined
       };
-    }
+      
+      const axiosResponse = await apiClient(axiosConfig);
+      return axiosResponse.data;
+    } catch (axiosError) {
+      // Fall back to fetch if axios fails
+      const response = await fetch(fullUrl, config);
+      
+      // Kiểm tra nếu response không ok (status 200-299)
+      if (!response.ok) {
+        // Xử lý lỗi HTTP
+        const errorData = await response.json().catch(() => ({
+          message: response.statusText || 'Unknown error',
+        }));
+        
+        // Xử lý lỗi 401 Unauthorized
+        if (response.status === 401) {
+          // Xóa token nếu là lỗi xác thực
+          localStorage.removeItem('auth_token');
+          
+          // Redirect về trang login nếu không phải trang login
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+        
+        throw {
+          status: response.status,
+          message: errorData.message || 'API request failed',
+          code: errorData.code || 'api_error',
+          data: errorData.data || null,
+        };
+      }
 
-    return { success: true, ...data };
+      // Parse JSON response
+      const result = await response.json();
+      
+      // Lưu token và email nếu là đăng nhập thành công
+      if (endpoint === '/auth/login' && result.success && result.data?.token) {
+        localStorage.setItem('auth_token', result.data.token);
+        
+        if (result.data.user?.email) {
+          localStorage.setItem('user_email', result.data.user.email);
+        }
+      }
+      
+      return result;
+    }
   } catch (error) {
-    console.error('API call error:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error occurred'
-    };
+    // Hiển thị thông báo lỗi nếu có
+    if (error.message) {
+      toast.error(error.message);
+    }
+    
+    throw error;
   }
 };
 
@@ -134,40 +163,51 @@ export const isAuthenticated = () => {
   return !!localStorage.getItem('auth_token');
 };
 
-
-
 /**
- *
- * @param amount
- * @param currencyCode
- * @returns {string}
+ * Format giá tiền
+ * @param {number} amount - Số tiền 
+ * @param {string} currency - Đơn vị tiền tệ (VND, USD)
+ * @returns {string} - Chuỗi đã format
  */
-export function formatCurrency(amount, currencyCode = 'VND') {
+export const formatCurrency = (amount, currency = 'VND') => {
   if (amount === undefined || amount === null) return '';
   
-  return new Intl.NumberFormat('vi-VN', {
+  const options = {
     style: 'currency',
-    currency: currencyCode
-  }).format(amount);
-}
-
-/**
- *
- * @param date
- * @param options
- * @returns {string}
- */
-export function formatDate(date, options = {}) {
-  if (!date) return '';
-  
-  const defaultOptions = {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
+    currency: currency,
+    minimumFractionDigits: currency === 'VND' ? 0 : 2,
+    maximumFractionDigits: currency === 'VND' ? 0 : 2,
   };
   
-  const formatOptions = { ...defaultOptions, ...options };
-  return new Date(date).toLocaleDateString('vi-VN', formatOptions);
-}
+  return new Intl.NumberFormat('vi-VN', options).format(amount);
+};
+
+/**
+ * Format ngày tháng
+ * @param {string|Date} date - Ngày cần format
+ * @param {string} format - Định dạng hiển thị
+ * @returns {string} - Chuỗi ngày đã format
+ */
+export const formatDate = (date, format = 'dd/MM/yyyy') => {
+  if (!date) return '';
+  
+  const d = new Date(date);
+  
+  if (isNaN(d.getTime())) return '';
+  
+  const day = d.getDate().toString().padStart(2, '0');
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const year = d.getFullYear();
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  
+  if (format === 'dd/MM/yyyy') {
+    return `${day}/${month}/${year}`;
+  }
+  
+  if (format === 'dd/MM/yyyy HH:mm') {
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  }
+  
+  return d.toLocaleDateString('vi-VN');
+};

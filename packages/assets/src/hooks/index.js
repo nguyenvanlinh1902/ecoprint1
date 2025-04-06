@@ -1,9 +1,9 @@
-// Firebase hooks - Using API hooks instead
 export { useCollection, createFilter, createSort, createPagination } from './useCollection';
 
-// API hooks - import from ./api instead
 import * as ApiHooks from './api';
 export { ApiHooks };
+
+export { useFetchApi } from './api';
 
 // Auth hooks
 import { useAuth, AuthProvider } from './useAuth';

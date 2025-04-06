@@ -1,8 +1,10 @@
 import React, { lazy, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth.js";
 import { Box, CircularProgress } from "@mui/material";
 import { CONFIG } from "../config/env.js";
+import ProtectedRoute from "../components/ProtectedRoute";
+import useAppRouteTracker from "../hooks/useAppRouteTracker";
+import { useApp } from "../context/AppContext";
 
 // Import loadable components from @loadable folder
 import {
@@ -22,16 +24,16 @@ import {
 
 // Auth Guards
 export const AuthGuard = ({ children }) => {
-  const { currentUser, userProfile, loading, signOut } = useAuth();
+  const { user, token, loading, logout } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     // Store the current path for redirection after login
-    if (!loading && !currentUser) {
+    if (!loading && !token) {
       localStorage.setItem('returnUrl', location.pathname);
     }
-  }, [loading, currentUser, location]);
+  }, [loading, token, location]);
 
   // Show loading indicator while auth state is being determined
   if (loading) {
@@ -43,25 +45,13 @@ export const AuthGuard = ({ children }) => {
   }
 
   // Redirect to login if not authenticated
-  if (!currentUser) {
+  if (!token || !user) {
     return <Navigate to="/auth/login" state={{ from: location }} replace />;
   }
 
   // Redirect to email verification page if email not verified (when required)
-  if (currentUser && !currentUser.emailVerified && CONFIG.REQUIRE_EMAIL_VERIFICATION) {
+  if (user && !user.emailVerified && CONFIG.REQUIRE_EMAIL_VERIFICATION) {
     return <Navigate to="/auth/verify-email" replace />;
-  }
-
-  // Handle the case where we have a user but no profile data
-  if (currentUser && !userProfile && !loading) {
-    // If the user has no profile, sign them out and redirect to login
-    signOut().then(() => {
-      // User has no profile data. Signing out.
-    }).catch((error) => {
-      // Error signing out
-    });
-    
-    return <Navigate to="/auth/login" replace />;
   }
 
   // If all checks pass, render the children components
@@ -70,7 +60,7 @@ export const AuthGuard = ({ children }) => {
 
 // Admin Role Guard
 export const AdminGuard = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { user, loading, isAdmin } = useApp();
   const location = useLocation();
   
   // Show loading indicator while checking role
@@ -82,15 +72,12 @@ export const AdminGuard = ({ children }) => {
     );
   }
   
-  // Chỉ sử dụng userProfile từ context
-  const effectiveRole = userProfile?.role;
-  
   // Kiểm tra nghiêm ngặt quyền admin
-  if (!userProfile) {
+  if (!user) {
     return <Navigate to="/dashboard" replace />;
   }
   
-  if (effectiveRole !== 'admin') {
+  if (!isAdmin) {
     // Ghi nhớ đường dẫn người dùng đang cố truy cập
     const fromPath = location.pathname;
     return <Navigate to="/dashboard" replace />;
@@ -101,7 +88,7 @@ export const AdminGuard = ({ children }) => {
 
 // Guest Guard (prevents authenticated users from accessing login/register pages)
 export const GuestGuard = ({ children }) => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { user, token, loading } = useApp();
   const location = useLocation();
   const pathname = location.pathname;
   
@@ -128,23 +115,17 @@ export const GuestGuard = ({ children }) => {
   }
   
   // Redirect to dashboard if already authenticated and not on whitelisted page
-  if (currentUser && !isWhitelistedPath) {
-    // Chỉ redirect nếu đã có userProfile hoặc đang truy cập trang login
-    if (userProfile || pathname === '/auth/login') {
-      return <Navigate to={from} replace />;
-    }
+  if (token && user && !isWhitelistedPath) {
+    return <Navigate to={from} replace />;
   }
   
-  // Đảm bảo render children khi:
-  // - Là người dùng chưa đăng nhập
-  // - Hoặc đang ở trang được whitelist
-  // - Hoặc đã đăng nhập nhưng chưa có profile (đang chờ)
+  // Render children for guest routes
   return <>{children}</>;
 };
 
 // Root redirect handler
 const RootRedirect = () => {
-  const { currentUser, userProfile, loading } = useAuth();
+  const { user, token, loading } = useApp();
   
   // Show loading indicator while auth state is being determined
   if (loading) {
@@ -155,16 +136,13 @@ const RootRedirect = () => {
     );
   }
   
-  // Chỉ sử dụng userProfile từ context, không dùng localStorage
-  const effectiveRole = userProfile?.role;
-  
   // Redirect based on auth status and role
-  if (!currentUser) {
+  if (!token || !user) {
     return <Navigate to="/auth/login" replace />;
   }
   
-  // Luôn kiểm tra role từ userProfile
-  if (effectiveRole === 'admin') {
+  // Check if user is admin
+  if (user.role === 'admin') {
     return <Navigate to="/admin/dashboard" replace />;
   }
   
@@ -173,6 +151,9 @@ const RootRedirect = () => {
 
 // Main router component
 const AppRouter = () => {
+  // Use the route tracker hook to update AppContext with current route
+  useAppRouteTracker();
+  
   return (
     <Routes>
       {/* Root path redirect */}
@@ -200,18 +181,16 @@ const AppRouter = () => {
       
       {/* Admin routes */}
       <Route path="/admin/*" element={
-        <AuthGuard>
-          <AdminGuard>
-            <AdminRouter />
-          </AdminGuard>
-        </AuthGuard>
+        <ProtectedRoute requiredRoles={['admin']}>
+          <AdminRouter />
+        </ProtectedRoute>
       } />
       
       {/* All user routes */}
       <Route path="/*" element={
-        <AuthGuard>
+        <ProtectedRoute>
           <UserRouter />
-        </AuthGuard>
+        </ProtectedRoute>
       } />
       
       {/* Maintenance page */}

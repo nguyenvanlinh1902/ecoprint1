@@ -1,5 +1,5 @@
 import { CustomError } from '../exceptions/customError.js';
-import { adminStorage } from '../config/firebaseAdmin.js';
+import { admin, adminStorage } from '../config/firebaseAdmin.js';
 import * as xlsx from 'xlsx';
 import { Readable } from 'stream';
 import multer from '@koa/multer';
@@ -7,13 +7,14 @@ import { v4 as uuidv4 } from 'uuid';
 import categoryRepository from '../repositories/categoryRepository.js';
 import productRepository from '../repositories/productRepository.js';
 import fileUploadRepository from '../repositories/fileUploadRepository.js';
-import { Firestore } from '@google-cloud/firestore';
 import { Timestamp } from '@google-cloud/firestore';
+import { generateSlug } from '../utils/stringUtils.js';
 
-const firestore = new Firestore();
+const firestore = admin.firestore();
 
 // Replaced mock service with repository
 const productService = productRepository;
+const categoryService = categoryRepository;
 
 /**
  * Tạo sản phẩm mới (Admin only)
@@ -179,31 +180,26 @@ export const getProduct = async (ctx) => {
 };
 
 /**
- * Get all products with optional filtering, sorting and pagination
+ * Get all products
  * @param {Object} ctx - Koa context
  */
 export const getAllProducts = async (ctx) => {
   try {
-    console.log('[ProductController] Fetching all products');
-    console.log('[ProductController] Query params:', ctx.req.query);
+    console.log('[ProductController] Query params:', ctx.query);
     
     const { 
-      category, 
-      minPrice, 
-      maxPrice, 
-      sort = 'createdAt', 
-      order = 'desc', 
+      page = 1, 
       limit = 20, 
-      page = 1,
+      sort = 'createdAt', 
+      order = 'desc',
       search = '',
-      status
-    } = ctx.req.query;
+      status,
+      category
+    } = ctx.query;
     
-    // Convert parameters to appropriate types
+    // Prepare options for repository
     const options = {
       category,
-      minPrice: minPrice ? Number(minPrice) : undefined,
-      maxPrice: maxPrice ? Number(maxPrice) : undefined,
       sort,
       order,
       limit: Number(limit),
@@ -212,8 +208,8 @@ export const getAllProducts = async (ctx) => {
       status
     };
     
-    // Get products using the product service
-    const result = await productService.getAllProducts(options);
+    // Get products using the product service (which is productRepository)
+    const result = await productService.findAll(options);
     
     // Ensure result has expected structure
     if (!result || !result.products) {
@@ -237,7 +233,10 @@ export const getAllProducts = async (ctx) => {
     ctx.status = 200;
     ctx.body = {
       success: true,
-      ...result
+      data: {
+        products: result.products,
+        pagination: result.pagination
+      }
     };
   } catch (error) {
     console.error('[ProductController] Error fetching products:', error);
@@ -322,7 +321,7 @@ export const createCategory = async (ctx) => {
     }
     
     // Create category using the category service
-    const newCategory = await categoryService.createCategory(categoryData);
+    const newCategory = await categoryService.create(categoryData);
     console.log('[ProductController] Category created successfully:', newCategory);
     
     ctx.status = 201;
@@ -351,7 +350,7 @@ export const getAllCategories = async (ctx) => {
     console.log('[ProductController] Fetching all categories');
     
     // Get categories using the categoryService
-    const categories = await categoryService.getAllCategories();
+    const categories = await categoryService.findAll();
     console.log(`[ProductController] Successfully fetched ${categories.length} categories`);
     
     ctx.status = 200;
@@ -390,7 +389,7 @@ export const getCategoryById = async (ctx) => {
     }
     
     // Get category using the category service
-    const category = await categoryService.getCategoryById(id);
+    const category = await categoryService.findById(id);
     
     if (!category) {
       console.log('[ProductController] Category not found, ID:', id);
@@ -793,7 +792,7 @@ export const updateCategory = async (ctx) => {
     }
     
     // Update category using the category service
-    const updatedCategory = await categoryService.updateCategory(id, ctx.req.body);
+    const updatedCategory = await categoryService.update(id, ctx.req.body);
     console.log('[ProductController] Category updated successfully:', id);
     
     ctx.status = 200;
@@ -833,7 +832,7 @@ export const deleteCategory = async (ctx) => {
     }
     
     // Delete category using the category service
-    await categoryService.deleteCategory(id);
+    await categoryService.delete(id);
     console.log('[ProductController] Category deleted successfully:', id);
     
     ctx.status = 200;
@@ -858,10 +857,10 @@ export const deleteCategory = async (ctx) => {
  */
 export const getProductById = async (ctx) => {
   try {
-    const { id } = ctx.req.params;
-    console.log('[ProductController] Fetching product by ID:', id);
+    const { productId } = ctx.params;
+    console.log('[ProductController] Fetching product by ID:', productId);
     
-    if (!id) {
+    if (!productId) {
       ctx.status = 400;
       ctx.body = { 
         success: false,
@@ -872,10 +871,10 @@ export const getProductById = async (ctx) => {
     }
     
     // Get product using the product service
-    const product = await productService.getProductById(id);
+    const product = await productService.findById(productId);
     
     if (!product) {
-      console.log('[ProductController] Product not found, ID:', id);
+      console.log('[ProductController] Product not found, ID:', productId);
       ctx.status = 404;
       ctx.body = { 
         success: false,
@@ -885,7 +884,7 @@ export const getProductById = async (ctx) => {
       return;
     }
     
-    console.log('[ProductController] Product found:', id);
+    console.log('[ProductController] Product found:', productId);
     
     ctx.status = 200;
     ctx.body = {

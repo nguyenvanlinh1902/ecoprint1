@@ -1,0 +1,283 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { useAuthApi } from '../hooks/api';
+
+// Create app context
+const AppContext = createContext();
+
+// Custom hook to use app context
+export const useApp = () => useContext(AppContext);
+
+// App provider component
+export const AppProvider = ({ children }) => {
+  const auth = useAuthApi();
+  
+  // Get token from localStorage
+  const [token, setToken] = useState(() => {
+    try {
+      return localStorage.getItem('token') || localStorage.getItem('auth_token') || null;
+    } catch (error) {
+      console.error('Error reading token from localStorage:', error);
+      return null;
+    }
+  });
+  
+  const [user, setUser] = useState(() => {
+    // Try to get user from localStorage
+    try {
+      const savedUser = localStorage.getItem('user');
+      const userDataString = localStorage.getItem('user_data');
+      
+      if (savedUser) {
+        return JSON.parse(savedUser);
+      }
+      
+      if (userDataString) {
+        return JSON.parse(userDataString);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error reading user data from localStorage:', error);
+      return null;
+    }
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // App state
+  const [appState, setAppState] = useState({
+    currentRoute: '/',
+    lastVisited: null,
+    preferences: {}
+  });
+
+  // Get preferences from localStorage
+  useEffect(() => {
+    try {
+      const savedPreferences = localStorage.getItem('app_preferences');
+      if (savedPreferences) {
+        setAppState(prevState => ({
+          ...prevState,
+          preferences: JSON.parse(savedPreferences)
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+    }
+  }, []);
+
+  // Configure axios with token if available
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [token]);
+
+  // Update route info when user navigates
+  const updateRouteInfo = useCallback((route) => {
+    setAppState(prevState => ({
+      ...prevState,
+      lastVisited: prevState.currentRoute,
+      currentRoute: route
+    }));
+  }, []);
+
+  // Save user preferences
+  const savePreferences = useCallback((newPreferences) => {
+    const updatedPreferences = {
+      ...appState.preferences,
+      ...newPreferences
+    };
+    
+    try {
+      localStorage.setItem('app_preferences', JSON.stringify(updatedPreferences));
+      setAppState(prevState => ({
+        ...prevState,
+        preferences: updatedPreferences
+      }));
+    } catch (error) {
+      console.error('Error saving preferences:', error);
+    }
+  }, [appState.preferences]);
+
+  // Login function with user data using AuthApi
+  const login = useCallback(async (email, password) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await auth.login(email, password);
+      
+      if (response.success && response.token && response.user) {
+        // Save token 
+        localStorage.setItem('token', response.token);
+        setToken(response.token);
+        
+        // Set token in axios defaults
+        axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
+        
+        // Save user data
+        localStorage.setItem('user', JSON.stringify(response.user));
+        
+        // Update state
+        setUser(response.user);
+      }
+      
+      return response;
+    } catch (err) {
+      setError(err.message || 'Login failed');
+      return {
+        success: false,
+        message: err.message || 'Login failed',
+        code: err.code
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Logout function with proper cleanup
+  const logout = useCallback(async () => {
+    setLoading(true);
+    
+    try {
+      // Call logout API if available
+      await auth.logout();
+    } catch (error) {
+      console.error('Error during API logout:', error);
+    } finally {
+      // Clear token
+      setToken(null);
+      
+      // Clear authorization header
+      delete axios.defaults.headers.common['Authorization'];
+      
+      // Clear user data
+      setUser(null);
+      
+      // Clear any error
+      setError(null);
+      
+      // Additional cleanup
+      try {
+        // Clear data from localStorage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        
+        // Keep preferences
+      } catch (error) {
+        console.error('Error clearing data during logout:', error);
+      }
+      
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Register function using AuthApi
+  const register = useCallback(async (userData) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await auth.register(userData);
+      return response;
+    } catch (err) {
+      setError(err.message || 'Registration failed');
+      return {
+        success: false,
+        message: err.message || 'Registration failed',
+        code: err.code
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Resend verification email
+  const resendVerification = useCallback(async (email) => {
+    setLoading(true);
+    
+    try {
+      const response = await auth.resendVerification(email);
+      return response;
+    } catch (err) {
+      return {
+        success: false,
+        message: err.message || 'Failed to resend verification'
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Request password reset
+  const resetPasswordViaApi = useCallback(async (email) => {
+    setLoading(true);
+    
+    try {
+      const response = await auth.forgotPassword(email);
+      return response;
+    } catch (err) {
+      throw new Error(err.message || 'Failed to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Legacy reset password method (fallback)
+  const resetPassword = useCallback(async (email) => {
+    setLoading(true);
+    
+    try {
+      // This is a placeholder for the legacy method
+      // Use the same API endpoint for now
+      console.warn('Using legacy password reset method');
+      const response = await auth.forgotPassword(email);
+      return response;
+    } catch (err) {
+      throw new Error('Failed to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  }, [auth]);
+
+  // Combined state with both auth and app state
+  const contextValue = {
+    // Auth data
+    user,
+    token,
+    isAuthenticated: !!user && !!token,
+    isAdmin: user?.role === 'admin',
+    loading,
+    error,
+    
+    // Auth methods
+    login,
+    logout,
+    register,
+    resendVerification,
+    resetPassword,
+    resetPasswordViaApi,
+    
+    // App state
+    currentRoute: appState.currentRoute,
+    lastVisited: appState.lastVisited,
+    preferences: appState.preferences,
+    
+    // App methods
+    updateRouteInfo,
+    savePreferences
+  };
+
+  return (
+    <AppContext.Provider value={contextValue}>
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export default AppContext; 

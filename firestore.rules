@@ -3,29 +3,30 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     // Cho phép đọc/ghi cho người dùng đã đăng nhập
-    match /userProfiles/{userId} {
-      // Cho phép đọc cho người dùng đã xác thực là chính họ hoặc admin 
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+    match /userProfiles/{docId} {
+      // Cho phép đọc cho người dùng đã xác thực với email trùng khớp hoặc admin 
+      allow read: if request.auth != null && (request.auth.token.email == resource.data.email || isAdmin());
       
-      // Cho phép ghi cho người dùng đã xác thực là chính họ hoặc admin
-      // Quan trọng: Cho phép create cho người vừa đăng ký (chưa xác thực email)
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
-    }
-    
-    // Hỗ trợ tương thích ngược với collection users cũ
-    match /users/{userId} {
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
-      // Cho phép tạo mới cho người dùng mới đăng ký
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      // Cho phép ghi cho người dùng đã xác thực với email trùng khớp hoặc admin
+      allow create: if request.auth != null && request.auth.token.email == request.resource.data.email;
+      allow update: if request.auth != null && (request.auth.token.email == resource.data.email || isAdmin());
     }
     
     // Hàm kiểm tra người dùng có quyền admin không
     function isAdmin() {
       return request.auth != null && 
-        exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+        existsAdminByEmail(request.auth.token.email);
+    }
+
+    // Hàm kiểm tra email có quyền admin không
+    function existsAdminByEmail(email) {
+      let queryResult = getProfileByEmail(email);
+      return queryResult.size() > 0 && queryResult[0].data.role == 'admin';
+    }
+
+    // Hàm lấy profile theo email
+    function getProfileByEmail(email) {
+      return getAfter(/databases/$(database)/documents/userProfiles).where('email', '==', email).limit(1);
     }
     
     // Cho phép quản lý sản phẩm
@@ -37,10 +38,18 @@ service cloud.firestore {
     // Cho phép quản lý đơn hàng
     match /orders/{orderId} {
       allow read: if request.auth != null && 
-        (request.auth.uid == resource.data.userId || isAdmin());
+        (request.auth.token.email == resource.data.email || isAdmin());
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null && 
-        (request.auth.uid == resource.data.userId || isAdmin());
+        (request.auth.token.email == resource.data.email || isAdmin());
+    }
+
+    // Cho phép quản lý giao dịch
+    match /transactions/{transactionId} {
+      allow read: if request.auth != null && 
+        (request.auth.token.email == resource.data.email || isAdmin());
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && isAdmin();
     }
     
     // Mặc định từ chối tất cả các truy cập khác
