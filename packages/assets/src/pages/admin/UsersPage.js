@@ -15,7 +15,7 @@ import {
   CheckCircle as ApproveIcon,
   Clear as RejectIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { get, put } from '../../api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatDate } from '../../helpers/formatters';
 
@@ -42,10 +42,11 @@ const UsersPage = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError('');
       
       // Build query parameters
       const params = {
-        page, 
+        page,
         limit: 10 // Users per page
       };
       
@@ -57,27 +58,26 @@ const UsersPage = () => {
         params.search = search;
       }
       
-      // Use admin API endpoint from configured service
-      const response = await api.admin.getUsers(params);
+      console.log('Fetching users with params:', params);
       
-      // Check response data structure
+      // Use the api object directly instead of axios
+      const response = await get('admin/users', { params });
+      
+      console.log('Users API response:', response.data);
+      
       if (response.data && response.data.data) {
         setUsers(response.data.data.users || []);
         setTotalPages(response.data.data.totalPages || 1);
-      } else if (response.data) {
-        // Simpler data structure
-        setUsers(response.data.users || []);
-        setTotalPages(response.data.totalPages || 1);
       } else {
-        // Fallback
         setUsers([]);
         setTotalPages(1);
+        setError('Unable to parse user data from server response');
         console.error('Unexpected API response structure:', response);
       }
       
     } catch (error) {
       console.error('Error fetching users:', error);
-      setError('Unable to load user list. Please try again later.');
+      setError('Unable to load user list: ' + (error.response?.data?.message || error.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -122,18 +122,20 @@ const UsersPage = () => {
     try {
       console.log(`Performing ${dialogAction} on user:`, selectedUser.id);
       
+      let response;
+      
       switch (dialogAction) {
         case 'approve':
-          await api.admin.approveUser(selectedUser.id);
+          response = await put(`admin/users/${selectedUser.id}/approve`);
           break;
         case 'reject':
-          await api.admin.rejectUser(selectedUser.id);
+          response = await put(`admin/users/${selectedUser.id}/reject`);
           break;
         case 'activate':
-          await api.admin.updateUserStatus(selectedUser.id, 'active');
+          response = await put(`admin/users/${selectedUser.id}/activate`);
           break;
         case 'deactivate':
-          await api.admin.updateUserStatus(selectedUser.id, 'inactive');
+          response = await put(`admin/users/${selectedUser.id}/deactivate`);
           break;
         default:
           break;
@@ -144,12 +146,14 @@ const UsersPage = () => {
                         dialogAction === 'reject' ? 'rejected' :
                         dialogAction === 'activate' ? 'activated' : 'deactivated';
       
+      console.log('Action response:', response.data);
+      
       // Refresh user list
       await fetchUsers();
       handleDialogClose();
       
       // Show success message
-      setSuccess(`User ${selectedUser.companyName || 'selected'} was successfully ${actionText}.`);
+      setSuccess(`User ${selectedUser.companyName || selectedUser.displayName || 'selected'} was successfully ${actionText}.`);
       
       // Clear success message after 3 seconds
       setTimeout(() => {
@@ -158,7 +162,13 @@ const UsersPage = () => {
       
     } catch (error) {
       console.error(`Error ${dialogAction} user:`, error);
-      setError(`Failed to ${dialogAction} user. ${error.response?.data?.message || 'Please try again later.'}`);
+      
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error || 
+                          error.message || 
+                          `Failed to ${dialogAction} user`;
+                          
+      setError(`Failed to ${dialogAction} user. ${errorMessage}`);
     } finally {
       setActionLoading(false);
     }

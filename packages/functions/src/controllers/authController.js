@@ -49,7 +49,19 @@ export const register = async (ctx) => {
     }
     
     try {
+      // First create the user in Firebase Authentication
+      const userRecord = await adminAuth.createUser({
+        email,
+        password,
+        displayName,
+        disabled: false
+      });
+      
+      console.log('Created Firebase Auth user:', userRecord.uid);
+      
+      // Then create user profile in Firestore
       const userData = {
+        uid: userRecord.uid, // Link the Auth UID with the profile
         email,
         displayName,
         phone,
@@ -66,7 +78,7 @@ export const register = async (ctx) => {
         success: true,
         message: 'User registered successfully',
         data: {
-          uid: newUser.id,
+          uid: userRecord.uid,
           status: 'pending',
           email
         },
@@ -74,6 +86,17 @@ export const register = async (ctx) => {
       };
     } catch (error) {
       console.error("Error in register process:", error);
+      
+      // If there was an error after creating the Auth user, try to clean up
+      if (error.auth_user_created && error.auth_user_uid) {
+        try {
+          await adminAuth.deleteUser(error.auth_user_uid);
+          console.log(`Cleaned up Auth user ${error.auth_user_uid} after Firestore error`);
+        } catch (cleanupError) {
+          console.error('Error cleaning up Auth user:', cleanupError);
+        }
+      }
+      
       throw error;
     }
   } catch (error) {

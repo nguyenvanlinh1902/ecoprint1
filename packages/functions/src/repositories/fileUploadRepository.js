@@ -9,12 +9,12 @@ import fs from 'fs';
 
 /**
  * Upload transaction receipt
- * @param {string} userId - User ID
+ * @param {string} email - User email
  * @param {string} transactionId - Transaction ID
  * @param {Object} fileData - File data (buffer or other formats)
  * @returns {Promise<Object>} Result object with success and fileUrl
  */
-const uploadTransactionReceipt = async (userId, transactionId, fileData) => {
+const uploadTransactionReceipt = async (email, transactionId, fileData) => {
   try {
     if (!fileData) {
       return { success: false, error: 'No file data provided' };
@@ -74,7 +74,9 @@ const uploadTransactionReceipt = async (userId, transactionId, fileData) => {
     await fs.promises.writeFile(tempFilePath, fileBuffer);
     
     // Set the destination in Firebase Storage
-    const destination = `receipts/${userId}/${transactionId}/${fileName}`;
+    // Create a safe path from email by replacing @ and . characters
+    const safeEmail = email.replace(/[@.]/g, '_');
+    const destination = `receipts/${safeEmail}/${transactionId}/${fileName}`;
     
     // Upload to Firebase Storage
     await adminStorage.upload(tempFilePath, {

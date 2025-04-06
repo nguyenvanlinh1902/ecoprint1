@@ -137,25 +137,42 @@ const getUsers = async (options = {}) => {
       limit = 20,
       status,
       search,
-      role
+      role,
+      email
     } = options;
     
-    let query = usersCollection;
+    console.log('getUsers options:', JSON.stringify(options, null, 2));
+    
+    // Always use userProfilesCollection instead of usersCollection
+    let query = userProfilesCollection;
+    
+    console.log('Querying collection: userProfiles');
     
     // Apply where clauses for status and role
     if (status) {
+      console.log(`Adding status filter: ${status}`);
       query = query.where('status', '==', status);
     }
     
     if (role) {
+      console.log(`Adding role filter: ${role}`);
       query = query.where('role', '==', role);
     }
     
-    // Use compound queries with filters
+    // If email is specified, add it as a filter
+    if (email) {
+      console.log(`Adding email filter: ${email}`);
+      query = query.where('email', '==', email);
+    }
+    
+    // For search queries, we need client-side filtering
     if (search) {
+      console.log(`Adding search filter: ${search}`);
       // We need to perform a client-side filtering for search terms
       // since Firestore doesn't support full text search
-      const snapshot = await query.orderBy('email').get();
+      const snapshot = await query.get();
+      
+      console.log(`Search query returned ${snapshot.size} results before filtering`);
       
       const filteredDocs = [];
       snapshot.forEach(doc => {
@@ -175,13 +192,17 @@ const getUsers = async (options = {}) => {
         }
       });
       
+      console.log(`Found ${filteredDocs.length} documents after filtering for search term: ${search}`);
+      
       // Client-side pagination
       const startIdx = (page - 1) * limit;
       const endIdx = startIdx + limit;
       
       const paginatedUsers = filteredDocs
-        .sort((a, b) => b.createdAt - a.createdAt) // Sort by createdAt desc
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) // Sort by createdAt desc, handle null values
         .slice(startIdx, endIdx);
+      
+      console.log(`Returning ${paginatedUsers.length} users for page ${page} with limit ${limit}`);
       
       return {
         users: paginatedUsers,
@@ -190,36 +211,84 @@ const getUsers = async (options = {}) => {
         totalPages: Math.ceil(filteredDocs.length / limit)
       };
     } else {
-      // Standard pagination for non-search queries
-      const totalCountQuery = query.count();
-      const countSnapshot = await totalCountQuery.get();
-      const totalUsers = countSnapshot.data().count;
+      // For non-search queries, use Firestore pagination
+      console.log('Executing standard query without search term');
       
-      // Apply pagination
-      const offset = (page - 1) * limit;
-      query = query.orderBy('createdAt', 'desc')
-                   .limit(limit)
-                   .offset(offset);
-      
-      const snapshot = await query.get();
-      
-      const users = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        users.push({
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt ? data.createdAt.toDate() : null,
-          updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
+      try {
+        // Get total count
+        const countSnapshot = await query.count().get();
+        const totalUsers = countSnapshot.data().count;
+        
+        console.log(`Total users count: ${totalUsers}`);
+        
+        // Apply pagination
+        const offset = (page - 1) * limit;
+        
+        // Handle potential ordering issues with nulls
+        query = query.orderBy('createdAt', 'desc')
+                    .limit(limit)
+                    .offset(offset);
+        
+        const snapshot = await query.get();
+        
+        console.log(`Query returned ${snapshot.size} documents`);
+        
+        const users = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          users.push({
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt ? data.createdAt.toDate() : null,
+            updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
+          });
         });
-      });
-      
-      return {
-        users,
-        totalUsers,
-        currentPage: page,
-        totalPages: Math.ceil(totalUsers / limit)
-      };
+        
+        console.log(`Processed ${users.length} users, returning results`);
+        
+        return {
+          users,
+          totalUsers,
+          currentPage: page,
+          totalPages: Math.ceil(totalUsers / limit)
+        };
+      } catch (error) {
+        // Log the error for debugging
+        console.error('Error in standard query:', error);
+        
+        // Fallback to get all documents and handle pagination in memory
+        console.log('Falling back to fetching all documents');
+        
+        const snapshot = await query.get();
+        
+        const allUsers = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          allUsers.push({
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt ? data.createdAt.toDate() : null,
+            updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
+          });
+        });
+        
+        // Sort and paginate in memory
+        const sortedUsers = allUsers.sort((a, b) => 
+          ((b.createdAt instanceof Date ? b.createdAt : new Date(0)) - 
+           (a.createdAt instanceof Date ? a.createdAt : new Date(0))));
+        
+        const startIdx = (page - 1) * limit;
+        const paginatedUsers = sortedUsers.slice(startIdx, startIdx + limit);
+        
+        console.log(`Fallback returned ${paginatedUsers.length} users out of ${allUsers.length} total`);
+        
+        return {
+          users: paginatedUsers,
+          totalUsers: allUsers.length,
+          currentPage: page,
+          totalPages: Math.ceil(allUsers.length / limit)
+        };
+      }
     }
   } catch (error) {
     console.error('Error in getUsers repository:', error);
@@ -260,6 +329,69 @@ const updateUserStatus = async (email, status) => {
     
     return await getUserByEmail(email);
   } catch (error) {
+    throw error;
+  }
+};
+
+/**
+ * Update user status by ID
+ * @param {string} userId - User ID
+ * @param {string} status - New status
+ * @returns {Promise<Object>} Updated user object
+ */
+const updateUserStatusById = async (userId, status) => {
+  try {
+    console.log(`Updating user status: ID=${userId}, status=${status}`);
+    
+    const validStatuses = ['active', 'inactive', 'pending', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      throw new Error(`Invalid status: ${status}`);
+    }
+    
+    // Get the user document
+    const userDoc = await userProfilesCollection.doc(userId).get();
+    
+    if (!userDoc.exists) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    const userData = userDoc.data();
+    console.log(`Found user with email: ${userData.email}`);
+    
+    // Update status in Firestore
+    await userProfilesCollection.doc(userId).update({
+      status,
+      updatedAt: new Date()
+    });
+    
+    console.log(`Updated status in Firestore for user ${userId}`);
+    
+    // Update user in Firebase Authentication if UID exists
+    if (userData.uid) {
+      try {
+        if (status === 'inactive') {
+          console.log(`Disabling Firebase account for UID ${userData.uid}`);
+          await adminAuth.updateUser(userData.uid, { disabled: true });
+        } else if (status === 'active') {
+          console.log(`Enabling Firebase account for UID ${userData.uid}`);
+          await adminAuth.updateUser(userData.uid, { disabled: false });
+        }
+      } catch (authError) {
+        console.error('Error updating Firebase Auth user:', authError);
+        // Continue even if Firebase Auth update fails
+      }
+    }
+    
+    // Return updated user
+    const updatedDoc = await userProfilesCollection.doc(userId).get();
+    return {
+      id: updatedDoc.id,
+      ...updatedDoc.data(),
+      createdAt: updatedDoc.data().createdAt ? updatedDoc.data().createdAt.toDate() : null,
+      updatedAt: updatedDoc.data().updatedAt ? updatedDoc.data().updatedAt.toDate() : null
+    };
+  } catch (error) {
+    console.error('Error in updateUserStatusById:', error);
     throw error;
   }
 };
@@ -374,6 +506,7 @@ export default {
   getUserByEmail,
   getUsers,
   updateUserStatus,
+  updateUserStatusById,
   updateUserProfile,
   getUserOrders,
   getUserTransactions

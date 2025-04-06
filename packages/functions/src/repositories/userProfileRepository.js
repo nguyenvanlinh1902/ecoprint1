@@ -39,12 +39,27 @@ const createUserProfile = async (userData) => {
       throw new Error('Email already exists');
     }
     
-    const {id} = await collection.add({
-      ...userData,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-    return {success: true, id, ...userData};
+    let docRef;
+    
+    // If uid is provided, use it as the document ID
+    if (userData.uid) {
+      docRef = collection.doc(userData.uid);
+      await docRef.set({
+        ...userData,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      
+      return { success: true, id: userData.uid, ...userData };
+    } else {
+      // If no uid provided (fallback), create with auto-generated ID
+      const { id } = await collection.add({
+        ...userData,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      return { success: true, id, ...userData };
+    }
   } catch (error) {
     throw error;
   }

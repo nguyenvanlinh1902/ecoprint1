@@ -33,11 +33,11 @@ export const updateTransactionStatus = async (ctx) => {
 // Transaction controller for managing payment and transactions
 export const requestDeposit = async (ctx) => {
   try {
-    const { uid } = ctx.state.user;
+    const { email } = ctx.req.body;
     const { amount, bankName, transferDate, reference } = ctx.req.body;
     
     // Validate required fields
-    if (!amount || !bankName || !transferDate) {
+    if (!amount || !bankName || !transferDate || !email) {
       ctx.status = 400;
       ctx.body = { error: 'Missing required fields' };
       return;
@@ -55,8 +55,9 @@ export const requestDeposit = async (ctx) => {
       amount, 
       bankName, 
       transferDate, 
-      reference
-    }, uid);
+      reference,
+      email
+    });
     
     ctx.status = 201;
     ctx.body = { 
@@ -86,10 +87,10 @@ export const uploadReceipt = async (ctx) => {
       hasFile: !!(ctx.req && ctx.req.file)
     });
     
-    const { uid } = ctx.state.user;
+    const email = ctx.req.headers['x-user-email'] || ctx.req.body?.email || ctx.state.user.email;
     const { transactionId } = ctx.params;
     
-    console.log('Upload receipt request for transaction:', transactionId, 'user:', uid);
+    console.log('Upload receipt request for transaction:', transactionId, 'user email:', email);
     
     // Prepare request with necessary objects
     console.log('Preparing request...');
@@ -117,7 +118,7 @@ export const uploadReceipt = async (ctx) => {
       
       if (imageData) {
         console.log('Found file data in "image" field, using it as receipt');
-        const uploadResult = await fileUploadRepository.uploadTransactionReceipt(uid, transactionId, imageData);
+        const uploadResult = await fileUploadRepository.uploadTransactionReceipt(email, transactionId, imageData);
         
         if (uploadResult.success) {
           console.log('File upload successful using image field, URL:', uploadResult.fileUrl);
@@ -166,8 +167,8 @@ export const uploadReceipt = async (ctx) => {
       return;
     }
     
-    if (transaction.userId !== uid) {
-      console.error('User not authorized for transaction. Transaction user:', transaction.userId, 'Request user:', uid);
+    if (transaction.email !== email) {
+      console.error('User not authorized for transaction. Transaction email:', transaction.email, 'Request email:', email);
       ctx.status = 403;
       ctx.body = { error: 'Not authorized to upload receipt for this transaction' };
       console.log('===== RECEIPT UPLOAD FAILED: UNAUTHORIZED =====');
@@ -178,7 +179,7 @@ export const uploadReceipt = async (ctx) => {
     
     // Use the file upload repository to handle the upload
     console.log('Sending to fileUploadRepository.uploadTransactionReceipt...');
-    const uploadResult = await fileUploadRepository.uploadTransactionReceipt(uid, transactionId, fileData);
+    const uploadResult = await fileUploadRepository.uploadTransactionReceipt(email, transactionId, fileData);
     
     if (!uploadResult.success) {
       console.error('File upload failed:', uploadResult.error);

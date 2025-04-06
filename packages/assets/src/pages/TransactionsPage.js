@@ -204,12 +204,15 @@ const TransactionsPage = () => {
         bankName: depositMethod,
         transferDate: new Date(),
         reference: depositNote || '',
+        email: localStorage.getItem('user_email')
       };
 
       const depositResponse = await api.transactions.requestDeposit(depositData);
       
+      console.log('Deposit response:', depositResponse);
+      
       // Check if we have a valid response with transactionId
-      if (!depositResponse || !depositResponse.data || !depositResponse.data.transactionId) {
+      if (!depositResponse || !depositResponse.data) {
         throw new Error('Invalid response from server');
       }
       
@@ -536,7 +539,7 @@ const TransactionsPage = () => {
                     Routing/Swift Code: EXBKUS123
                   </Typography>
                   <Typography variant="body2">
-                    <strong>Reference:</strong> Please include your user ID ({user?.id?.substring(0, 8) || 'User ID'}) as the payment reference.
+                    <strong>Reference:</strong> Please include your email ({user?.email || 'your email'}) as the payment reference.
                   </Typography>
                 </Stack>
               </Box>

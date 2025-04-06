@@ -26,6 +26,7 @@ const DepositPage = () => {
     bankName: '',
     transferDate: new Date(),
     reference: '',
+    email: localStorage.getItem('user_email')
   });
   const [receiptFile, setReceiptFile] = useState(null);
   const [error, setError] = useState('');

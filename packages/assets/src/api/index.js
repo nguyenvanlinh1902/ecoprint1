@@ -120,11 +120,19 @@ const addAuthData = (params = {}) => {
   const userEmail = localStorage.getItem('user_email');
   const userRole = localStorage.getItem('user_role');
   
-  return { 
+  // Only add the email if it's not already in the params
+  // This allows explicit overriding of the email parameter
+  const result = { 
     ...params,
-    email: userEmail || '',
     role: userRole || 'user'
   };
+  
+  // Only add email from localStorage if no email was provided in params
+  if (!params.email && userEmail) {
+    result.email = userEmail;
+  }
+  
+  return result;
 };
 
 // API Resource Methods
@@ -230,6 +238,10 @@ export const transactions = {
   create: (data) => {
     const enhancedData = addAuthData(data);
     return post('/transactions', enhancedData);
+  },
+  requestDeposit: (data) => {
+    const enhancedData = addAuthData(data);
+    return post('/transactions/deposit', enhancedData);
   },
   uploadReceipt: (id, formData) => {
     const userEmail = localStorage.getItem('user_email');

@@ -124,7 +124,9 @@ export const getDashboard = async (ctx) => {
  */
 export const getUsers = async (ctx) => {
   try {
-    const { page = 1, limit = 10, status, search } = ctx.query;
+    console.log('Admin getUsers - Request query:', ctx.query);
+    
+    const { page = 1, limit = 10, status, search, email, role } = ctx.query;
     
     // Parse to numbers
     const pageNumber = parseInt(page, 10);
@@ -135,13 +137,26 @@ export const getUsers = async (ctx) => {
       throw new CustomError('Invalid pagination parameters', 400);
     }
     
+    console.log('Admin getUsers - Parsed parameters:', {
+      page: pageNumber,
+      limit: limitNumber,
+      status,
+      search,
+      email,
+      role
+    });
+    
     // Use the repository to get users
     const result = await userRepository.getUsers({
       page: pageNumber,
       limit: limitNumber,
       status,
-      search
+      search,
+      email,
+      role
     });
+    
+    console.log(`Admin getUsers - Found ${result.users.length} users out of ${result.totalUsers} total`);
     
     // Return success response with users data and pagination
     ctx.body = {
@@ -160,7 +175,8 @@ export const getUsers = async (ctx) => {
     ctx.status = error instanceof CustomError ? error.statusCode : 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to fetch users'
+      message: error instanceof CustomError ? error.message : 'Failed to fetch users',
+      error: error.message || 'Unknown error'
     };
   }
 };
@@ -213,13 +229,18 @@ export const approveUser = async (ctx) => {
       throw new CustomError('User ID is required', 400);
     }
     
-    // Use the repository to approve user
-    await userRepository.updateUserStatus(userId, 'active');
+    console.log(`Admin approveUser - Approving user with ID: ${userId}`);
+    
+    // Use the repository function that accepts userId
+    const updatedUser = await userRepository.updateUserStatusById(userId, 'active');
+    
+    console.log(`Admin approveUser - User approved successfully: ${updatedUser.email}`);
     
     // Return success response
     ctx.body = {
       success: true,
-      message: 'User approved successfully'
+      message: 'User approved successfully',
+      data: updatedUser
     };
   } catch (error) {
     console.error('Error in approveUser controller:', error);
@@ -228,7 +249,8 @@ export const approveUser = async (ctx) => {
     ctx.status = error instanceof CustomError ? error.statusCode : 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to approve user'
+      message: error instanceof CustomError ? error.message : 'Failed to approve user',
+      error: error.message || 'Unknown error'
     };
   }
 };
@@ -245,13 +267,18 @@ export const rejectUser = async (ctx) => {
       throw new CustomError('User ID is required', 400);
     }
     
-    // Use the repository to reject user
-    await userRepository.updateUserStatus(userId, 'rejected');
+    console.log(`Admin rejectUser - Rejecting user with ID: ${userId}`);
+    
+    // Use the repository function that accepts userId
+    const updatedUser = await userRepository.updateUserStatusById(userId, 'rejected');
+    
+    console.log(`Admin rejectUser - User rejected successfully: ${updatedUser.email}`);
     
     // Return success response
     ctx.body = {
       success: true,
-      message: 'User rejected successfully'
+      message: 'User rejected successfully',
+      data: updatedUser
     };
   }
   catch (error) {
@@ -261,7 +288,8 @@ export const rejectUser = async (ctx) => {
     ctx.status = error instanceof CustomError ? error.statusCode : 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to reject user'
+      message: error instanceof CustomError ? error.message : 'Failed to reject user',
+      error: error.message || 'Unknown error'
     };
   }
 };
@@ -272,24 +300,46 @@ export const rejectUser = async (ctx) => {
  */
 export const updateUserStatus = async (ctx) => {
   try {
-    const { userId } = ctx.params;
-    const { status } = ctx.req.body;
+    const { userId, action } = ctx.params;
+    const { status } = ctx.req.body || {};
+    
+    // Determine status from action or body
+    let finalStatus = status;
+    
+    if (action) {
+      switch (action) {
+        case 'activate':
+          finalStatus = 'active';
+          break;
+        case 'deactivate':
+          finalStatus = 'inactive';
+          break;
+        default:
+          // Keep the status from body if action not recognized
+          break;
+      }
+    }
     
     if (!userId) {
       throw new CustomError('User ID is required', 400);
     }
     
-    if (!status || !['active', 'inactive', 'pending', 'rejected'].includes(status)) {
+    if (!finalStatus || !['active', 'inactive', 'pending', 'rejected'].includes(finalStatus)) {
       throw new CustomError('Valid status is required', 400);
     }
     
-    // Use the repository to update user status
-    await userRepository.updateUserStatus(userId, status);
+    console.log(`Admin updateUserStatus - Updating status for user ${userId} to ${finalStatus}`);
+    
+    // Use the repository function that accepts userId
+    const updatedUser = await userRepository.updateUserStatusById(userId, finalStatus);
+    
+    console.log(`Admin updateUserStatus - Updated status successfully for user: ${updatedUser.email}`);
     
     // Return success response
     ctx.body = {
       success: true,
-      message: `User status updated to ${status} successfully`
+      message: `User status updated to ${finalStatus} successfully`,
+      data: updatedUser
     };
   } catch (error) {
     console.error('Error in updateUserStatus controller:', error);
@@ -298,7 +348,8 @@ export const updateUserStatus = async (ctx) => {
     ctx.status = error instanceof CustomError ? error.statusCode : 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to update user status'
+      message: error instanceof CustomError ? error.message : 'Failed to update user status',
+      error: error.message || 'Unknown error'
     };
   }
 };

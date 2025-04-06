@@ -98,7 +98,7 @@ const useAuthApi = () => {
       // Return the response directly without throwing errors
       if (response && response.success) {
         setToast(dispatch, response.message || 'Registration successful');
-        toast.success('Đăng ký thành công');
+        toast.success('Registration successful');
       } else if (response) {
         // Just display the error message but don't throw
         setToast(dispatch, response.message || 'Registration failed', true);
@@ -199,7 +199,7 @@ const useAuthApi = () => {
       
       if (response.success) {
         setToast(dispatch, response.message || 'Profile updated successfully');
-        toast.success('Cập nhật thông tin thành công');
+        toast.success('Profile updated successfully');
       } else if (response.error) {
         setToast(dispatch, response.error, true);
         throw new Error(response.error);
@@ -239,7 +239,7 @@ const useAuthApi = () => {
       
       if (response.success) {
         setToast(dispatch, response.message || 'Password reset instructions sent');
-        toast.success('Yêu cầu đặt lại mật khẩu đã được gửi');
+        toast.success('Password reset instructions sent');
       } else if (response.error) {
         setToast(dispatch, response.error, true);
         throw new Error(response.error);

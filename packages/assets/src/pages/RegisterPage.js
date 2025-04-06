@@ -148,11 +148,12 @@ const RegisterPage = () => {
       if (result && result.success === true) {
         console.log('[RegisterPage] Registration successful');
         
-        // Navigate to the verification page
-        navigate('/auth/verification-sent', { 
+        // Navigate to the success page instead of verification-sent
+        navigate('/registration-success', { 
           state: { 
             email: sanitizedData.email,
-            message: result.message || 'Registration successful. Please verify your email address before logging in.'
+            message: result.message || 'Registration successful. Your account is pending approval.',
+            isApi: true
           }
         });
         

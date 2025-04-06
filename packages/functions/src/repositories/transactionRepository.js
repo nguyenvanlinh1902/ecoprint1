@@ -25,17 +25,16 @@ export function formatTransaction(doc) {
 /**
  * Create a new deposit request
  * @param {Object} data - Deposit data
- * @param {string} userId - User ID
  * @returns {Promise<Object>} Created transaction
  */
-export async function createDepositRequest(data, userId) {
+export async function createDepositRequest(data) {
   try {
-    const { amount, bankName, transferDate, reference } = data;
+    const { amount, bankName, transferDate, reference, email } = data;
     
     // Create transaction in Firestore
     const transactionRef = collection.doc();
     await transactionRef.set({
-      userId,
+      email,
       type: 'deposit',
       amount: Number(amount),
       bankName,

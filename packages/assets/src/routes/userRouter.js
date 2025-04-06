@@ -18,9 +18,6 @@ import {
   NotFoundPage
 } from '../loadable';
 
-// Import the example page directly
-import ExamplePage from '../pages/ExamplePage.js';
-
 /**
  * User router component
  * 
@@ -47,7 +44,6 @@ const UserRouter = () => {
         <Route path="import-orders/:importId" element={<ImportDetailPage />} />
         <Route path="deposit" element={<DepositPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
-        <Route path="example" element={<ExamplePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </MainLayout>

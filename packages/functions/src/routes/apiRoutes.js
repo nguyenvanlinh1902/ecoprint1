@@ -74,9 +74,16 @@ router.get('/admin/users', authMiddleware, adminMiddleware, adminController.getU
 router.get('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
 router.get('/admin/users/:userId/orders', authMiddleware, adminMiddleware, adminController.getUserOrders);
 router.get('/admin/users/:userId/transactions', authMiddleware, adminMiddleware, adminController.getUserTransactions);
-router.post('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
-router.post('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);
-router.put('/admin/users/:userId/status', authMiddleware, adminMiddleware, adminController.updateUserStatus);
+router.put('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
+router.put('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);
+router.put('/admin/users/:userId/activate', authMiddleware, adminMiddleware, (ctx) => {
+  ctx.params.action = 'activate';
+  return adminController.updateUserStatus(ctx);
+});
+router.put('/admin/users/:userId/deactivate', authMiddleware, adminMiddleware, (ctx) => {
+  ctx.params.action = 'deactivate';
+  return adminController.updateUserStatus(ctx);
+});
 router.put('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.updateUser);
 
 // Admin product routes
