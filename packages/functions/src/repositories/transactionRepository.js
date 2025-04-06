@@ -29,7 +29,7 @@ export function formatTransaction(doc) {
  */
 export async function createDepositRequest(data) {
   try {
-    const { amount, bankName, transferDate, reference, email } = data;
+    const { amount, bankName, transferDate, reference, email, receiptUrl, thumbnailUrl } = data;
     
     // Create transaction in Firestore
     const transactionRef = collection.doc();
@@ -40,7 +40,8 @@ export async function createDepositRequest(data) {
       bankName,
       transferDate: new Date(transferDate),
       reference: reference || '',
-      receiptUrl: '', // Will be updated when receipt is uploaded
+      receiptUrl: receiptUrl || '', // Use provided receipt URL from Firebase
+      thumbnailUrl: thumbnailUrl || receiptUrl || '', // Use thumbnail or receipt URL
       status: 'pending', // pending, approved, rejected
       createdAt: new Date(),
       updatedAt: new Date()
@@ -60,19 +61,32 @@ export async function createDepositRequest(data) {
  * Upload receipt for a transaction
  * @param {string} transactionId - Transaction ID
  * @param {string} receiptUrl - Receipt URL
+ * @param {string} thumbnailUrl - Thumbnail URL
  * @returns {Promise<boolean>} Success status
  */
-export async function updateTransactionReceipt(transactionId, receiptUrl) {
+export async function updateTransactionReceipt(transactionId, receiptUrl, thumbnailUrl) {
   try {
-    await collection.doc(transactionId).update({
-      receiptUrl,
-      updatedAt: new Date()
-    });
+    console.log(`Updating transaction ${transactionId} with receipt URL: ${receiptUrl}`);
+    if (thumbnailUrl) {
+      console.log(`Also adding thumbnail URL: ${thumbnailUrl}`);
+    }
     
-    return true;
+    const transactionRef = collection.doc(transactionId);
+    const updateData = { 
+      receiptUrl, 
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    if (thumbnailUrl) {
+      updateData.thumbnailUrl = thumbnailUrl;
+    }
+    
+    await transactionRef.update(updateData);
+    console.log(`Transaction ${transactionId} receipt updated successfully`);
+    return { success: true };
   } catch (error) {
-    console.error('Error updating transaction receipt:', error);
-    throw error;
+    console.error(`Error updating transaction receipt: ${error.message}`, error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -150,34 +164,6 @@ export async function getUserTransactions(options = {}) {
   try {
     const { userId, email, type, status, limit = 20, page = 1 } = options;
     
-    let userIdToUse = userId;
-    
-    // If email is provided but no userId, find the user by email
-    if ((!userId || userId === null) && email) {
-      const usersRef = firestore.collection('users');
-      const userQuery = await usersRef.where('email', '==', email).limit(1).get();
-      
-      if (userQuery.empty) {
-        // Instead of throwing an error, return empty results
-        console.log(`No user found with email: ${email}, returning empty results`);
-        return { 
-          transactions: [],
-          pagination: {
-            total: 0,
-            page: parseInt(page, 10),
-            limit: parseInt(limit, 10),
-            pages: 0
-          }
-        };
-      }
-      
-      userIdToUse = userQuery.docs[0].id;
-    }
-    
-    if (!userIdToUse) {
-      throw new Error('User ID or email is required');
-    }
-    
     // Validate and parse pagination params
     const pageNumber = parseInt(page, 10);
     const limitNumber = parseInt(limit, 10);
@@ -189,8 +175,32 @@ export async function getUserTransactions(options = {}) {
     // Calculate offset
     const offset = (pageNumber - 1) * limitNumber;
     
-    // Create base query with userId filter
-    let query = collection.where('userId', '==', userIdToUse);
+    // Create base query
+    let query;
+    
+    // First check if we should query by email directly
+    if (email) {
+      console.log(`Querying transactions by email: ${email}`);
+      query = collection.where('email', '==', email);
+    } 
+    // If no email but we have userId, query by userId
+    else if (userId) {
+      console.log(`Querying transactions by userId: ${userId}`);
+      query = collection.where('userId', '==', userId);
+    } 
+    // If neither, throw error
+    else {
+      console.log('No email or userId provided, returning empty results');
+      return { 
+        transactions: [],
+        pagination: {
+          total: 0,
+          page: pageNumber,
+          limit: limitNumber,
+          pages: 0
+        }
+      };
+    }
     
     // Apply additional filters if provided
     if (type) {
@@ -205,6 +215,8 @@ export async function getUserTransactions(options = {}) {
     const countSnapshot = await query.count().get();
     const total = countSnapshot.data().count;
     
+    console.log(`Found ${total} transactions matching criteria`);
+    
     // Apply sorting and pagination
     query = query.orderBy('createdAt', 'desc')
                 .limit(limitNumber)
@@ -212,6 +224,8 @@ export async function getUserTransactions(options = {}) {
                 
     const transactionsSnapshot = await query.get();
     const transactions = [];
+    
+    console.log(`Retrieved ${transactionsSnapshot.size} transactions after pagination`);
     
     transactionsSnapshot.forEach(doc => {
       transactions.push(formatTransaction(doc));

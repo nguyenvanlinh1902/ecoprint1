@@ -2,199 +2,229 @@
  * Repository for file uploads
  */
 import { v4 as uuidv4 } from 'uuid';
-import { adminStorage } from '../config/firebaseAdmin.js';
+import { admin, adminStorage } from '../config/firebaseAdmin.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import sharp from 'sharp';
+import { getStorage } from 'firebase-admin/storage';
+import util from 'util';
+import { Readable } from 'stream';
+
+// Max dimensions for resized images
+const MAX_WIDTH = 1200;
+const MAX_HEIGHT = 1200;
+const THUMB_WIDTH = 300;
+const QUALITY = 80;
+
+// Initiate Firebase Storage
+const storage = getStorage(admin.app());
+const bucket = adminStorage;
+
+// Ensure bucket is properly initialized
+if (!bucket) {
+  console.error('[FileUploadRepository] ERROR: Firebase Storage bucket not initialized');
+  throw new Error('Firebase Storage bucket not initialized');
+} else {
+  console.log(`[FileUploadRepository] Firebase Storage bucket initialized: ${bucket.name}`);
+}
 
 /**
- * Upload transaction receipt
- * @param {string} email - User email
- * @param {string} transactionId - Transaction ID
- * @param {Object} fileData - File data (buffer or other formats)
- * @returns {Promise<Object>} Result object with success and fileUrl
+ * Resize and optimize image for upload
+ * @param {Buffer} buffer - Image buffer
+ * @returns {Promise<Object>} Object with resized image buffer and dimensions
  */
-const uploadTransactionReceipt = async (email, transactionId, fileData) => {
+const resizeAndOptimizeImage = async (buffer, mimetype) => {
   try {
-    if (!fileData) {
-      return { success: false, error: 'No file data provided' };
+    // Handle different image types
+    let imageProcessor = sharp(buffer);
+    const metadata = await imageProcessor.metadata();
+    
+    // Only resize if the image is larger than our maximum dimensions
+    if (metadata.width > MAX_WIDTH || metadata.height > MAX_HEIGHT) {
+      imageProcessor = imageProcessor.resize({
+        width: MAX_WIDTH,
+        height: MAX_HEIGHT,
+        fit: 'inside',
+        withoutEnlargement: true
+      });
     }
     
-    let fileBuffer;
-    let fileName;
-    let contentType;
+    // Process based on image type
+    let processedBuffer;
+    let outputFormat = 'jpeg';
     
-    // Extract file info based on fileData type
-    if (Buffer.isBuffer(fileData)) {
-      // Already a buffer
-      fileBuffer = fileData;
-      fileName = `${Date.now()}-receipt.jpg`;
-      contentType = 'image/jpeg';
-    } else if (fileData.buffer && Buffer.isBuffer(fileData.buffer)) {
-      // Multer-style file object
-      fileBuffer = fileData.buffer;
-      fileName = fileData.originalname || `${Date.now()}-receipt.jpg`;
-      contentType = fileData.mimetype || 'image/jpeg';
-    } else if (typeof fileData === 'string') {
-      // Base64 data
-      if (fileData.startsWith('data:')) {
-        // Data URL format
-        const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches && matches.length === 3) {
-          contentType = matches[1];
-          fileBuffer = Buffer.from(matches[2], 'base64');
-          
-          // Get file extension from mimetype
-          const ext = contentType.split('/')[1] || 'jpg';
-          fileName = `${Date.now()}-receipt.${ext}`;
-        } else {
-          return { success: false, error: 'Invalid data URL format' };
-        }
-      } else {
-        // Assume plain base64
-        fileBuffer = Buffer.from(fileData, 'base64');
-        fileName = `${Date.now()}-receipt.jpg`;
-        contentType = 'image/jpeg';
-      }
-    } else if (fileData.data && Buffer.isBuffer(fileData.data)) {
-      // Busboy-style file object
-      fileBuffer = fileData.data;
-      fileName = fileData.name || `${Date.now()}-receipt.jpg`;
-      contentType = fileData.mimetype || 'image/jpeg';
+    // Determine output format based on mimetype
+    if (mimetype.includes('png')) {
+      processedBuffer = await imageProcessor.png({ quality: QUALITY }).toBuffer();
+      outputFormat = 'png';
+    } else if (mimetype.includes('webp')) {
+      processedBuffer = await imageProcessor.webp({ quality: QUALITY }).toBuffer();
+      outputFormat = 'webp';
     } else {
-      return { 
-        success: false, 
-        error: 'Unsupported file data format',
-        debugInfo: { type: typeof fileData, keys: Object.keys(fileData) }
-      };
+      // Default to jpeg for all other formats
+      processedBuffer = await imageProcessor.jpeg({ quality: QUALITY }).toBuffer();
     }
     
-    // Create a temporary file
-    const tempFilePath = path.join(os.tmpdir(), fileName);
-    await fs.promises.writeFile(tempFilePath, fileBuffer);
-    
-    // Set the destination in Firebase Storage
-    // Create a safe path from email by replacing @ and . characters
-    const safeEmail = email.replace(/[@.]/g, '_');
-    const destination = `receipts/${safeEmail}/${transactionId}/${fileName}`;
-    
-    // Upload to Firebase Storage
-    await adminStorage.upload(tempFilePath, {
-      destination,
-      metadata: {
-        contentType,
-        metadata: {
-          firebaseStorageDownloadTokens: uuidv4()
-        }
-      }
-    });
-    
-    // Remove the temporary file
-    await fs.promises.unlink(tempFilePath);
-    
-    // Get public URL
-    const fileUrl = `https://storage.googleapis.com/${adminStorage.name}/${destination}`;
-    
+    // Also create a thumbnail version
+    const thumbnailBuffer = await sharp(buffer)
+      .resize({
+        width: THUMB_WIDTH,
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ quality: QUALITY })
+      .toBuffer();
+      
     return {
-      success: true,
-      fileUrl
+      buffer: processedBuffer,
+      thumbnailBuffer,
+      format: outputFormat,
+      width: metadata.width > MAX_WIDTH ? MAX_WIDTH : metadata.width,
+      height: metadata.height > MAX_HEIGHT ? MAX_HEIGHT : metadata.height
     };
   } catch (error) {
-    console.error('Error uploading transaction receipt:', error);
-    return {
-      success: false,
-      error: error.message || 'Error uploading file'
+    console.error('Error resizing image:', error);
+    // Return original buffer if processing fails
+    return { 
+      buffer,
+      thumbnailBuffer: null,
+      format: 'jpeg',
+      width: 0,
+      height: 0
     };
   }
 };
 
 /**
- * Upload product image
- * @param {string} productId - Product ID
- * @param {Object} fileData - File data
- * @returns {Promise<Object>} Result object with success and fileUrl
+ * Upload file từ buffer hoặc từ path vào Firebase Storage
+ * @param {Object} file - Thông tin file cần upload (có thể là multer file hoặc file object)
+ * @param {string} destinationPath - Đường dẫn đích trong Firebase Storage
+ * @returns {Promise<string>} - URL của file đã upload
  */
-const uploadProductImage = async (productId, fileData) => {
+const uploadFile = async (file, destinationPath) => {
   try {
-    if (!fileData) {
-      return { success: false, error: 'No file data provided' };
-    }
-    
-    let fileBuffer;
-    let fileName;
-    let contentType;
-    
-    // Extract file info based on fileData type
-    if (Buffer.isBuffer(fileData)) {
-      fileBuffer = fileData;
-      fileName = `${Date.now()}-product.jpg`;
-      contentType = 'image/jpeg';
-    } else if (fileData.buffer && Buffer.isBuffer(fileData.buffer)) {
-      fileBuffer = fileData.buffer;
-      fileName = fileData.originalname || `${Date.now()}-product.jpg`;
-      contentType = fileData.mimetype || 'image/jpeg';
-    } else if (typeof fileData === 'string') {
-      if (fileData.startsWith('data:')) {
-        const matches = fileData.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        if (matches && matches.length === 3) {
-          contentType = matches[1];
-          fileBuffer = Buffer.from(matches[2], 'base64');
-          const ext = contentType.split('/')[1] || 'jpg';
-          fileName = `${Date.now()}-product.${ext}`;
-        } else {
-          return { success: false, error: 'Invalid data URL format' };
-        }
-      } else {
-        fileBuffer = Buffer.from(fileData, 'base64');
-        fileName = `${Date.now()}-product.jpg`;
-        contentType = 'image/jpeg';
-      }
-    } else if (fileData.data && Buffer.isBuffer(fileData.data)) {
-      fileBuffer = fileData.data;
-      fileName = fileData.name || `${Date.now()}-product.jpg`;
-      contentType = fileData.mimetype || 'image/jpeg';
-    } else {
-      return { success: false, error: 'Unsupported file data format' };
-    }
-    
-    // Create a temporary file
-    const tempFilePath = path.join(os.tmpdir(), fileName);
-    await fs.promises.writeFile(tempFilePath, fileBuffer);
-    
-    // Set the destination in Firebase Storage
-    const destination = `products/${productId}/${fileName}`;
-    
-    // Upload to Firebase Storage
-    await adminStorage.upload(tempFilePath, {
-      destination,
-      metadata: {
-        contentType,
-        metadata: {
-          firebaseStorageDownloadTokens: uuidv4()
-        }
-      }
+    console.log(`[FileUploadRepository] Uploading file to: ${destinationPath}`);
+    console.log(`[FileUploadRepository] File details:`, {
+      name: file.originalname || path.basename(file.path || 'unknown'),
+      type: file.mimetype || 'application/octet-stream',
+      size: file.size || (file.buffer ? file.buffer.length : 'unknown')
     });
     
-    // Remove the temporary file
-    await fs.promises.unlink(tempFilePath);
+    // Create a file in the bucket
+    const fileRef = bucket.file(destinationPath);
     
-    // Get public URL
-    const fileUrl = `https://storage.googleapis.com/${adminStorage.name}/${destination}`;
+    // Determine how to upload the file based on what data we have
+    if (file.path && fs.existsSync(file.path)) {
+      // Upload from file path
+      console.log(`[FileUploadRepository] Uploading from file path: ${file.path}`);
+      await fileRef.save(fs.readFileSync(file.path), {
+        metadata: {
+          contentType: file.mimetype || 'application/octet-stream',
+          metadata: {
+            originalname: file.originalname || path.basename(file.path)
+          }
+        }
+      });
+    } else if (file.buffer) {
+      // Upload from buffer
+      console.log(`[FileUploadRepository] Uploading from buffer, size: ${file.buffer.length} bytes`);
+      await fileRef.save(file.buffer, {
+        metadata: {
+          contentType: file.mimetype || 'application/octet-stream',
+          metadata: {
+            originalname: file.originalname || 'uploaded-file'
+          }
+        }
+      });
+    } else {
+      // No valid source for upload
+      throw new Error('No valid file data found for upload');
+    }
     
-    return {
-      success: true,
-      fileUrl
-    };
+    // Make file publicly accessible
+    await fileRef.makePublic();
+    
+    // Get the file's public URL
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destinationPath}`;
+    console.log(`[FileUploadRepository] File uploaded successfully. Public URL: ${publicUrl}`);
+    
+    return publicUrl;
   } catch (error) {
-    console.error('Error uploading product image:', error);
-    return {
-      success: false,
-      error: error.message || 'Error uploading file'
-    };
+    console.error(`[FileUploadRepository] Error uploading file: ${error.message}`);
+    throw error;
   }
 };
 
-export default {
-  uploadTransactionReceipt,
-  uploadProductImage
+/**
+ * Upload ảnh sản phẩm vào Firebase Storage
+ * @param {Object} file - Thông tin file (từ multer hoặc file object)
+ * @param {string} productId - ID của sản phẩm
+ * @returns {Promise<string>} URL của ảnh
+ */
+export const uploadProductImage = async (file, productId) => {
+  console.log(`[FileUploadRepository] Uploading product image for product ID: ${productId}`);
+  
+  if (!file) {
+    throw new Error('No file provided for upload');
+  }
+  
+  // Tạo ID tạm thời nếu productId không hợp lệ
+  if (!productId || productId === 'new' || productId === 'undefined' || productId === 'null') {
+    const tempId = `temp_${Date.now()}`;
+    console.log(`[FileUploadRepository] Using temporary ID for product image: ${tempId}`);
+    productId = tempId;
+  }
+  
+  // Tạo tên file an toàn
+  const timestamp = Date.now();
+  const safeFileName = file.originalname 
+    ? file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_') 
+    : `product_image_${timestamp}.jpg`;
+  
+  // Đường dẫn lưu trữ trong Firebase Storage
+  const destinationPath = `products/${productId}/images/${timestamp}_${safeFileName}`;
+  
+  const imageUrl = await uploadFile(file, destinationPath);
+  
+  // Trả về kết quả với cả success và fileUrl để tương thích với code cũ
+  return {
+    success: true,
+    fileUrl: imageUrl,
+    path: destinationPath
+  };
+};
+
+/**
+ * Upload file hóa đơn vào Firebase Storage
+ * @param {Object} file - Thông tin file (từ multer hoặc file object)
+ * @param {string} orderId - ID của đơn hàng
+ * @returns {Promise<string>} URL của file hóa đơn
+ */
+export const uploadReceiptFile = async (file, orderId) => {
+  console.log(`[FileUploadRepository] Uploading receipt for order ID: ${orderId}`);
+  
+  if (!file) {
+    throw new Error('No file provided for upload');
+  }
+  
+  if (!orderId) {
+    throw new Error('Order ID is required for receipt upload');
+  }
+  
+  // Tạo tên file an toàn
+  const timestamp = Date.now();
+  const safeFileName = file.originalname 
+    ? file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_') 
+    : `receipt_${timestamp}.jpg`;
+  
+  // Đường dẫn lưu trữ trong Firebase Storage
+  const destinationPath = `orders/${orderId}/receipts/${timestamp}_${safeFileName}`;
+  
+  return uploadFile(file, destinationPath);
+};
+
+export const fileUploadRepository = {
+  uploadProductImage,
+  uploadReceiptFile
 }; 

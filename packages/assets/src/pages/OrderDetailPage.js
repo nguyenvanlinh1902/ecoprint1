@@ -17,7 +17,7 @@ import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
-import { useFetchApi } from '../hooks/useFetchApi';
+import useFetchApi from '../hooks/api/useFetchApi';
 
 const OrderDetailPage = ({ admin = false }) => {
   const { orderId } = useParams();
@@ -30,11 +30,16 @@ const OrderDetailPage = ({ admin = false }) => {
     loading, 
     error, 
     refetch: refreshOrder 
-  } = useFetchApi({
-    resource: 'orders',
-    id: orderId,
-    autoFetch: true
+  } = useFetchApi('orders', {
+    fetchOnMount: false
   });
+  
+  // Fetch order data when orderId changes
+  useEffect(() => {
+    if (orderId) {
+      refreshOrder(orderId);
+    }
+  }, [orderId, refreshOrder]);
   
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');

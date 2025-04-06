@@ -118,85 +118,123 @@ export const createFileUploadMiddleware = (options = {}) => {
     try {
       // Log the request
       console.log(`Processing file upload for field: ${fieldName}`);
+      console.log(`Request headers:`, ctx.headers);
+      
+      // Debug the request more extensively
+      console.log(`Request structure:`, {
+        contentType: ctx.headers['content-type'] || 'not set',
+        hasReqBody: !!ctx.req.body,
+        reqBodyKeys: ctx.req.body ? Object.keys(ctx.req.body) : [],
+        method: ctx.method
+      });
       
       // Prepare the request context (ensures headers, body, etc.)
       prepareRequest(ctx);
       
-      // Try using raw FormData approach first if available in the request body
-      if (ctx.req.body && ctx.req.body[fieldName]) {
-        console.log(`Found ${fieldName} in request body, using direct approach`);
-        
-        // If file data is found in body, process it directly
-        if (!ctx.req.files) ctx.req.files = {};
-        
-        // Handle potential base64 data
-        if (typeof ctx.req.body[fieldName] === 'string' && 
-            ctx.req.body[fieldName].includes('base64')) {
-          
-          // Process base64 data and create file-like object
-          try {
-            const base64Data = ctx.req.body[fieldName].includes('base64,') 
-              ? ctx.req.body[fieldName].split('base64,')[1] 
-              : ctx.req.body[fieldName];
-              
-            const buffer = Buffer.from(base64Data, 'base64');
-            
-            ctx.req.files[fieldName] = {
-              originalname: `${fieldName}.jpg`,
-              mimetype: 'image/jpeg',
-              buffer: buffer,
-              size: buffer.length
-            };
-            
-            console.log(`Successfully processed ${fieldName} from base64 data`);
-          } catch (err) {
-            console.error(`Error processing base64 data for ${fieldName}:`, err);
-          }
-        } else {
-          // Handle other types of data
-          ctx.req.files[fieldName] = ctx.req.body[fieldName];
-        }
-        
-        return await next();
-      }
+      // Check for "payload image" field in addition to the normal field
+      const lookupFields = [fieldName, 'payload image', 'image'];
+      let fileFound = false;
       
-      // Try custom multipart parser to avoid type-is issues
-      const contentType = ctx.req.headers['content-type'] || '';
-      if (contentType.includes('multipart/form-data')) {
-        try {
-          console.log(`Parsing multipart form data for ${fieldName} with custom parser`);
+      for (const field of lookupFields) {
+        // Try using raw FormData approach first if available in the request body
+        if (ctx.req.body && ctx.req.body[field]) {
+          console.log(`Found ${field} in request body, using direct approach`);
           
-          // Parse multipart form using busboy
-          const { files, fields } = await parseMultipartForm(ctx.req, {
-            limits: {
-              fileSize: maxSize,
-              files: 1
-            }
-          });
-          
-          // Make fields available
-          ctx.req.body = { ...ctx.req.body, ...fields };
-          
-          // Make files available as req.files
+          // If file data is found in body, process it directly
           if (!ctx.req.files) ctx.req.files = {};
           
-          // Add files to req.files
-          Object.keys(files).forEach(key => {
-            ctx.req.files[key] = files[key].length === 1 ? files[key][0] : files[key];
-          });
-          
-          // Handle single file for compatibility
-          if (files[fieldName] && files[fieldName].length === 1) {
-            ctx.req.file = files[fieldName][0];
+          // Handle potential base64 data
+          if (typeof ctx.req.body[field] === 'string' && 
+              ctx.req.body[field].includes('base64')) {
+            
+            // Process base64 data and create file-like object
+            try {
+              const base64Data = ctx.req.body[field].includes('base64,') 
+                ? ctx.req.body[field].split('base64,')[1] 
+                : ctx.req.body[field];
+                
+              const buffer = Buffer.from(base64Data, 'base64');
+              
+              ctx.req.files[fieldName] = {
+                originalname: `${fieldName}.jpg`,
+                mimetype: 'image/jpeg',
+                buffer: buffer,
+                size: buffer.length
+              };
+              
+              console.log(`Successfully processed ${field} from base64 data`);
+              fileFound = true;
+              break;
+            } catch (err) {
+              console.error(`Error processing base64 data for ${field}:`, err);
+            }
+          } else {
+            // Handle other types of data
+            ctx.req.files[fieldName] = ctx.req.body[field];
+            fileFound = true;
+            break;
           }
-          
-          console.log(`Files found:`, Object.keys(files));
-          
-        } catch (parseErr) {
-          console.error(`Error parsing multipart form: ${parseErr.message}`);
         }
-      } else {
-        console.log(`Request doesn't appear to be multipart/form-data (content-type: ${contentType})`);
+      }
+      
+      // If file still not found, try custom multipart parser
+      if (!fileFound) {
+        const contentType = ctx.req.headers['content-type'] || '';
+        if (contentType.includes('multipart/form-data')) {
+          try {
+            console.log(`Parsing multipart form data for multiple possible fields (${lookupFields.join(', ')}) with custom parser`);
+            
+            // Parse multipart form using busboy
+            const { files, fields } = await parseMultipartForm(ctx.req, {
+              limits: {
+                fileSize: maxSize,
+                files: 1
+              }
+            });
+            
+            // Make fields available
+            ctx.req.body = { ...ctx.req.body, ...fields };
+            
+            // Make files available as req.files
+            if (!ctx.req.files) ctx.req.files = {};
+            
+            // Add files to req.files
+            let fileFieldFound = false;
+            Object.keys(files).forEach(key => {
+              ctx.req.files[key] = files[key].length === 1 ? files[key][0] : files[key];
+              
+              // If we found a field from our lookupFields, also set it as fieldName
+              if (lookupFields.includes(key) && key !== fieldName) {
+                ctx.req.files[fieldName] = ctx.req.files[key];
+                fileFieldFound = true;
+              }
+            });
+            
+            // Handle single file for compatibility
+            if (files[fieldName] && files[fieldName].length === 1) {
+              ctx.req.file = files[fieldName][0];
+              fileFieldFound = true;
+            } else {
+              // Try with other field names
+              for (const field of lookupFields) {
+                if (field !== fieldName && files[field] && files[field].length === 1) {
+                  ctx.req.file = files[field][0];
+                  ctx.req.files[fieldName] = files[field];
+                  fileFieldFound = true;
+                  break;
+                }
+              }
+            }
+            
+            console.log(`Files found:`, Object.keys(files));
+            console.log(`File field found:`, fileFieldFound);
+            
+          } catch (parseErr) {
+            console.error(`Error parsing multipart form: ${parseErr.message}`);
+          }
+        } else {
+          console.log(`Request doesn't appear to be multipart/form-data (content-type: ${contentType})`);
+        }
       }
       
       await next();

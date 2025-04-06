@@ -1,5 +1,32 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { initializeApp } from 'firebase/app';
+import { getStorage } from 'firebase/storage';
+import firebaseConfig from './firebase-config.js';
+
+// Initialize Firebase app
+const firebaseApp = initializeApp(firebaseConfig);
+
+// Export Firebase storage with explicit bucket configuration
+export const storage = getStorage(firebaseApp);
+
+// Export Firebase config info for debugging
+export const getFirebaseInfo = () => {
+  const appInfo = {
+    name: firebaseApp.name,
+    options: firebaseApp.options,
+    isAuthorized: !!firebaseApp.options.apiKey,
+    storageBucket: firebaseApp.options.storageBucket,
+    storageStatus: storage ? {
+      service: 'Available',
+      bucket: storage.bucket || firebaseApp.options.storageBucket || 'Not available',
+      app: storage.app?.name || 'No app attached'
+    } : 'Storage not initialized'
+  };
+  
+  console.log('Firebase App Info:', appInfo);
+  return appInfo;
+};
 
 // Đây là URL chính xác để truy cập Firebase Functions qua emulator
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
@@ -169,7 +196,7 @@ export const isAuthenticated = () => {
  * @param {string} currency - Đơn vị tiền tệ (VND, USD)
  * @returns {string} - Chuỗi đã format
  */
-export const formatCurrency = (amount, currency = 'VND') => {
+export const formatCurrency = (amount, currency = 'USD') => {
   if (amount === undefined || amount === null) return '';
   
   const options = {
@@ -179,7 +206,7 @@ export const formatCurrency = (amount, currency = 'VND') => {
     maximumFractionDigits: currency === 'VND' ? 0 : 2,
   };
   
-  return new Intl.NumberFormat('vi-VN', options).format(amount);
+  return new Intl.NumberFormat('en-US', options).format(amount);
 };
 
 /**

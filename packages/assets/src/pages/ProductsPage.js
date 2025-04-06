@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Box, Grid, Card, CardContent, CardMedia, CardActions,
@@ -14,58 +14,53 @@ import api from '@/api';
 import { formatCurrency } from '../helpers/formatters';
 
 const ProductsPage = () => {
-  const [products, setProducts] = useState([]);
+  // Lưu trữ tất cả sản phẩm lấy từ API
+  const [allProducts, setAllProducts] = useState([]);
+  // Sản phẩm đã được lọc để hiển thị
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
   // Pagination
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [productsPerPage] = useState(12);
   
   // Filtering
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [categories, setCategories] = useState([]);
 
+  // Fetch tất cả sản phẩm khi component được render
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true);
         setError('');
         
-        // Build query parameters
-        const params = {
-          page: page,
-          limit: 12 // Products per page
-        };
-        
-        if (search) {
-          params.search = search;
-        }
-        
-        if (category) {
-          params.category = category;
-        }
-        
-        console.log('Fetching products with params:', params);
-        const response = await api.products.getAll(params);
+        // Lấy tất cả sản phẩm, không có filter
+        console.log('Fetching all products');
+        const response = await api.products.getAllProducts();
         
         if (response.data && response.data.success) {
-          console.log('Products fetched successfully:', response.data.data);
-          setProducts(response.data.data.products || []);
-          setTotalPages(response.data.data.pagination?.totalPages || 1);
+          // Lấy sản phẩm từ response, đảm bảo đúng cấu trúc dữ liệu
+          const products = response.data.data?.products || [];
+          console.log('Products fetched successfully:', products.length);
           
-          // Fetch categories for filter
+          // Lưu trữ tất cả sản phẩm
+          setAllProducts(products);
+          
+          // Cũng lấy danh sách danh mục
           await fetchCategories();
         } else {
           console.error('Unexpected API response format:', response);
           setError('Unable to load products. Please try again.');
-          setProducts([]);
+          setAllProducts([]);
         }
       } catch (error) {
         console.error('Error fetching products:', error);
         setError('Failed to load products. Please try again later.');
-        setProducts([]);
+        setAllProducts([]);
       } finally {
         setLoading(false);
       }
@@ -87,10 +82,51 @@ const ProductsPage = () => {
     };
 
     fetchProducts();
-  }, [page, search, category]);
+  }, []);
+  
+  // Lọc sản phẩm dựa trên search và category
+  // Sử dụng useMemo để tối ưu hiệu suất
+  useMemo(() => {
+    // Thực hiện lọc
+    let results = [...allProducts];
+    
+    // Lọc theo từ khóa tìm kiếm
+    if (search) {
+      const searchLower = search.toLowerCase();
+      results = results.filter(product => 
+        (product.name && product.name.toLowerCase().includes(searchLower)) || 
+        (product.description && product.description.toLowerCase().includes(searchLower)) ||
+        (product.sku && product.sku.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    // Lọc theo danh mục
+    if (category) {
+      results = results.filter(product => product.categoryId === category);
+    }
+    
+    // Cập nhật số trang
+    const newTotalPages = Math.ceil(results.length / productsPerPage);
+    setTotalPages(newTotalPages);
+    
+    // Reset về trang 1 nếu filter thay đổi và page hiện tại > totalPages mới
+    if (page > newTotalPages && newTotalPages > 0) {
+      setPage(1);
+    }
+    
+    // Cập nhật sản phẩm đã lọc
+    setFilteredProducts(results);
+    
+  }, [allProducts, search, category, page, productsPerPage]);
+  
+  // Lấy sản phẩm cho trang hiện tại
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (page - 1) * productsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + productsPerPage);
+  }, [filteredProducts, page, productsPerPage]);
 
-  const handlePageChange = (event, value) => {
-    setPage(value);
+  const handlePageChange = (event, newPage) => {
+    setPage(newPage);
     window.scrollTo(0, 0);
   };
 
@@ -144,7 +180,7 @@ const ProductsPage = () => {
               >
                 <MenuItem value="">All Categories</MenuItem>
                 {categories.map((cat) => (
-                  <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                  <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -170,7 +206,7 @@ const ProductsPage = () => {
         </Typography>
       )}
       
-      {!loading && products.length === 0 && (
+      {!loading && paginatedProducts.length === 0 && (
         <Box sx={{ textAlign: 'center', py: 4 }}>
           <Typography variant="h6" color="text.secondary">
             No products found
@@ -187,7 +223,7 @@ const ProductsPage = () => {
       
       {/* Product Grid */}
       <Grid container spacing={3}>
-        {products.map((product) => (
+        {paginatedProducts.map((product) => (
           <Grid item key={product.id} xs={12} sm={6} md={4}>
             <Card 
               sx={{ 
@@ -208,42 +244,34 @@ const ProductsPage = () => {
                 alt={product.name}
               />
               <CardContent sx={{ flexGrow: 1 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                  <Typography gutterBottom variant="h6" component="div" noWrap>
-                    {product.name}
-                  </Typography>
+                <Typography gutterBottom variant="h6" component="div" noWrap>
+                  {product.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1, minHeight: '40px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {product.description || 'No description available'}
+                </Typography>
+                <Typography variant="h6" color="primary" gutterBottom>
+                  {formatCurrency(product.price)}
+                </Typography>
+                
+                {product.categoryId && (
                   <Chip 
-                    label={product.categoryName || 'General'} 
+                    label={categories.find(c => c.id === product.categoryId)?.name || 'Unknown Category'} 
                     size="small" 
-                    color="primary" 
-                    variant="outlined" 
+                    sx={{ mt: 1 }}
                   />
-                </Stack>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, minHeight: '40px' }}>
-                  {product.description?.substring(0, 100)}
-                  {product.description?.length > 100 ? '...' : ''}
-                </Typography>
-                <Typography variant="h6" color="primary">
-                  {formatCurrency(product.price || 0)}
-                </Typography>
+                )}
               </CardContent>
-              <CardActions sx={{ mt: 'auto' }}>
-                <Button 
-                  size="small" 
-                  component={Link} 
-                  to={`/products/${product.id}`}
-                >
-                  View Details
-                </Button>
+              <CardActions>
                 <Button 
                   size="small" 
                   variant="contained" 
-                  component={Link} 
-                  to={`/orders/create?product=${product.id}`}
+                  fullWidth
                   startIcon={<ShoppingCartIcon />}
-                  sx={{ ml: 'auto' }}
+                  component={Link}
+                  to={`/products/${product.id}`}
                 >
-                  Order Now
+                  View Details
                 </Button>
               </CardActions>
             </Card>
@@ -253,12 +281,13 @@ const ProductsPage = () => {
       
       {/* Pagination */}
       {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
           <Pagination 
             count={totalPages} 
             page={page} 
             onChange={handlePageChange} 
             color="primary" 
+            size="large"
           />
         </Box>
       )}

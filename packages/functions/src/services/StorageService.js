@@ -1,0 +1,1 @@
+const BUCKET_NAME = 'ecoprint1-3cd5c.appspot.com'; 

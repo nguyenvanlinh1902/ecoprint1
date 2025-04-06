@@ -1,4 +1,4 @@
-import {useEffect, useState, useCallback} from 'react';
+import {useEffect, useState, useCallback, useRef} from 'react';
 import {apiClient} from '../../api';
 
 /**
@@ -25,6 +25,26 @@ const useFetchApi = (endpoint, options = {}) => {
     total: 0,
     totalPages: 0
   });
+  
+  // Track last request to prevent duplicate calls
+  const lastRequestRef = useRef({
+    id: null,
+    url: null,
+    timestamp: 0
+  });
+  
+  // Track if component is mounted
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    // Set mounted true on mount
+    isMountedRef.current = true;
+    
+    // Set mounted false on unmount
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   /**
    * Fetch resource data
@@ -51,6 +71,24 @@ const useFetchApi = (endpoint, options = {}) => {
     };
     
     const requestKey = `${url}${JSON.stringify(enhancedParams)}`;
+    
+    // Check if we've made this exact request recently (within last 500ms)
+    const now = Date.now();
+    if (
+      lastRequestRef.current.url === requestKey && 
+      now - lastRequestRef.current.timestamp < 500 &&
+      id === lastRequestRef.current.id
+    ) {
+      console.log('Skipping duplicate request to:', url);
+      return Promise.resolve(data);
+    }
+    
+    // Update last request info
+    lastRequestRef.current = {
+      id,
+      url: requestKey,
+      timestamp: now
+    };
     
     // Don't attempt to fetch if we're already loading
     if (loading) {
@@ -122,7 +160,10 @@ const useFetchApi = (endpoint, options = {}) => {
       
       const formattedData = transformResponse ? transformResponse(responseData) : responseData;
       
-      setData(formattedData);
+      // Check if component is still mounted before updating state
+      if (isMountedRef.current) {
+        setData(formattedData);
+      }
       return response.data;
     } catch (err) {
       let errorMessage = 'Failed to fetch data';
@@ -151,7 +192,10 @@ const useFetchApi = (endpoint, options = {}) => {
         errorMessage = err.message || errorMessage;
       }
       
-      setError(errorMessage);
+      // Check if component is still mounted before updating state
+      if (isMountedRef.current) {
+        setError(errorMessage);
+      }
       
       // Create a more detailed error object
       const error = new Error(errorMessage);
@@ -182,7 +226,10 @@ const useFetchApi = (endpoint, options = {}) => {
       // Return a rejected promise with the enhanced error
       return Promise.reject(error);
     } finally {
-      setLoading(false);
+      // Check if component is still mounted before updating state
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, [endpoint, params, transformResponse, loading, data]);
 
@@ -198,8 +245,17 @@ const useFetchApi = (endpoint, options = {}) => {
    * @param {Object} newParams - New parameters to use
    */
   const updateParams = useCallback((newParams) => {
-    setParams(prev => ({ ...prev, ...newParams }));
+    if (isMountedRef.current) {
+      setParams(prev => ({ ...prev, ...newParams }));
+    }
   }, []);
+
+  // Memoize getById function to prevent unnecessary re-renders
+  const getById = useCallback((id) => {
+    // If already loading this ID, don't fetch again
+    if (loading) return Promise.resolve(data);
+    return fetchResource(id);
+  }, [fetchResource, loading, data]);
 
   // Fetch data on mount if requested
   useEffect(() => {
@@ -215,7 +271,7 @@ const useFetchApi = (endpoint, options = {}) => {
     params,
     pagination,
     fetchResource,
-    getById: (id) => fetchResource(id),
+    getById,
     refetch,
     updateParams
   };

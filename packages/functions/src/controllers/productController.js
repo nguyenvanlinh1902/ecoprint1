@@ -1,14 +1,9 @@
-import { CustomError } from '../exceptions/customError.js';
 import { admin, adminStorage } from '../config/firebaseAdmin.js';
 import * as xlsx from 'xlsx';
-import { Readable } from 'stream';
 import multer from '@koa/multer';
-import { v4 as uuidv4 } from 'uuid';
 import categoryRepository from '../repositories/categoryRepository.js';
 import productRepository from '../repositories/productRepository.js';
-import fileUploadRepository from '../repositories/fileUploadRepository.js';
-import { Timestamp } from '@google-cloud/firestore';
-import { generateSlug } from '../utils/stringUtils.js';
+import { fileUploadRepository } from '../repositories/fileUploadRepository.js';
 
 const firestore = admin.firestore();
 
@@ -47,8 +42,18 @@ export const createProduct = async (ctx) => {
       return;
     }
     
+    // Đảm bảo trường images luôn được khởi tạo là một mảng
+    if (!productData.images) {
+      productData.images = [];
+    }
+    
+    // Nếu có imageUrl nhưng không có trong mảng images, thêm vào
+    if (productData.imageUrl && !productData.images.includes(productData.imageUrl)) {
+      productData.images.push(productData.imageUrl);
+    }
+    
     // Create product using the product service
-    const newProduct = await productService.createProduct(productData);
+    const newProduct = await productService.create(productData);
     console.log('[ProductController] Product created successfully:', newProduct.id);
     
     ctx.status = 201;
@@ -74,11 +79,13 @@ export const createProduct = async (ctx) => {
  */
 export const updateProduct = async (ctx) => {
   try {
-    const { id } = ctx.params;
-    console.log('[ProductController] Updating product:', id);
+    // Lấy productId từ đúng nguồn, ưu tiên params.productId, sau đó mới đến params.id
+    const productId = ctx.params.productId || ctx.params.id;
+    console.log('[ProductController] Updating product:', productId);
+    console.log('[ProductController] Request params:', ctx.params);
     console.log('[ProductController] Request body:', ctx.req.body);
     
-    if (!id) {
+    if (!productId) {
       ctx.status = 400;
       ctx.body = { 
         success: false,
@@ -98,9 +105,21 @@ export const updateProduct = async (ctx) => {
       return;
     }
     
+    const updateData = {...ctx.req.body};
+    
+    // Đảm bảo trường images luôn là một mảng
+    if (!updateData.images) {
+      updateData.images = [];
+    }
+    
+    // Nếu có imageUrl nhưng không có trong mảng images, thêm vào
+    if (updateData.imageUrl && !updateData.images.includes(updateData.imageUrl)) {
+      updateData.images.push(updateData.imageUrl);
+    }
+    
     // Update product using the product service
-    const updatedProduct = await productService.updateProduct(id, ctx.req.body);
-    console.log('[ProductController] Product updated successfully:', id);
+    const updatedProduct = await productService.update(productId, updateData);
+    console.log('[ProductController] Product updated successfully:', productId);
     
     ctx.status = 200;
     ctx.body = {
@@ -124,8 +143,20 @@ export const updateProduct = async (ctx) => {
  */
 export const getProduct = async (ctx) => {
   try {
-    console.log('[ProductController] Getting product by ID (admin):', ctx.params.productId);
-    const { productId } = ctx.params;
+    // Lấy productId từ đúng nguồn, ưu tiên params.productId, sau đó mới đến params.id
+    const productId = ctx.params.productId || ctx.params.id;
+    console.log('[ProductController] Getting product by ID (admin):', productId);
+    console.log('[ProductController] Request params:', ctx.params);
+    
+    if (!productId) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        error: 'Missing product ID',
+        message: 'Product ID is required' 
+      };
+      return;
+    }
     
     // Check if product exists
     const productDoc = await firestore.collection('products').doc(productId).get();
@@ -185,28 +216,22 @@ export const getProduct = async (ctx) => {
  */
 export const getAllProducts = async (ctx) => {
   try {
-    console.log('[ProductController] Query params:', ctx.query);
-    
-    const { 
+    // Chỉ giữ lại pagination, bỏ hết filter
+    const {
       page = 1, 
-      limit = 20, 
-      sort = 'createdAt', 
-      order = 'desc',
-      search = '',
-      status,
-      category
+      limit = 100 // Tăng limit để lấy nhiều sản phẩm hơn
     } = ctx.query;
     
-    // Prepare options for repository
+    // Đơn giản hóa options để chỉ phân trang
     const options = {
-      category,
-      sort,
-      order,
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
-      search,
-      status
+      // Mặc định sắp xếp theo ngày tạo giảm dần
+      sort: 'createdAt',
+      order: 'desc'
     };
+    
+    console.log('[ProductController] Fetching all products for admin (pagination only)');
     
     // Get products using the product service (which is productRepository)
     const result = await productService.findAll(options);
@@ -255,10 +280,12 @@ export const getAllProducts = async (ctx) => {
  */
 export const deleteProduct = async (ctx) => {
   try {
-    const { id } = ctx.req.params;
-    console.log('[ProductController] Deleting product:', id);
+    // Lấy productId từ đúng nguồn (ctx.params hoặc ctx.req.params)
+    const productId = ctx.params.productId || ctx.params.id;
+    console.log('[ProductController] Deleting product:', productId);
+    console.log('[ProductController] Request params:', ctx.params);
     
-    if (!id) {
+    if (!productId) {
       ctx.status = 400;
       ctx.body = { 
         success: false,
@@ -269,8 +296,8 @@ export const deleteProduct = async (ctx) => {
     }
     
     // Delete product using the product service
-    await productService.deleteProduct(id);
-    console.log('[ProductController] Product deleted successfully:', id);
+    await productService.deleteProduct(productId);
+    console.log('[ProductController] Product deleted successfully:', productId);
     
     ctx.status = 200;
     ctx.body = {
@@ -347,16 +374,13 @@ export const createCategory = async (ctx) => {
  */
 export const getAllCategories = async (ctx) => {
   try {
-    console.log('[ProductController] Fetching all categories');
-    
-    // Get categories using the categoryService
+
     const categories = await categoryService.findAll();
-    console.log(`[ProductController] Successfully fetched ${categories.length} categories`);
-    
+
     ctx.status = 200;
     ctx.body = {
       success: true,
-      categories
+      data: categories
     };
   } catch (error) {
     console.error('[ProductController] Error fetching categories:', error);
@@ -375,7 +399,7 @@ export const getAllCategories = async (ctx) => {
  */
 export const getCategoryById = async (ctx) => {
   try {
-    const { id } = ctx.req.params;
+    const { id } = ctx.params;
     console.log('[ProductController] Fetching category by ID:', id);
     
     if (!id) {
@@ -426,26 +450,106 @@ export const getCategoryById = async (ctx) => {
 export const uploadProductImage = async (ctx) => {
   try {
     console.log('[ProductController] Processing image upload request');
+    console.log('[ProductController] Request body type:', typeof ctx.req.body);
+    console.log('[ProductController] Request body keys:', ctx.req.body ? Object.keys(ctx.req.body) : []);
+    
+    // Get productId from request, with fallback to 'temp' if not provided
+    let productId = null;
+    
+    if (ctx.req.body && ctx.req.body.productId) {
+      productId = ctx.req.body.productId;
+      console.log('[ProductController] Found productId in request body:', productId);
+    } else if (ctx.query && ctx.query.productId) {
+      productId = ctx.query.productId;
+      console.log('[ProductController] Found productId in query params:', productId);
+    }
+    
+    // Nếu productId không tồn tại hoặc là 'new', sử dụng ID tạm thời
+    if (!productId || productId === 'new' || productId === 'null' || productId === 'undefined') {
+      productId = `temp_${Date.now()}`;
+      console.log('[ProductController] Using temporary productId:', productId);
+    }
     
     // Lấy file từ các nguồn khác nhau
     let fileData = null;
     
+    // First check if middleware uploaded the file
+    if (ctx.state && ctx.state.uploadedFile) {
+      console.log('[ProductController] Found image in ctx.state.uploadedFile');
+      fileData = ctx.state.uploadedFile;
+    }
+    // Check form field named 'image' directly
+    else if (ctx.req.body && ctx.req.body.image) {
+      console.log('[ProductController] Found image in ctx.req.body.image');
+      fileData = ctx.req.body.image;
+    }
+    // Check form field named 'payload image' (client is using this field name)
+    else if (ctx.req.body && ctx.req.body['payload image']) {
+      console.log('[ProductController] Found image in ctx.req.body["payload image"]');
+      fileData = ctx.req.body['payload image'];
+    }
     // Kiểm tra files từ multer
-    if (ctx.req.files && ctx.req.files.image && ctx.req.files.image.length) {
+    else if (ctx.req.files && ctx.req.files.image && ctx.req.files.image.length) {
       console.log('[ProductController] Found image in ctx.req.files.image');
       fileData = ctx.req.files.image[0];
+    } 
+    // Kiểm tra files từ multer với tên 'payload image'
+    else if (ctx.req.files && ctx.req.files['payload image'] && ctx.req.files['payload image'].length) {
+      console.log('[ProductController] Found image in ctx.req.files["payload image"]');
+      fileData = ctx.req.files['payload image'][0];
     } 
     // Kiểm tra file từ multer.single
     else if (ctx.req.file) {
       console.log('[ProductController] Found image in ctx.req.file');
       fileData = ctx.req.file;
     }
-    // Kiểm tra base64 trong body
-    else if (ctx.req.body && ctx.req.body.image) {
-      console.log('[ProductController] Found image in ctx.req.body as base64');
-      fileData = ctx.req.body;
-    } else {
+    // Check entire body if no other options worked
+    else if (ctx.req.body && Object.keys(ctx.req.body).length > 0) {
+      // Try to find any key that might contain the file
+      console.log('[ProductController] Searching for file in body keys');
+      for (const key of Object.keys(ctx.req.body)) {
+        const value = ctx.req.body[key];
+        if (Buffer.isBuffer(value) || 
+            (typeof value === 'object' && value.buffer) ||
+            (typeof value === 'string' && value.startsWith('data:'))) {
+          console.log(`[ProductController] Found potential file data in ctx.req.body['${key}']`);
+          fileData = value;
+          break;
+        }
+      }
+    } 
+    // Check raw body - this might be binary data sent directly
+    else if (ctx.req && ctx.req.rawBody) {
+      console.log('[ProductController] Found raw binary data in request');
+      try {
+        // Try to use the raw body as binary data
+        const buffer = ctx.req.rawBody instanceof Buffer 
+          ? ctx.req.rawBody 
+          : Buffer.from(ctx.req.rawBody);
+          
+        fileData = {
+          originalname: `upload_${Date.now()}.jpg`,
+          mimetype: ctx.get('content-type') || 'image/jpeg',
+          buffer: buffer,
+          size: buffer.length
+        };
+        
+        console.log('[ProductController] Created file object from raw binary data');
+      } catch (err) {
+        console.error('[ProductController] Error processing raw body:', err);
+      }
+    }
+    
+    if (!fileData) {
       console.error('[ProductController] No image file found in request');
+      console.error('[ProductController] Request structure:', {
+        hasState: !!ctx.state,
+        hasStateUploadedFile: !!(ctx.state && ctx.state.uploadedFile),
+        hasReqFiles: !!(ctx.req.files),
+        hasReqFile: !!(ctx.req.file),
+        bodyKeys: ctx.req.body ? Object.keys(ctx.req.body) : []
+      });
+      
       ctx.status = 400;
       ctx.body = { 
         success: false,
@@ -455,11 +559,18 @@ export const uploadProductImage = async (ctx) => {
       return;
     }
     
-    // Tạo ID tạm thời cho ảnh sản phẩm
-    const tempImageId = `temp_${Date.now()}`;
+    // Log the file data to diagnose issues
+    console.log('[ProductController] File data type:', typeof fileData);
+    if (typeof fileData === 'object') {
+      console.log('[ProductController] File data keys:', Object.keys(fileData));
+      // Nếu là buffer, log thêm thông tin hữu ích
+      if (fileData.buffer) {
+        console.log('[ProductController] Buffer size:', fileData.buffer.length);
+      }
+    }
     
     // Sử dụng repository để xử lý upload
-    const uploadResult = await fileUploadRepository.uploadProductImage(tempImageId, fileData);
+    const uploadResult = await fileUploadRepository.uploadProductImage(productId, fileData);
     
     if (!uploadResult.success) {
       console.error('[ProductController] Image upload failed:', uploadResult.error);
@@ -470,6 +581,40 @@ export const uploadProductImage = async (ctx) => {
         message: uploadResult.error
       };
       return;
+    }
+    
+    // Cập nhật lại product nếu là sản phẩm đã tồn tại (không phải là temp hoặc new)
+    if (productId && !productId.startsWith('temp_') && productId !== 'new') {
+      console.log('[ProductController] Updating product with new image URL:', uploadResult.fileUrl);
+      
+      try {
+        // Lấy sản phẩm hiện tại
+        const product = await productService.findById(productId);
+        
+        if (product) {
+          // Cập nhật mảng images và imageUrl
+          const updatedImages = product.images || [];
+          
+          // Thêm URL mới vào đầu mảng
+          if (!updatedImages.includes(uploadResult.fileUrl)) {
+            updatedImages.unshift(uploadResult.fileUrl);
+          }
+          
+          // Cập nhật sản phẩm
+          await productService.update(productId, {
+            images: updatedImages,
+            imageUrl: uploadResult.fileUrl,
+            updatedAt: new Date()
+          });
+          
+          console.log('[ProductController] Product updated with new image URL');
+        } else {
+          console.log('[ProductController] Product not found for update after image upload');
+        }
+      } catch (updateError) {
+        console.error('[ProductController] Error updating product with image URL:', updateError);
+        // Không fail toàn bộ quá trình nếu không thể update product
+      }
     }
     
     // Trả về kết quả thành công
@@ -602,14 +747,14 @@ export const importProductsMiddleware = upload.single('file');
  */
 export const importProducts = async (ctx) => {
   try {
-    if (!ctx.request.file) {
+    if (!ctx.req.file) {
       ctx.status = 400;
       ctx.body = { error: 'No file uploaded' };
       return;
     }
     
     // Đọc file Excel
-    const workbook = xlsx.read(ctx.request.file.buffer);
+    const workbook = xlsx.read(ctx.req.file.buffer);
     const worksheet = workbook.Sheets[workbook.SheetNames[1]]; // Products sheet
     const products = xlsx.utils.sheet_to_json(worksheet);
     
@@ -747,9 +892,49 @@ export const importProducts = async (ctx) => {
  */
 export const getProducts = async (ctx) => {
   try {
-    console.log('[ProductController] Public products endpoint called');
-    // Reuse the getAllProducts functionality with proper naming for route
-    return await getAllProducts(ctx);
+    // Chỉ giữ lại pagination
+    const {
+      page = 1, 
+      limit = 100, // Tăng limit mặc định để lấy nhiều sản phẩm hơn
+    } = ctx.query;
+    
+    // Đơn giản hóa options, bỏ các filter
+    const options = {
+      limit: Number(limit),
+      offset: (Number(page) - 1) * Number(limit),
+      // Mặc định sắp xếp theo ngày tạo giảm dần
+      sort: 'createdAt',
+      order: 'desc'
+    };
+    
+    console.log('[ProductController] Fetching all products with pagination only');
+    const result = await productService.findAll(options);
+    
+    if (!result || !result.products) {
+      console.log('[ProductController] No products found or unexpected result format');
+      ctx.status = 200;
+      ctx.body = {
+        success: true,
+        products: [],
+        pagination: {
+          total: 0,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: 0
+        }
+      };
+      return;
+    }
+    
+    console.log(`[ProductController] Fetched ${result.products.length} products successfully`);
+
+    // Return products directly at the top level as expected by the client
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      products: result.products,
+      pagination: result.pagination
+    };
   } catch (error) {
     console.error('[ProductController] Error in public products endpoint:', error);
     ctx.status = 500;
@@ -767,7 +952,7 @@ export const getProducts = async (ctx) => {
  */
 export const updateCategory = async (ctx) => {
   try {
-    const { id } = ctx.req.params;
+    const { id } = ctx.params;
     console.log('[ProductController] Updating category:', id);
     console.log('[ProductController] Request body:', ctx.req.body);
     
@@ -818,7 +1003,7 @@ export const updateCategory = async (ctx) => {
  */
 export const deleteCategory = async (ctx) => {
   try {
-    const { id } = ctx.req.params;
+    const { id } = ctx.params;
     console.log('[ProductController] Deleting category:', id);
     
     if (!id) {

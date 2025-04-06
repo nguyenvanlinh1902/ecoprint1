@@ -14,10 +14,8 @@ const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
  */
 export const authMiddleware = async (ctx, next) => {
   try {
-    // Kiểm tra header Authorization hoặc X-User-Email
     const authHeader = ctx.headers.authorization;
     const userEmail = ctx.headers['x-user-email'];
-    
     if (!authHeader && !userEmail) {
       ctx.status = 401;
       ctx.body = {
@@ -28,14 +26,9 @@ export const authMiddleware = async (ctx, next) => {
       };
       return;
     }
-    
     let user = null;
-    
-    // Ưu tiên xác thực bằng email
     if (userEmail) {
-      // Tìm user dựa trên email
       const userProfile = await userProfileRepository.getUserProfileByEmail(userEmail);
-      
       if (!userProfile) {
         ctx.status = 401;
         ctx.body = {
@@ -46,7 +39,6 @@ export const authMiddleware = async (ctx, next) => {
         };
         return;
       }
-      
       if (userProfile.status !== 'active') {
         ctx.status = 403;
         ctx.body = {

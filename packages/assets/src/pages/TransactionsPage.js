@@ -5,20 +5,23 @@ import {
   FormControl, InputLabel, Select, MenuItem, TextField,
   InputAdornment, Button, Pagination, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Stack, IconButton, Tooltip, Divider, Alert
+  Stack, IconButton, Tooltip, Divider, Alert, Avatar
 } from '@mui/material';
 import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Add as AddIcon,
   CloudUpload as UploadIcon,
-  AccountBalance as AccountBalanceIcon
+  AccountBalance as AccountBalanceIcon,
+  Receipt as ReceiptIcon,
+  Visibility as VisibilityIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../helpers/formatters';
 import { useApp } from '../context/AppContext';
 import useFetchApi from '../hooks/api/useFetchApi';
+import ReceiptUploader from '../components/ReceiptUploader';
 
 const TransactionsPage = () => {
   const { user } = useApp();
@@ -102,6 +105,14 @@ const TransactionsPage = () => {
   const [depositError, setDepositError] = useState('');
   const [depositSuccess, setDepositSuccess] = useState(false);
   
+  // Define receipt preview dialog state
+  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [previewTitle, setPreviewTitle] = useState('');
+
+  // Add state for Firebase uploaded receipt URL
+  const [firebaseReceiptUrl, setFirebaseReceiptUrl] = useState('');
+
   const fetchTransactions = () => {
     // Build query parameters
     const params = {
@@ -176,10 +187,16 @@ const TransactionsPage = () => {
     }
   };
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setReceiptFile(e.target.files[0]);
-    }
+  // Replace handleFileChange with this handler for Firebase uploads
+  const handleReceiptUploadSuccess = (url) => {
+    console.log('Receipt uploaded successfully to Firebase:', url);
+    setFirebaseReceiptUrl(url);
+    setDepositError(''); // Clear any previous errors
+  };
+  
+  const handleReceiptUploadError = (error) => {
+    console.error('Receipt upload error:', error);
+    setDepositError(`Failed to upload receipt: ${error}`);
   };
 
   const handleCreateDeposit = async () => {
@@ -194,19 +211,27 @@ const TransactionsPage = () => {
         setDepositError('Please select a payment method.');
         return;
       }
+      
+      // Check if we have a receipt URL from Firebase upload
+      if (!firebaseReceiptUrl) {
+        setDepositError('Please upload a receipt image for your deposit.');
+        return;
+      }
 
       setDepositLoading(true);
       setDepositError('');
 
-      // 1. Create deposit transaction
+      // 1. Create deposit transaction with Firebase receipt URL included
       const depositData = {
         amount: parseFloat(depositAmount),
         bankName: depositMethod,
         transferDate: new Date(),
         reference: depositNote || '',
-        email: localStorage.getItem('user_email')
+        email: localStorage.getItem('user_email'),
+        receiptUrl: firebaseReceiptUrl // Include the Firebase URL directly
       };
 
+      console.log('Creating deposit with data:', depositData);
       const depositResponse = await api.transactions.requestDeposit(depositData);
       
       console.log('Deposit response:', depositResponse);
@@ -217,34 +242,42 @@ const TransactionsPage = () => {
       }
       
       const transactionId = depositResponse.data.transactionId;
+      console.log(`Deposit transaction created with ID: ${transactionId}`);
 
-      // 2. Upload receipt if provided
-      if (receiptFile && transactionId) {
-        const formData = new FormData();
-        formData.append('receipt', receiptFile);
-        
-        await api.transactions.uploadReceipt(transactionId, formData);
-      }
-
+      // Hiển thị thông báo thành công ngay lập tức
       setDepositSuccess(true);
       
-      // Refresh transaction list
-      refetchTransactions();
+      // Refresh transaction list để hiển thị giao dịch mới ngay lập tức
+      await refetchTransactions();
 
-      // Close dialog after success
+      // Close dialog after success with delay
       setTimeout(() => {
         handleCloseDepositDialog();
+        // Xóa trạng thái Firebase URL để tránh sử dụng lại
+        setFirebaseReceiptUrl('');
       }, 3000);
 
     } catch (error) {
-      /* error removed */
+      console.error('Deposit error:', error);
       setDepositError(
-        error.response?.data?.message || 
+        error.response?.data?.error || error.response?.data?.message || error.message || 
         'Failed to create deposit request. Please try again later.'
       );
     } finally {
       setDepositLoading(false);
     }
+  };
+
+  // Function to handle showing receipt preview
+  const handleShowReceipt = (url, title) => {
+    setPreviewImage(url);
+    setPreviewTitle(title || 'Receipt');
+    setReceiptPreviewOpen(true);
+  };
+
+  // Function to close receipt preview
+  const handleClosePreview = () => {
+    setReceiptPreviewOpen(false);
   };
   
   return (
@@ -355,16 +388,17 @@ const TransactionsPage = () => {
               <TableRow>
                 <TableCell>ID</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Description</TableCell>
+                <TableCell>Note</TableCell>
                 <TableCell align="right">Amount</TableCell>
                 <TableCell>Date</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Receipt</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={7} align="center">
                     <CircularProgress size={30} sx={{ my: 2 }} />
                   </TableCell>
                 </TableRow>
@@ -381,7 +415,7 @@ const TransactionsPage = () => {
                         {transaction.type}
                       </Typography>
                     </TableCell>
-                    <TableCell>{transaction.description}</TableCell>
+                    <TableCell>{transaction.reference || transaction.note || transaction.description || '-'}</TableCell>
                     <TableCell align="right" sx={{ 
                       color: transaction.type === 'deposit' || transaction.type === 'refund' 
                         ? 'success.main' 
@@ -396,11 +430,43 @@ const TransactionsPage = () => {
                     <TableCell>
                       <StatusBadge status={transaction.status} />
                     </TableCell>
+                    <TableCell>
+                      {transaction.thumbnailUrl || transaction.receiptUrl ? (
+                        <Tooltip title="View Receipt">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleShowReceipt(
+                              transaction.receiptUrl,
+                              `Receipt for ${transaction.type} - ${formatCurrency(transaction.amount)}`
+                            )}
+                          >
+                            {transaction.thumbnailUrl ? (
+                              <Avatar 
+                                src={transaction.thumbnailUrl} 
+                                alt="Receipt" 
+                                variant="rounded"
+                                sx={{ width: 36, height: 36 }}
+                              />
+                            ) : (
+                              <ReceiptIcon fontSize="small" />
+                            )}
+                          </IconButton>
+                        </Tooltip>
+                      ) : transaction.type === 'deposit' ? (
+                        <Tooltip title="No receipt uploaded">
+                          <span>
+                            <IconButton size="small" disabled>
+                              <ReceiptIcon fontSize="small" color="disabled" />
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} align="center">
+                  <TableCell colSpan={7} align="center">
                     No transactions found.
                   </TableCell>
                 </TableRow>
@@ -428,13 +494,17 @@ const TransactionsPage = () => {
         onClose={handleCloseDepositDialog}
         maxWidth="sm"
         fullWidth
+        keepMounted={false}
+        disablePortal={false}
+        disableEnforceFocus={false}
+        disableAutoFocus={false}
       >
         <DialogTitle>
           Deposit Funds
         </DialogTitle>
         <DialogContent>
           {depositSuccess ? (
-            <Alert severity="success" sx={{ my: 2 }}>
+            <Alert severity="success" sx={{ my: 2, fontSize: '1.1rem', fontWeight: 'bold' }}>
               Deposit request submitted successfully! Your account balance will be updated after admin review.
             </Alert>
           ) : (
@@ -495,29 +565,12 @@ const TransactionsPage = () => {
                 </Grid>
                 
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Payment Receipt
-                  </Typography>
-                  
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    startIcon={<UploadIcon />}
+                  <ReceiptUploader
+                    onUploadSuccess={handleReceiptUploadSuccess}
+                    onUploadError={handleReceiptUploadError}
+                    transactionId={`temp_${Date.now()}`} // Create a temporary path until we have transaction ID
                     disabled={depositLoading}
-                    fullWidth
-                  >
-                    {receiptFile ? receiptFile.name : 'Upload Receipt'}
-                    <input
-                      type="file"
-                      hidden
-                      accept="image/*, application/pdf"
-                      onChange={handleFileChange}
-                    />
-                  </Button>
-                  
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                    Upload a screenshot or PDF of your payment confirmation. Supported formats: JPG, PNG, PDF.
-                  </Typography>
+                  />
                 </Grid>
               </Grid>
               
@@ -550,16 +603,66 @@ const TransactionsPage = () => {
           <Button onClick={handleCloseDepositDialog} disabled={depositLoading}>
             {depositSuccess ? 'Close' : 'Cancel'}
           </Button>
-          {!depositSuccess && (
+          {!depositSuccess ? (
             <Button 
               onClick={handleCreateDeposit} 
               variant="contained" 
               disabled={depositLoading}
               startIcon={depositLoading ? <CircularProgress size={20} /> : <AccountBalanceIcon />}
+              aria-busy={depositLoading}
             >
               {depositLoading ? 'Processing...' : 'Submit Deposit Request'}
             </Button>
+          ) : (
+            <Button 
+              onClick={() => {
+                handleCloseDepositDialog();
+                fetchTransactions();
+              }}
+              variant="contained" 
+              color="success"
+              aria-live="polite"
+            >
+              Done
+            </Button>
           )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Receipt Preview Dialog */}
+      <Dialog
+        open={receiptPreviewOpen}
+        onClose={handleClosePreview}
+        maxWidth="md"
+      >
+        <DialogTitle>{previewTitle}</DialogTitle>
+        <DialogContent>
+          {previewImage && (
+            <Box
+              component="img"
+              src={previewImage}
+              alt="Receipt"
+              sx={{
+                maxWidth: '100%',
+                maxHeight: '70vh',
+                display: 'block',
+                margin: '0 auto'
+              }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePreview}>Close</Button>
+          <Button 
+            component="a" 
+            href={previewImage} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            startIcon={<VisibilityIcon />}
+            color="primary"
+          >
+            Open Full Size
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -4,10 +4,7 @@
 import axios from 'axios';
 import { createResourceMethods, storage } from './helpers';
 
-// Use localhost for API
 const API_URL = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
-
-console.log('Using localhost API URL:', API_URL);
 
 // Create axios instance with default config
 export const apiClient = axios.create({
@@ -88,6 +85,7 @@ export const del = (url, config) => apiClient.delete(url, config);
 // Upload progress tracking helper
 export const uploadWithProgress = async (url, formData, onProgress, config = {}) => {
   try {
+    // Always include credentials for CORS requests
     const uploadConfig = {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -99,6 +97,7 @@ export const uploadWithProgress = async (url, formData, onProgress, config = {})
           onProgress(percentCompleted);
         }
       },
+      withCredentials: true,
       ...config
     };
     
@@ -108,9 +107,16 @@ export const uploadWithProgress = async (url, formData, onProgress, config = {})
     }
     
     const response = await apiClient.post(url, formData, uploadConfig);
-    
     return response.data;
   } catch (error) {
+    // Enhance error with more details if available
+    if (error.response) {
+      // Try to add better error information if available
+      if (error.response.data) {
+        error.message = error.response.data.error || error.response.data.message || error.message;
+      }
+    }
+    
     throw error;
   }
 };
@@ -138,7 +144,18 @@ const addAuthData = (params = {}) => {
 // API Resource Methods
 export const products = {
   getAll: (params) => {
+    // Không gửi params để lấy tất cả sản phẩm, frontend sẽ lọc sau
+    const enhancedParams = addAuthData({});
+    return get('/products', { params: enhancedParams });
+  },
+  getAllFiltered: (params) => {
+    // Giữ phương thức cũ để tương thích ngược
     const enhancedParams = addAuthData(params);
+    return get('/products', { params: enhancedParams });
+  },
+  getAllProducts: () => {
+    // Phương thức mới, đơn giản hóa - lấy tất cả sản phẩm
+    const enhancedParams = addAuthData();
     return get('/products', { params: enhancedParams });
   },
   getById: (id) => {
@@ -149,23 +166,107 @@ export const products = {
     const enhancedParams = addAuthData();
     return get('/categories', { params: enhancedParams });
   },
-  uploadImage: (formData) => {
-    const userEmail = localStorage.getItem('user_email');
-    const userRole = localStorage.getItem('user_role');
+  uploadImage: async (formData, productId) => {
+    console.log('[API] Starting image upload');
     
+    // Đảm bảo productId được đính kèm trong formData
+    try {
+      // Kiểm tra xem formData có đủ dữ liệu không
+      if (formData instanceof FormData) {
+        let hasProductId = false;
+        let hasImageFile = false;
+        
+        // Log các key trong FormData để debug
+        formData.forEach((value, key) => {
+          console.log(`[API] FormData contains key: ${key}`);
+          if (key === 'productId') {
+            hasProductId = true;
+            console.log(`[API] FormData contains productId: ${value}`);
+          }
+          if (key === 'image' || key === 'file') {
+            hasImageFile = true;
+            console.log(`[API] FormData contains image file: ${value.name}, size: ${value.size} bytes`);
+          }
+        });
+        
+        // Thêm productId vào formData nếu không có
+        if (!hasProductId && productId) {
+          console.log(`[API] Adding productId to FormData: ${productId}`);
+          formData.append('productId', productId);
+        } else if (!hasProductId) {
+          console.warn('[API] No productId provided for image upload, using "new"');
+          formData.append('productId', 'new');
+        }
+        
+        // Kiểm tra nếu không có file và chuyển đổi key nếu cần
+        if (!hasImageFile) {
+          console.error('[API] No image file found in FormData');
+          throw new Error('No image file found in upload data');
+        }
+        
+        // Tạo một FormData mới với key 'file' cho controller mới
+        const newFormData = new FormData();
+        
+        let fileValue = null;
+        formData.forEach((value, key) => {
+          if (key === 'image') {
+            // Đổi key 'image' thành 'file' để phù hợp với controller mới
+            fileValue = value;
+            console.log('[API] Renaming FormData key from "image" to "file"');
+          } else {
+            // Giữ nguyên các key khác
+            newFormData.append(key, value);
+          }
+        });
+        
+        // Thêm file với key 'file' nếu đã tìm thấy từ key 'image'
+        if (fileValue) {
+          newFormData.append('file', fileValue);
+        }
+        
+        // Thay thế formData cũ bằng formData mới
+        formData = newFormData;
+      } else {
+        console.error('[API] Invalid FormData object provided');
+        throw new Error('Invalid upload data format');
+      }
+    } catch (error) {
+      console.error('[API] Error preparing upload data:', error);
+    }
+    
+    // Cấu hình đặc biệt cho request upload file
     const config = {
       headers: {
         'Content-Type': 'multipart/form-data',
-        'X-User-Email': userEmail || '',
-        'X-User-Role': userRole || 'user'
-      }
+      },
+      withCredentials: true, // Bảo đảm xác thực cookie được gửi
+      // In ra quá trình tải lên
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        console.log(`[API] Upload progress: ${percentCompleted}%`);
+      },
     };
     
-    return uploadWithProgress('/products/upload-image', formData, null, config);
+    try {
+      console.log('[API] Sending image upload request to server');
+      const response = await apiClient.post('/upload/image', formData, config);
+      console.log('[API] Image upload response:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('[API] Image upload failed:', error.message);
+      
+      // Log chi tiết về lỗi để debug
+      if (error.response) {
+        console.error('[API] Error response status:', error.response.status);
+        console.error('[API] Error response data:', error.response.data);
+      }
+      
+      throw error;
+    }
   },
   createCategory: (data) => {
     const enhancedData = addAuthData(data);
-    return post('/categories', enhancedData);
+    return post('/products/categories', enhancedData);
   },
   update: (id, data) => {
     const enhancedData = addAuthData(data);
@@ -229,30 +330,72 @@ export const orders = {
 export const transactions = {
   getAll: (params) => {
     const enhancedParams = addAuthData(params);
-    return get('/transactions', { params: enhancedParams });
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return get('/transactions', { 
+      params: enhancedParams,
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
   },
   getById: (id) => {
     const enhancedParams = addAuthData();
-    return get(`/transactions/${id}`, { params: enhancedParams });
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return get(`/transactions/${id}`, { 
+      params: enhancedParams,
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
   },
   create: (data) => {
     const enhancedData = addAuthData(data);
-    return post('/transactions', enhancedData);
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return post('/transactions', enhancedData, {
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
   },
   requestDeposit: (data) => {
     const enhancedData = addAuthData(data);
-    return post('/transactions/deposit', enhancedData);
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return post('/transactions/deposit', enhancedData, {
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
   },
   uploadReceipt: (id, formData) => {
     const userEmail = localStorage.getItem('user_email');
     const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token');
+    
+    // Make sure email is included in the formData
+    if (userEmail && !formData.has('email')) {
+      formData.append('email', userEmail);
+    }
     
     const config = {
       headers: {
         'Content-Type': 'multipart/form-data',
         'X-User-Email': userEmail || '',
-        'X-User-Role': userRole || 'user'
-      }
+        'X-User-Role': userRole || 'user',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      withCredentials: true
     };
     
     return uploadWithProgress(`/transactions/${id}/upload-receipt`, formData, null, config);
@@ -320,15 +463,15 @@ export const admin = {
   // Categories
   getAllCategories: () => {
     const enhancedParams = addAuthData();
-    return get('/admin/categories', { params: enhancedParams });
+    return get('/categories', { params: enhancedParams });
   },
   updateCategory: (id, data) => {
     const enhancedData = addAuthData(data);
-    return put(`/admin/categories/${id}`, enhancedData);
+    return put(`/categories/${id}`, enhancedData);
   },
   deleteCategory: (id) => {
     const enhancedParams = addAuthData();
-    return del(`/admin/categories/${id}`, { params: enhancedParams });
+    return del(`/categories/${id}`, { params: enhancedParams });
   },
   
   // Orders

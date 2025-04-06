@@ -145,14 +145,16 @@ const ProductsPage = () => {
   }, [productId]);
   
   const loadProductData = async () => {
+    if (!productId) return;
+    
+    setLoading(true);
+    setFormError('');
+    
     try {
-      setLoading(true);
-      console.log('Loading product data for ID:', productId);
       const response = await api.admin.getProduct(productId);
       
-      if (response.data && response.data.success) {
+      if (response?.data?.success) {
         const product = response.data.data;
-        console.log('Product data loaded:', product);
         
         // Format data to match form structure
         setFormData({
@@ -169,11 +171,9 @@ const ProductsPage = () => {
           imageFile: null
         });
       } else {
-        console.error('Failed to load product data:', response);
         setFormError('Failed to load product data. Invalid response format.');
       }
     } catch (error) {
-      console.error('Error loading product data:', error);
       setFormError('Failed to load product data: ' + (error.message || 'Unknown error'));
     } finally {
       setLoading(false);
@@ -184,35 +184,61 @@ const ProductsPage = () => {
     setLoading(true);
     setError('');
     try {
-      console.log('Fetching products with page:', page + 1, 'limit:', rowsPerPage);
+      // Only send pagination parameters, no filtering
       const response = await api.admin.getAllProducts({
         page: page + 1,
         limit: rowsPerPage
       });
       
-      console.log('Products response:', response);
-      
-      if (response && response.data && response.data.success) {
-        const productsData = response.data.products || [];
-        const paginationData = response.data.pagination || { 
+      if (response?.data?.success) {
+        // Cập nhật cấu trúc dữ liệu - lấy products từ data.products
+        const productsData = response.data.data?.products || [];
+        const paginationData = response.data.data?.pagination || { 
           total: 0, 
           page: 1, 
           totalPages: 1 
         };
         
+        console.log('Fetched admin products:', productsData.length);
+        
         // Ensure products is always an array
         if (!Array.isArray(productsData)) {
-          console.error('Products data is not an array:', productsData);
           setProducts([]);
         } else {
-          console.log(`Loaded ${productsData.length} products`);
-          setProducts(productsData);
+          // Apply client-side filtering
+          let filteredProducts = productsData;
+          
+          // Filter by search term
+          if (filters.search) {
+            const searchLower = filters.search.toLowerCase();
+            filteredProducts = filteredProducts.filter(product => 
+              (product.name && product.name.toLowerCase().includes(searchLower)) ||
+              (product.description && product.description.toLowerCase().includes(searchLower)) ||
+              (product.sku && product.sku.toLowerCase().includes(searchLower))
+            );
+          }
+          
+          // Filter by category
+          if (filters.category) {
+            filteredProducts = filteredProducts.filter(product => 
+              product.categoryId === filters.category
+            );
+          }
+          
+          // Filter by status
+          if (filters.status) {
+            filteredProducts = filteredProducts.filter(product => 
+              product.status === filters.status
+            );
+          }
+          
+          console.log('Filtered to', filteredProducts.length, 'products');
+          setProducts(filteredProducts);
         }
         
         setTotal(paginationData.total || 0);
         setError('');
       } else {
-        console.error('Failed to fetch products:', response);
         setError('Failed to load products. Please try again.');
         setProducts([]);
       }
@@ -230,19 +256,16 @@ const ProductsPage = () => {
   
   const fetchCategories = async () => {
     try {
-      console.log('Fetching product categories');
-      // Sử dụng api.products.getCategories thay vì gọi trực tiếp
+      // Sử dụng api.products.getCategories thay vì api.admin.getAllCategories
       const response = await api.products.getCategories();
       
       if (response.data && response.data.success) {
         setCategories(response.data.data || []);
       } else {
-        console.warn('No categories found or unexpected response format');
         setCategories([]);
       }
     } catch (error) {
-      console.error("Error fetching categories:", error);
-      // Không hiển thị lỗi cho người dùng, chỉ ghi log
+      // Không hiển thị lỗi cho người dùng, chỉ xử lý im lặng
       setCategories([]);
     }
   };
@@ -264,7 +287,7 @@ const ProductsPage = () => {
   };
   
   const handleApplyFilters = () => {
-    setPage(0);
+    // Just fetch the products again and apply client-side filtering
     fetchProducts();
   };
   
@@ -274,7 +297,8 @@ const ProductsPage = () => {
       category: '',
       status: ''
     });
-    setPage(0);
+    // Refetch without filters
+    fetchProducts();
   };
   
   const handleStatusChange = (e) => {
@@ -299,7 +323,7 @@ const ProductsPage = () => {
     
     try {
       setDeleting(true);
-      await api.delete(`/api/admin/products/${productToDelete.id}`);
+      await api.admin.deleteProduct(productToDelete.id);
       
       setProducts(products.filter(p => p.id !== productToDelete.id));
       handleDeleteDialogClose();
@@ -469,11 +493,13 @@ const ProductsPage = () => {
         method = 'put';
       }
       
-      await api[method](url, submitData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      if (productId) {
+        // Use updateProduct for editing
+        await api.admin.updateProduct(productId, submitData);
+      } else {
+        // Use createProduct for new products
+        await api.admin.createProduct(submitData);
+      }
       
       setSuccess(true);
       
@@ -573,7 +599,7 @@ const ProductsPage = () => {
 
   const downloadTemplateFile = async () => {
     try {
-      const response = await api.get('/api/admin/products/template', {
+      const response = await api.get('/products/template', {
         responseType: 'blob'
       });
       
@@ -605,11 +631,8 @@ const ProductsPage = () => {
       const formData = new FormData();
       formData.append('file', importFile);
 
-      const response = await api.post('/api/admin/products/import', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      // Use the importBatch method
+      const response = await api.orders.importBatch(formData);
 
       setImportResult({
         total: response.data.total || 0,
@@ -836,7 +859,7 @@ const ProductsPage = () => {
                     onChange={(e) => handleFilterChange('category', e.target.value)}
                   >
                     <MenuItem value="">All Categories</MenuItem>
-                    {categories.map((category) => (
+                    {Array.isArray(categories) && categories.filter(Boolean).map((category) => (
                       <MenuItem key={category.id} value={category.id}>
                         {category.name}
                       </MenuItem>
@@ -897,6 +920,7 @@ const ProductsPage = () => {
                   <TableCell>Category</TableCell>
                   <TableCell>Price</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell align="center">Image</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -967,6 +991,33 @@ const ProductsPage = () => {
                           color={product.status === 'active' ? 'success' : 'default'} 
                           size="small" 
                         />
+                      </TableCell>
+                      <TableCell align="center">
+                        {product.images && product.images.length > 0 ? (
+                          <img 
+                            src={product.images[0]} 
+                            alt={product.name}
+                            style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4 }}
+                          />
+                        ) : product.imageUrl ? (
+                          <img 
+                            src={product.imageUrl} 
+                            alt={product.name}
+                            style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4 }}
+                          />
+                        ) : (
+                          <Box 
+                            bgcolor="grey.200" 
+                            width={50} 
+                            height={50} 
+                            display="flex" 
+                            alignItems="center" 
+                            justifyContent="center"
+                            borderRadius={1}
+                          >
+                            No Img
+                          </Box>
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         <IconButton onClick={() => handleViewProduct(product.id)}>

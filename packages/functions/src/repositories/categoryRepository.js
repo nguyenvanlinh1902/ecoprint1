@@ -34,7 +34,6 @@ const categoryRepository = {
    */
   findAll: async () => {
     try {
-      console.log('[CategoryRepository] Finding all categories');
       const snapshot = await collection.get();
       
       const categories = [];
@@ -44,7 +43,6 @@ const categoryRepository = {
       
       return categories;
     } catch (error) {
-      console.error('[CategoryRepository] Error finding all categories:', error);
       throw error;
     }
   },

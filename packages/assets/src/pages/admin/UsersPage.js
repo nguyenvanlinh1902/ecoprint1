@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Table, TableBody, TableCell,
@@ -18,6 +18,9 @@ import {
 import { get, put } from '../../api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatDate } from '../../helpers/formatters';
+
+// No-op logging function for production
+const devLog = () => {};
 
 const UsersPage = () => {
   const [users, setUsers] = useState([]);
@@ -39,7 +42,8 @@ const UsersPage = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   
-  const fetchUsers = async () => {
+  // Using useCallback to memoize fetchUsers
+  const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -58,12 +62,12 @@ const UsersPage = () => {
         params.search = search;
       }
       
-      console.log('Fetching users with params:', params);
+      devLog('Fetching users with params:', params);
       
       // Use the api object directly instead of axios
       const response = await get('admin/users', { params });
       
-      console.log('Users API response:', response.data);
+      devLog('Users API response:', response.data);
       
       if (response.data && response.data.data) {
         setUsers(response.data.data.users || []);
@@ -81,11 +85,11 @@ const UsersPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, status, search]); // Dependencies that affect fetching
   
   useEffect(() => {
     fetchUsers();
-  }, [page, status]);
+  }, [fetchUsers]); // Only dependency is the memoized fetchUsers function
   
   const handlePageChange = (event, value) => {
     setPage(value);
@@ -94,12 +98,13 @@ const UsersPage = () => {
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     setPage(1); // Reset to page 1 when searching
-    fetchUsers();
+    // No need to call fetchUsers() here as the useEffect will handle it when search/page changes
   };
   
   const handleStatusChange = (e) => {
     setStatus(e.target.value);
     setPage(1);
+    // No need to call fetchUsers() here as the useEffect will handle it when status/page changes
   };
   
   const handleDialogOpen = (action, user) => {
@@ -120,7 +125,7 @@ const UsersPage = () => {
     setError('');
     
     try {
-      console.log(`Performing ${dialogAction} on user:`, selectedUser.id);
+      devLog(`Performing ${dialogAction} on user:`, selectedUser.id);
       
       let response;
       
@@ -146,7 +151,7 @@ const UsersPage = () => {
                         dialogAction === 'reject' ? 'rejected' :
                         dialogAction === 'activate' ? 'activated' : 'deactivated';
       
-      console.log('Action response:', response.data);
+      devLog('Action response:', response.data);
       
       // Refresh user list
       await fetchUsers();

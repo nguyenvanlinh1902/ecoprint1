@@ -1,20 +1,20 @@
 import {useState, useCallback} from 'react';
 import {useStore} from '../../reducers/storeReducer';
-import {api} from '../../helpers';
 import {setToast} from '../../actions/storeActions';
 import {handleError} from '../../services/errorService';
-import queryString from 'query-string';
+import {apiClient} from '../../helpers';
 
 /**
- *
- * @param url
- * @param fullResp
- * @param successMsg
- * @param errorMsg
- * @returns {{handleUpload: ((function(*): Promise<*|{success: boolean, error: *}|boolean>)|*), uploading: boolean}}
+ * Hook for handling file uploads through the backend API
+ * @param {Object} options Upload options
+ * @param {string} options.path Storage path category (products, profiles, etc.)
+ * @param {boolean} options.fullResp Whether to return the full response or just success flag
+ * @param {string} options.successMsg Success message
+ * @param {string} options.errorMsg Error message
+ * @returns {{handleUpload: Function, uploading: boolean}}
  */
 export default function useUploadFile({
-  url,
+  path = 'products',
   fullResp = false,
   successMsg = 'Saved successfully',
   errorMsg = 'Failed to save'
@@ -25,38 +25,50 @@ export default function useUploadFile({
   const handleUpload = useCallback(async file => {
     try {
       setUploading(true);
-      const formData = new FormData();
-      const {name, type} = file;
-      formData.append('file', file);
       
-      const queryParams = queryString.stringify({
-        fileName: name,
-        mimeType: type.replace('image/', '')
+      // Create FormData object
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('path', path);
+      
+      // Upload using backend API
+      const response = await apiClient.post('/products/upload-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       
-      const resp = await api(
-        `${url}?${queryParams}`,
-        {
-          body: formData,
-          method: 'POST'
-        }
-      );
+      const result = response.data;
       
-      if (resp.success) {
-        setToast(dispatch, resp.message || successMsg);
+      if (result.success) {
+        setToast(dispatch, successMsg);
+        return fullResp 
+          ? { 
+              success: true, 
+              data: { url: result.imageUrl }, 
+              error: null 
+            } 
+          : true;
+      } else {
+        const errorMessage = result.message || result.error || errorMsg;
+        setToast(dispatch, errorMessage, true);
+        return fullResp 
+          ? { 
+              success: false, 
+              data: null, 
+              error: errorMessage 
+            } 
+          : false;
       }
-      if (resp.error) {
-        setToast(dispatch, resp.error, true);
-      }
-      return fullResp ? resp : resp.success;
     } catch (e) {
       handleError(e);
-      setToast(dispatch, errorMsg, true);
-      return fullResp ? {success: false, error: e.message} : false;
+      const errorMessage = e.response?.data?.message || e.message || errorMsg;
+      setToast(dispatch, errorMessage, true);
+      return fullResp ? {success: false, error: errorMessage} : false;
     } finally {
       setUploading(false);
     }
-  }, [url, dispatch, fullResp, successMsg, errorMsg]);
+  }, [path, dispatch, fullResp, successMsg, errorMsg]);
 
   return {uploading, handleUpload};
 } 

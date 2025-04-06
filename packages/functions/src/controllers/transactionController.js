@@ -1,10 +1,10 @@
 import { admin } from '../config/firebaseAdmin.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import orderRepository from '../repositories/orderRepository.js';
-import fileUploadRepository from '../repositories/fileUploadRepository.js';
 import requestParserRepository from '../repositories/requestParserRepository.js';
 import userRepository from '../repositories/userRepository.js';
 import { CustomError } from '../exceptions/customError.js';
+import {fileUploadRepository} from "../repositories/fileUploadRepository.js";
 
 const firestore = admin.firestore();
 
@@ -34,7 +34,7 @@ export const updateTransactionStatus = async (ctx) => {
 export const requestDeposit = async (ctx) => {
   try {
     const { email } = ctx.req.body;
-    const { amount, bankName, transferDate, reference } = ctx.req.body;
+    const { amount, bankName, transferDate, reference, receiptUrl } = ctx.req.body;
     
     // Validate required fields
     if (!amount || !bankName || !transferDate || !email) {
@@ -50,13 +50,22 @@ export const requestDeposit = async (ctx) => {
       return;
     }
     
+    // Validate receipt URL
+    if (!receiptUrl) {
+      ctx.status = 400;
+      ctx.body = { error: 'Receipt image is required' };
+      return;
+    }
+    
     // Use repository to create the deposit request
     const result = await transactionRepository.createDepositRequest({
       amount, 
       bankName, 
       transferDate, 
       reference,
-      email
+      email,
+      receiptUrl, // Pass the receipt URL from Firebase
+      thumbnailUrl: receiptUrl // Use the same URL for thumbnail
     });
     
     ctx.status = 201;
@@ -102,39 +111,74 @@ export const uploadReceipt = async (ctx) => {
     console.log('Content-Type:', ctx.req.headers['content-type'] || 'Not specified');
     console.log('Is multipart:', requestParserRepository.isMultipartRequest(ctx.req));
     console.log('Is JSON:', requestParserRepository.isJsonRequest(ctx.req));
-    console.log('Body keys:', Object.keys(ctx.req.body || {}));
-    console.log('Files keys:', Object.keys(ctx.req.files || {}));
+    
+    // Log full details of the request body and files for debugging
+    if (ctx.req.body) {
+      console.log('Body keys:', Object.keys(ctx.req.body));
+      console.log('Body content:', JSON.stringify(ctx.req.body, (key, value) => {
+        // Don't log full file content in base64 if present
+        if (typeof value === 'string' && value.length > 1000) {
+          return value.substring(0, 100) + '... [truncated]';
+        }
+        return value;
+      }, 2));
+    }
+    
+    if (ctx.req.files) {
+      console.log('Files keys:', Object.keys(ctx.req.files));
+      for (const key in ctx.req.files) {
+        const file = ctx.req.files[key];
+        console.log(`File [${key}]:`, {
+          fieldname: file.fieldname,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size || (file.buffer ? file.buffer.length : 'unknown')
+        });
+      }
+    }
     
     // Extract file data using repository function
     console.log('Extracting file data...');
-    const fileData = requestParserRepository.extractFileFromRequest(ctx, 'receipt');
+    let fileData = requestParserRepository.extractFileFromRequest(ctx, 'receipt');
     
-    if (!fileData) {
-      console.error('No file data found in request');
-      
-      // Try one more attempt with 'image' field in case client used that field
-      console.log('Attempting to find file in "image" field as fallback...');
-      const imageData = requestParserRepository.extractFileFromRequest(ctx, 'image');
-      
-      if (imageData) {
-        console.log('Found file data in "image" field, using it as receipt');
-        const uploadResult = await fileUploadRepository.uploadTransactionReceipt(email, transactionId, imageData);
-        
-        if (uploadResult.success) {
-          console.log('File upload successful using image field, URL:', uploadResult.fileUrl);
-          await transactionRepository.updateTransactionReceipt(transactionId, uploadResult.fileUrl);
-          
-          ctx.status = 200;
-          ctx.body = { 
-            message: 'Receipt uploaded successfully',
-            receiptUrl: uploadResult.fileUrl
-          };
-          
-          console.log('===== RECEIPT UPLOAD COMPLETED SUCCESSFULLY (via image field) =====');
-          return;
+    // Try to find file data in any available field if not found in 'receipt'
+    if (!fileData && ctx.req.files) {
+      // Try the first available file if 'receipt' not found
+      const fileKeys = Object.keys(ctx.req.files);
+      if (fileKeys.length > 0) {
+        console.log(`Receipt field not found but found other file field: ${fileKeys[0]}`);
+        fileData = ctx.req.files[fileKeys[0]];
+      }
+    }
+    
+    // Also check form fields for base64 encoded images
+    if (!fileData && ctx.req.body) {
+      for (const key in ctx.req.body) {
+        const value = ctx.req.body[key];
+        if (typeof value === 'string' && 
+            (value.startsWith('data:image/') || 
+             value.includes('base64'))) {
+          console.log(`Found base64 image in field: ${key}`);
+          fileData = value;
+          break;
         }
       }
-      
+    }
+    
+    // If still no file data, check for file uploaded to state by middleware
+    if (!fileData && ctx.state.uploadedFile) {
+      console.log('Found file in ctx.state.uploadedFile');
+      fileData = ctx.state.uploadedFile;
+    }
+    
+    // If still no file data, try 'image' field as fallback
+    if (!fileData) {
+      console.log('Attempting to find file in "image" field as fallback...');
+      fileData = requestParserRepository.extractFileFromRequest(ctx, 'image');
+    }
+    
+    if (!fileData) {
+      console.error('No file data found in request after all attempts');
       ctx.status = 400;
       ctx.body = { 
         error: 'No receipt file found. Please upload a valid image file.',
@@ -142,7 +186,7 @@ export const uploadReceipt = async (ctx) => {
           filesExist: !!ctx.req.files,
           fileExists: !!ctx.req.file,
           bodyExists: !!ctx.req.body,
-          bodyType: ctx.req.body ? typeof ctx.req.body : 'undefined',
+          contentType: ctx.req.headers['content-type'] || 'Not specified',
           bodyKeys: ctx.req.body ? Object.keys(ctx.req.body) : []
         }
       };
@@ -190,17 +234,21 @@ export const uploadReceipt = async (ctx) => {
     }
     
     console.log('File upload successful, URL:', uploadResult.fileUrl);
+    if (uploadResult.thumbnailUrl) {
+      console.log('Thumbnail created, URL:', uploadResult.thumbnailUrl);
+    }
     
     // Update transaction with receipt URL using repository
     console.log('Updating transaction with receipt URL...');
-    await transactionRepository.updateTransactionReceipt(transactionId, uploadResult.fileUrl);
+    await transactionRepository.updateTransactionReceipt(transactionId, uploadResult.fileUrl, uploadResult.thumbnailUrl);
     
     console.log('Transaction updated with receipt URL');
     
     ctx.status = 200;
     ctx.body = { 
       message: 'Receipt uploaded successfully',
-      receiptUrl: uploadResult.fileUrl
+      receiptUrl: uploadResult.fileUrl,
+      thumbnailUrl: uploadResult.thumbnailUrl || uploadResult.fileUrl
     };
     
     console.log('===== RECEIPT UPLOAD COMPLETED SUCCESSFULLY =====');

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Stepper, Step, StepLabel, Grid,
   TextField, Button, Divider, FormControlLabel, Checkbox,
@@ -9,15 +9,19 @@ import {
 import api from '@/api';
 import { formatCurrency } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
-import { useFetchApi } from '../hooks/useFetchApi';
+import useFetchApi from '../hooks/api/useFetchApi';
 
 const steps = ['Select Product', 'Order Details', 'Shipping Information', 'Review & Confirm'];
 
 const CreateOrderPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { userDetails } = useAuth();
+  const auth = useAuth() || {};
+  const user = auth.user;
   const [activeStep, setActiveStep] = useState(0);
+  
+  // Ref để track việc đã fetch product detail
+  const fetchedProductId = useRef(null);
   
   // Product selection state
   const [products, setProducts] = useState([]);
@@ -67,9 +71,8 @@ const CreateOrderPage = () => {
     data: productsData, 
     loading: loadingProductsList,
     error: productsError 
-  } = useFetchApi({
-    resource: 'products',
-    autoFetch: true
+  } = useFetchApi('products', {
+    fetchOnMount: true
   });
   
   // Cập nhật state products khi có dữ liệu từ API
@@ -86,12 +89,20 @@ const CreateOrderPage = () => {
   const {
     data: productDetail,
     loading: loadingProductDetail,
-    error: productDetailError
-  } = useFetchApi({
-    resource: 'products',
-    id: selectedProductId,
-    autoFetch: !!selectedProductId
+    error: productDetailError,
+    getById
+  } = useFetchApi(`products`, {
+    fetchOnMount: false
   });
+  
+  // Fetch product detail when selectedProductId changes
+  useEffect(() => {
+    if (selectedProductId && selectedProductId !== fetchedProductId.current) {
+      // Chỉ fetch khi ID mới khác ID đã fetch trước đó
+      getById(selectedProductId);
+      fetchedProductId.current = selectedProductId;
+    }
+  }, [selectedProductId, getById]);
   
   // Cập nhật state khi có dữ liệu chi tiết sản phẩm
   useEffect(() => {
@@ -192,15 +203,15 @@ const CreateOrderPage = () => {
     }));
     
     // If using company address, populate with user details
-    if (name === 'useCompanyAddress' && checked && userDetails) {
+    if (name === 'useCompanyAddress' && checked && user) {
       setShippingInfo(prev => ({
         ...prev,
-        recipientName: userDetails.companyName || '',
-        address: userDetails.address || '',
-        city: userDetails.city || '',
-        state: userDetails.state || '',
-        zipCode: userDetails.zipCode || '',
-        phone: userDetails.phone || ''
+        recipientName: user.companyName || '',
+        address: user.address || '',
+        city: user.city || '',
+        state: user.state || '',
+        zipCode: user.zipCode || '',
+        phone: user.phone || ''
       }));
     }
   };
@@ -632,7 +643,7 @@ const CreateOrderPage = () => {
                 Funds will be deducted from your account balance upon confirmation.
               </Typography>
               <Typography color="primary" fontWeight="bold">
-                Current Balance: {formatCurrency(userDetails?.balance || 0)}
+                Current Balance: {formatCurrency(user?.balance || 0)}
               </Typography>
             </Box>
           </Box>
@@ -682,7 +693,7 @@ const CreateOrderPage = () => {
           <Button
             variant="contained"
             onClick={handleSubmitOrder}
-            disabled={loading || success || (userDetails?.balance < orderSummary.total)}
+            disabled={loading || success || (user?.balance < orderSummary.total)}
           >
             {loading ? <CircularProgress size={24} /> : 'Place Order'}
           </Button>
@@ -697,7 +708,7 @@ const CreateOrderPage = () => {
         )}
       </Box>
       
-      {activeStep === steps.length - 1 && userDetails?.balance < orderSummary.total && (
+      {activeStep === steps.length - 1 && user?.balance < orderSummary.total && (
         <Alert severity="warning" sx={{ mt: 2 }}>
           Insufficient funds. Please <Button 
             color="inherit" 

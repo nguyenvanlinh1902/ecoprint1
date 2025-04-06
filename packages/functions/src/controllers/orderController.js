@@ -134,7 +134,7 @@ export const createOrder = async (ctx) => {
 export const importOrders = async (ctx) => {
   try {
     // Check if file exists in request
-    if (!ctx.request.file) {
+    if (!ctx.req.file) {
       ctx.status = 400;
       ctx.body = { 
         success: false, 
@@ -144,7 +144,7 @@ export const importOrders = async (ctx) => {
     }
     
     const { uid } = ctx.state.user;
-    const fileBuffer = ctx.request.file.buffer;
+    const fileBuffer = ctx.req.file.buffer;
     const fileContent = fileBuffer.toString();
     
     // Parse CSV

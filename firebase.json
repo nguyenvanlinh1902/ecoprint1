@@ -18,7 +18,11 @@
   ],
   "hosting": {
     "public": "static",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "rewrites": [
       {
         "source": "/api/**",
@@ -88,4 +92,4 @@
       "host": "0.0.0.0"
     }
   }
-} 
+}

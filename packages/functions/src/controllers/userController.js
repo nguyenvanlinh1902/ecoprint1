@@ -451,18 +451,7 @@ export const getUserTransactions = async (ctx) => {
   try {
     const email = ctx.params.email || ctx.state.user.email;
     const { page = 1, limit = 10, type } = ctx.query;
-    
-    if (!email) {
-      ctx.status = 400;
-      ctx.body = {
-        success: false,
-        message: 'Email is required',
-        code: 'email_required',
-        timestamp: new Date().toISOString()
-      };
-      return;
-    }
-    
+
     const result = await userRepository.getUserTransactions(email, parseInt(page), parseInt(limit), type);
     
     ctx.status = 200;

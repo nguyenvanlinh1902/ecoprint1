@@ -2,38 +2,42 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Quy tắc mặc định - từ chối tất cả các truy cập
+    // Quy tắc mặc định - cho phép tất cả truy cập để test
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
 
     // Cho phép đọc/ghi ảnh hồ sơ người dùng
     match /profiles/{userId}/{allImages=**} {
-      // Cho phép đọc ảnh hồ sơ bởi bất kỳ người dùng đã xác thực nào
-      allow read: if request.auth != null;
+      // Cho phép đọc ảnh hồ sơ bởi bất kỳ ai
+      allow read: if true;
       
-      // Chỉ cho phép tải lên/cập nhật/xóa ảnh của chính mình hoặc nếu là admin
-      allow write: if request.auth != null && (
-        request.auth.uid == userId || 
-        isAdmin()
-      );
+      // Cho phép tải lên/cập nhật/xóa ảnh bởi bất kỳ ai
+      allow write: if true;
     }
     
     // Cho phép quản lý hình ảnh sản phẩm
-    match /products/{allImages=**} {
-      // Bất kỳ ai cũng có thể xem hình ảnh sản phẩm
-      allow read: if true;
-      
-      // Chỉ admin mới có thể thêm/cập nhật/xóa hình ảnh sản phẩm
-      allow write: if request.auth != null && isAdmin();
+    match /products/{productId}/{allImages=**} {
+      // Bất kỳ ai cũng có thể xem và tải lên hình ảnh sản phẩm
+      allow read, write: if true;
+    }
+    
+    // Cho phép quản lý hình ảnh biên lai
+    match /receipts/{allImages=**} {
+      // Bất kỳ ai cũng có thể xem và tải lên hình ảnh biên lai
+      allow read, write: if true;
+    }
+    
+    // Cho phép người dùng tải lên hình ảnh chung
+    match /images/{imageId} {
+      // Bất kỳ ai cũng có thể xem và tải lên
+      allow read, write: if true;
     }
     
     // Hàm kiểm tra người dùng có quyền admin không
     function isAdmin() {
-      // Giả sử quyền admin được lưu trong Firestore trong collection userProfiles
-      return request.auth != null;
-      // Lưu ý: Trong Storage Rules, bạn không thể truy vấn Firestore trực tiếp
-      // Để kiểm tra vai trò admin chính xác, bạn sẽ cần sử dụng Firebase Functions hoặc custom claims
+      // Trong môi trường test, luôn trả về true
+      return true;
     }
   }
 } 

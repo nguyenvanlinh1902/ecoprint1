@@ -1,5 +1,10 @@
 import busboy from 'busboy';
 import { Readable } from 'stream';
+import multer from '@koa/multer';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import fs from 'fs';
 
 /**
  * Extremely simple middleware to handle file uploads
@@ -127,6 +132,17 @@ async function handleMultipartUpload(ctx, fieldName, maxSize) {
       } else {
         ctx.req.files[key] = files[key];
       }
+      
+      // Handle "payload image" field by making it accessible as "image" as well
+      if (key === 'payload image' && files[key].length > 0) {
+        console.log('[SimpleUploadMiddleware] Converting "payload image" field to "image" for compatibility');
+        ctx.req.files['image'] = files[key];
+        
+        // Also set the file for multer compatibility
+        if (files[key].length === 1) {
+          ctx.req.file = files[key][0];
+        }
+      }
     });
     
     // Compatibility with multer's single file pattern
@@ -240,7 +256,7 @@ async function handleUpload(ctx, fieldName) {
     console.log(`[SimpleUploadMiddleware] Processing ${fieldName} upload`);
     
     // Get the body from either source
-    const body = ctx.req.body || ctx.request.body || {};
+    const body = ctx.req.body || {};
     
     // Check if field exists in body
     if (body[fieldName]) {
@@ -289,55 +305,490 @@ async function handleUpload(ctx, fieldName) {
   }
 }
 
-/**
- * Receipt upload middleware
- */
-export const receiptUploadMiddleware = async (ctx, next) => {
-  try {
-    console.log('[SimpleUploadMiddleware] Handling receipt upload middleware');
-    
-    // Make sure we have access to a parsed body
-    if (!ctx.request.body && !ctx.req.body) {
-      console.log('[SimpleUploadMiddleware] No body found, continuing...');
-      return await next();
-    }
-    
-    await handleUpload(ctx, 'receipt');
-    await next();
-  } catch (error) {
-    console.error('[SimpleUploadMiddleware] Error:', error);
-    ctx.status = 500;
-    ctx.body = {
-      success: false,
-      message: 'Error processing receipt upload',
-      timestamp: new Date().toISOString()
-    };
+// Đảm bảo thư mục uploads tồn tại
+const createUploadsDirectory = () => {
+  // Get the current module's directory using import.meta.url
+  const currentFilePath = fileURLToPath(import.meta.url);
+  const currentDirPath = dirname(currentFilePath);
+  const uploadsDir = path.join(currentDirPath, '../../../uploads');
+  
+  console.log(`[SimpleUploadMiddleware] Ensuring uploads directory exists at: ${uploadsDir}`);
+  
+  if (!fs.existsSync(uploadsDir)) {
+    console.log(`[SimpleUploadMiddleware] Creating uploads directory: ${uploadsDir}`);
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } else {
+    console.log(`[SimpleUploadMiddleware] Uploads directory already exists`);
+  }
+  
+  return uploadsDir;
+};
+
+// Khởi tạo thư mục uploads
+const uploadsDir = createUploadsDirectory();
+
+// Configure multer storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
+  }
+});
+
+// Multer file filter
+const fileFilter = (req, file, cb) => {
+  // Accept only image files
+  if (file.mimetype.startsWith('image/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image files are allowed'), false);
   }
 };
 
+// Maximum file size: 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+// Initialize multer upload instance
+const multerUpload = multer({
+  storage: storage,
+  limits: {
+    fileSize: MAX_FILE_SIZE
+  },
+  fileFilter: fileFilter
+});
+
 /**
- * Image upload middleware
+ * Lưu file vào thư mục uploads
+ * @param {Object} file - File object với buffer
+ * @returns {Object} - File object với cả path
  */
-export const imageUploadMiddleware = async (ctx, next) => {
+async function saveFileToDisk(file) {
+  if (!file || !file.buffer) {
+    console.error('[SimpleUploadMiddleware] Cannot save file, invalid file object or missing buffer');
+    return file;
+  }
+
   try {
-    console.log('[SimpleUploadMiddleware] Handling image upload middleware');
+    // Tạo tên file độc nhất
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const filename = uniqueSuffix + '-' + (file.originalname || 'upload.bin');
+    const filePath = path.join(uploadsDir, filename);
     
-    // Make sure we have access to a parsed body
-    if (!ctx.request.body && !ctx.req.body) {
-      console.log('[SimpleUploadMiddleware] No body found, continuing...');
-      return await next();
+    // Lưu file
+    console.log(`[SimpleUploadMiddleware] Saving file to disk: ${filePath}`);
+    fs.writeFileSync(filePath, file.buffer);
+    
+    // Thêm thông tin path vào file object
+    return {
+      ...file,
+      path: filePath,
+      filename: filename
+    };
+  } catch (error) {
+    console.error('[SimpleUploadMiddleware] Error saving file to disk:', error);
+    return file;
+  }
+}
+
+// Middleware để xử lý file upload cho receipt transactions
+export const receiptUploadMiddleware = async (ctx, next) => {
+  try {
+    console.log('[UploadMiddleware] Processing receipt upload');
+    // Handle CORS preflight
+    if (ctx.method === 'OPTIONS') {
+      ctx.status = 204;
+      return;
     }
     
-    await handleUpload(ctx, 'image');
+    // Đảm bảo ctx.req đầy đủ
+    prepareRequestObject(ctx);
+    
+    // Xử lý multipart form-data
+    const contentType = ctx.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      try {
+        console.log('[UploadMiddleware] Using busboy to parse receipt upload form');
+        // Sử dụng busboy trực tiếp thay vì multer
+        const { files, fields } = await parseMultipartForm(ctx.req, {
+          limits: {
+            fileSize: MAX_FILE_SIZE,
+            files: 1
+          }
+        });
+        
+        // Thêm fields vào body
+        if (!ctx.req.body) ctx.req.body = {};
+        Object.assign(ctx.req.body, fields);
+        
+        // Tìm file receipt
+        if (files['receipt'] && files['receipt'].length > 0) {
+          console.log('[UploadMiddleware] Found receipt file in form data');
+          ctx.req.file = files['receipt'][0];
+          ctx.state.uploadedFile = files['receipt'][0];
+          
+          console.log('[UploadMiddleware] Receipt details:', {
+            filename: ctx.req.file.originalname,
+            size: ctx.req.file.size,
+            mimetype: ctx.req.file.mimetype
+          });
+        } else {
+          const fileFields = Object.keys(files);
+          if (fileFields.length > 0) {
+            console.log('[UploadMiddleware] Found file in field:', fileFields[0]);
+            ctx.req.file = files[fileFields[0]][0];
+            ctx.state.uploadedFile = files[fileFields[0]][0];
+          } else {
+            console.log('[UploadMiddleware] No receipt file found in form data');
+          }
+        }
+      } catch (err) {
+        console.error('[UploadMiddleware] Error parsing receipt form:', err);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          ctx.status = 413; // Payload Too Large
+          ctx.body = {
+            success: false,
+            error: 'File size exceeds the 5MB limit',
+            message: 'Please upload a smaller file (max 5MB)'
+          };
+          return;
+        }
+        
+        ctx.status = 400;
+        ctx.body = {
+          success: false,
+          error: 'Invalid file upload',
+          message: err.message || 'Unknown error'
+        };
+        return;
+      }
+    }
+    // Kiểm tra nếu đã upload thành công
+    if (!ctx.state.uploadedFile) {
+      console.log('[UploadMiddleware] No receipt file uploaded');
+    }
+    
+    // Nếu đã upload thành công, kiểm tra xem có cần lưu vào disk không
+    if (ctx.state.uploadedFile && !ctx.state.uploadedFile.path && ctx.state.uploadedFile.buffer) {
+      console.log('[UploadMiddleware] Saving receipt file to disk');
+      ctx.state.uploadedFile = await saveFileToDisk(ctx.state.uploadedFile);
+      
+      // Cập nhật lại ctx.req.file nếu cần
+      if (ctx.req.file === ctx.state.uploadedFile) {
+        ctx.req.file = ctx.state.uploadedFile;
+      }
+    }
+    
+    // Continue to the next middleware/controller if no error occurred
+    if (!ctx.body || !ctx.body.error) {
+      await next();
+    }
+  } catch (error) {
+    if (!ctx.status || ctx.status === 200) {
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        error: 'File upload failed',
+        message: error.message || 'Unknown server error'
+      };
+    }
+    console.error('[UploadMiddleware] Error in receipt upload middleware:', error);
+  }
+};
+
+// Hàm chuẩn bị request object để Multer có thể xử lý
+function prepareRequestObject(ctx) {
+  // Đảm bảo ctx.req tồn tại
+  if (!ctx.req) {
+    ctx.req = {};
+    console.log('[SimpleUploadMiddleware] Created new ctx.req object');
+  }
+
+  // Đảm bảo ctx.req.headers tồn tại
+  if (!ctx.req.headers) {
+    ctx.req.headers = {};
+    console.log('[SimpleUploadMiddleware] Created new ctx.req.headers object');
+  }
+  
+  // Sao chép các headers từ ctx.headers vào ctx.req.headers
+  if (ctx.headers) {
+    Object.keys(ctx.headers).forEach(key => {
+      ctx.req.headers[key] = ctx.headers[key];
+    });
+  }
+  
+  // Đảm bảo content-type được thiết lập
+  if (!ctx.req.headers['content-type'] && ctx.get('content-type')) {
+    ctx.req.headers['content-type'] = ctx.get('content-type');
+    console.log('[SimpleUploadMiddleware] Set content-type from ctx:', ctx.req.headers['content-type']);
+  }
+  
+  // Các thuộc tính khác cần thiết cho multer
+  if (!ctx.req.url) {
+    ctx.req.url = ctx.url || '/';
+  }
+  
+  if (!ctx.req.method) {
+    ctx.req.method = ctx.method || 'POST';
+  }
+  
+  // Đảm bảo có ctx.req.body
+  if (!ctx.req.body) {
+    ctx.req.body = {};
+  }
+  
+  // Đảm bảo có ctx.req.files
+  if (!ctx.req.files) {
+    ctx.req.files = {};
+  }
+  
+  // Đảm bảo req là stream-like object với on() method
+  if (!ctx.req.on) {
+    ctx.req.on = function(eventName, listener) {
+      if (eventName === 'data' || eventName === 'end') {
+        if (eventName === 'end') {
+          setTimeout(() => listener(), 0);
+        }
+      }
+      return ctx.req;
+    };
+    ctx.req.pipe = function() { return ctx.req; };
+    console.log('[SimpleUploadMiddleware] Added stream methods to ctx.req');
+  }
+  
+  // Đảm bảo có ctx.res
+  if (!ctx.res) {
+    ctx.res = {
+      headersSent: false,
+      setHeader: function() {},
+      getHeader: function() {},
+      removeHeader: function() {}
+    };
+    console.log('[SimpleUploadMiddleware] Created new ctx.res object');
+  }
+  
+  return ctx;
+}
+
+// Middleware để xử lý file upload cho product images
+export const imageUploadMiddleware = async (ctx, next) => {
+  console.log('[SimpleUploadMiddleware] Processing image upload request');
+  console.log('[SimpleUploadMiddleware] Content-Type:', ctx.get('content-type'));
+  
+  try {
+    // Handle CORS preflight
+    if (ctx.method === 'OPTIONS') {
+      ctx.status = 204;
+      return;
+    }
+    
+    // QUAN TRỌNG: Đảm bảo ctx.req được khởi tạo đầy đủ
+    if (!ctx.req) {
+      ctx.req = {};
+    }
+    
+    // Đảm bảo có ctx.req.headers
+    if (!ctx.req.headers) {
+      ctx.req.headers = {};
+      
+      // Sao chép headers từ ctx
+      Object.keys(ctx.headers || {}).forEach(key => {
+        ctx.req.headers[key] = ctx.headers[key];
+      });
+    }
+    
+    // Đảm bảo content-type được thiết lập
+    if (!ctx.req.headers['content-type'] && ctx.get('content-type')) {
+      ctx.req.headers['content-type'] = ctx.get('content-type');
+    }
+    
+    // Log để debug
+    console.log('[SimpleUploadMiddleware] Request req.headers:', JSON.stringify(ctx.req.headers || {}));
+    
+    const requestContentType = ctx.get('content-type');
+    
+    // Xử lý multer upload 
+    if (requestContentType?.includes('multipart/form-data')) {
+      console.log('[SimpleUploadMiddleware] Using multer middleware for file upload');
+      
+      // Chuẩn bị đầy đủ ctx.req và ctx.res trước khi gọi multer
+      prepareRequestObject(ctx);
+      
+      // Kiểm tra lại một lần nữa để đảm bảo headers tồn tại
+      if (!ctx.req.headers) {
+        console.log('[SimpleUploadMiddleware] Headers still undefined after preparation, creating empty headers');
+        ctx.req.headers = {
+          'content-type': requestContentType || 'multipart/form-data'
+        };
+      }
+      
+      try {
+        // Thay vì sử dụng multer trực tiếp, sử dụng busboy để xử lý form
+        console.log('[SimpleUploadMiddleware] Using busboy directly to parse multipart form');
+        
+        const { files, fields } = await parseMultipartForm(ctx.req, {
+          limits: {
+            fileSize: MAX_FILE_SIZE,
+            files: 1
+          }
+        });
+        
+        console.log('[SimpleUploadMiddleware] Busboy parse completed, fields:', Object.keys(fields || {}));
+        console.log('[SimpleUploadMiddleware] Busboy parse completed, files:', Object.keys(files || {}));
+        
+        // Đảm bảo ctx.req.body tồn tại
+        if (!ctx.req.body) ctx.req.body = {};
+        
+        // Thêm fields vào body
+        Object.assign(ctx.req.body, fields);
+        
+        // Tìm kiếm file image trong các fields
+        if (files['image'] && files['image'].length > 0) {
+          console.log('[SimpleUploadMiddleware] Found image file in multipart data');
+          ctx.req.file = files['image'][0];
+          ctx.state.uploadedFile = files['image'][0];
+        } else if (files['payload image'] && files['payload image'].length > 0) {
+          console.log('[SimpleUploadMiddleware] Found payload image file in multipart data');
+          ctx.req.file = files['payload image'][0];
+          ctx.state.uploadedFile = files['payload image'][0];
+        } else {
+          // Xem có field nào chứa file không
+          const fileFields = Object.keys(files);
+          if (fileFields.length > 0) {
+            console.log('[SimpleUploadMiddleware] Found file in field:', fileFields[0]);
+            ctx.req.file = files[fileFields[0]][0];
+            ctx.state.uploadedFile = files[fileFields[0]][0];
+          } else {
+            console.log('[SimpleUploadMiddleware] No file found in multipart data');
+          }
+        }
+        
+        if (ctx.state.uploadedFile) {
+          console.log('[SimpleUploadMiddleware] File details:', {
+            filename: ctx.state.uploadedFile.originalname,
+            size: ctx.state.uploadedFile.size,
+            mimetype: ctx.state.uploadedFile.mimetype
+          });
+        }
+      } catch (err) {
+        console.error('[SimpleUploadMiddleware] Error processing multipart form:', err);
+        if (!ctx.status || ctx.status === 200) {
+          ctx.status = 500;
+          ctx.body = {
+            success: false,
+            error: 'File upload failed',
+            message: err.message || 'Unknown error'
+          };
+        }
+      }
+    } 
+    // Xử lý base64 hoặc raw image data
+    else if (requestContentType?.includes('application/json')) {
+      console.log('[SimpleUploadMiddleware] Processing JSON request with image data');
+      
+      // Đọc body và tìm image data (đã được parse bởi koa-bodyparser)
+      if (ctx.req.body && ctx.req.body.image) {
+        console.log('[SimpleUploadMiddleware] Found image data in JSON body');
+        ctx.state.uploadedFile = ctx.req.body.image;
+      } else {
+        console.log('[SimpleUploadMiddleware] No image data found in JSON request');
+      }
+    }
+    // Xử lý raw binary upload
+    else if (requestContentType?.includes('image/') || requestContentType?.includes('application/octet-stream')) {
+      console.log('[SimpleUploadMiddleware] Processing raw binary image upload');
+      
+      // Đọc raw body
+      const chunks = [];
+      await new Promise((resolve) => {
+        ctx.req.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        ctx.req.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          console.log('[SimpleUploadMiddleware] Received binary data, size:', buffer.length);
+          
+          if (buffer.length > 0) {
+            // Tạo một file-like object
+            ctx.state.uploadedFile = {
+              originalname: `upload_${Date.now()}.jpg`,
+              mimetype: requestContentType || 'image/jpeg',
+              buffer: buffer,
+              size: buffer.length
+            };
+          }
+          
+          resolve();
+        });
+      });
+    }
+    
+    // Kiểm tra kết quả xử lý và log
+    if (ctx.state.uploadedFile) {
+      console.log('[SimpleUploadMiddleware] Successfully processed image upload');
+      
+      // Đảm bảo productId được truyền đúng
+      let productId = null;
+      
+      if (ctx.req.body && ctx.req.body.productId) {
+        productId = ctx.req.body.productId;
+        console.log('[SimpleUploadMiddleware] Found productId in request body:', productId);
+      } else if (ctx.req.body && ctx.req.body.productId) {
+        productId = ctx.req.body.productId;
+        console.log('[SimpleUploadMiddleware] Found productId in ctx.req.body:', productId);
+      } else if (ctx.query && ctx.query.productId) {
+        productId = ctx.query.productId;
+        console.log('[SimpleUploadMiddleware] Found productId in query params:', productId);
+      }
+      
+      // Đảm bảo đồng bộ thông tin productId giữa các objects
+      if (productId) {
+        if (!ctx.req.body) ctx.req.body = {};
+        ctx.req.body.productId = productId;
+      }
+    } else {
+      console.log('[SimpleUploadMiddleware] No file data was processed');
+      
+      // Trả về lỗi nếu không tìm thấy file
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        error: 'No image file found',
+        message: 'Please select an image file to upload'
+      };
+      return;
+    }
+    
+    // Sau khi xử lý file upload thành công và có ctx.state.uploadedFile
+    if (ctx.state.uploadedFile) {
+      // Kiểm tra xem file đã có path chưa, nếu không thì lưu vào disk
+      if (!ctx.state.uploadedFile.path && ctx.state.uploadedFile.buffer) {
+        console.log('[SimpleUploadMiddleware] Saving uploaded file to disk');
+        ctx.state.uploadedFile = await saveFileToDisk(ctx.state.uploadedFile);
+        
+        // Cập nhật lại ctx.req.file nếu cần
+        if (ctx.req.file === ctx.state.uploadedFile) {
+          ctx.req.file = ctx.state.uploadedFile;
+        }
+      }
+    }
+    
+    // Tiếp tục sang middleware/controller tiếp theo
     await next();
   } catch (error) {
-    console.error('[SimpleUploadMiddleware] Error:', error);
-    ctx.status = 500;
-    ctx.body = {
-      success: false,
-      message: 'Error processing image upload',
-      timestamp: new Date().toISOString()
-    };
+    console.error('[SimpleUploadMiddleware] Error processing image upload:', error);
+    
+    if (!ctx.status || ctx.status === 200) {
+      ctx.status = 500;
+      ctx.body = { 
+        success: false, 
+        error: 'Error processing image upload',
+        message: error.message || 'Unknown server error' 
+      };
+    }
   }
 };
 

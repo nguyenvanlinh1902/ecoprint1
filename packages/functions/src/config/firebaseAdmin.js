@@ -11,6 +11,9 @@ const __dirname = dirname(__filename);
 
 // Get project ID
 const projectId = process.env.GCLOUD_PROJECT || 'ecoprint1-3cd5c';
+// Set bucket name explicitly
+const bucketName = `${projectId}.appspot.com`;
+console.log('Firebase Storage bucket name:', bucketName);
 
 // Initialize Firebase Admin
 let adminApp;
@@ -21,15 +24,27 @@ let adminFirestore;
 function initializeAdmin() {
   // If already initialized, return the existing instances
   if (admin.apps.length) {
-    return {
-      app: admin.app(),
-      auth: getAuth(),
-      storage: getStorage().bucket(),
-      firestore: admin.firestore()
-    };
+    console.log('Firebase Admin SDK already initialized, returning existing instance');
+    const existingApp = admin.app();
+    
+    // Ensure we have storage bucket initialized
+    try {
+      const storageBucket = getStorage(existingApp).bucket(bucketName);
+      console.log('Using existing storage bucket:', storageBucket.name);
+      
+      return {
+        app: existingApp,
+        auth: getAuth(existingApp),
+        storage: storageBucket,
+        firestore: admin.firestore()
+      };
+    } catch (err) {
+      console.error('Error getting storage from existing app:', err);
+      // Continue with initialization below
+    }
   }
 
-  console.log("Initializing Firebase Admin SDK directly");
+  console.log("Initializing Firebase Admin SDK");
   
   // Check if GOOGLE_APPLICATION_CREDENTIALS is set
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -38,13 +53,17 @@ function initializeAdmin() {
     // Firebase Admin SDK will automatically use this file
     const app = admin.initializeApp({
       projectId: projectId,
-      storageBucket: `${projectId}.appspot.com`
+      storageBucket: bucketName
     });
+    
+    const storage = getStorage(app);
+    const bucket = storage.bucket(bucketName);
+    console.log('Initialized storage bucket with name:', bucket.name);
     
     return {
       app,
       auth: getAuth(app),
-      storage: getStorage(app).bucket(),
+      storage: bucket,
       firestore: admin.firestore()
     };
   }
@@ -75,14 +94,18 @@ function initializeAdmin() {
       
       const app = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
-        storageBucket: `${projectId}.appspot.com`,
+        storageBucket: bucketName,
         projectId
       });
+      
+      const storage = getStorage(app);
+      const bucket = storage.bucket(bucketName);
+      console.log('Initialized storage bucket with service account:', bucket.name);
       
       return {
         app,
         auth: getAuth(app),
-        storage: getStorage(app).bucket(),
+        storage: bucket,
         firestore: admin.firestore()
       };
     } catch (error) {
@@ -96,13 +119,18 @@ function initializeAdmin() {
   try {
     const app = admin.initializeApp({
       projectId: projectId,
-      storageBucket: `${projectId}.appspot.com`
+      storageBucket: bucketName
     });
+    
+    // Khởi tạo Storage với bucket name cụ thể
+    const storage = getStorage(app);
+    const bucket = storage.bucket(bucketName);
+    console.log('Initialized emulator storage bucket:', bucket.name);
     
     return {
       app,
       auth: getAuth(app),
-      storage: getStorage(app).bucket(),
+      storage: bucket, // Trả về bucket, không phải storage
       firestore: admin.firestore()
     };
   } catch (error) {
@@ -117,6 +145,9 @@ adminApp = adminServices.app;
 adminAuth = adminServices.auth;
 adminStorage = adminServices.storage;
 adminFirestore = adminServices.firestore;
+
+// Log storage bucket information
+console.log('Firebase Admin initialized with storage bucket:', adminStorage?.name || 'Unknown bucket');
 
 // Export initialized services
 export { 

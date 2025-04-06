@@ -15,6 +15,7 @@ import {
   CloudUpload as UploadIcon
 } from '@mui/icons-material';
 import api from '@/api';
+import ImageUploader from '@/components/ImageUploader';
 
 const ProductFormPage = () => {
   const { productId } = useParams();
@@ -63,12 +64,10 @@ const ProductFormPage = () => {
       try {
         if (isEditMode) {
           setLoading(true);
-          console.log('Fetching product details for ID:', productId);
           const response = await api.admin.getProduct(productId);
           
           if (response.data && response.data.success) {
             const product = response.data.data;
-            console.log('Product data loaded:', product);
             
             // Convert specifications from API format to form format if needed
             const formattedSpecs = typeof product.specifications === 'object' 
@@ -88,7 +87,6 @@ const ProductFormPage = () => {
               imageUrl: product.images && product.images.length > 0 ? product.images[0] : ''
             });
           } else {
-            console.error('Failed to load product data:', response);
             setError('Failed to load product data. Please try again later.');
           }
         }
@@ -97,7 +95,6 @@ const ProductFormPage = () => {
         await fetchCategories();
         
       } catch (error) {
-        console.error('Error loading data:', error);
         setError('Failed to load data. Please try again later.');
       } finally {
         setLoading(false);
@@ -122,14 +119,20 @@ const ProductFormPage = () => {
     }));
   };
   
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
+  const handleImageChange = (imageData) => {
+    if (typeof imageData === 'object') {
+      // New format with local preview
       setFormData((prev) => ({
         ...prev,
-        imageFile: file,
-        // Create a temporary URL for preview
-        imageUrl: URL.createObjectURL(file)
+        imageUrl: imageData.previewUrl,
+        imageFile: imageData.file
+      }));
+    } else {
+      // Backward compatibility for string URLs
+      setFormData((prev) => ({
+        ...prev,
+        imageUrl: imageData,
+        imageFile: null
       }));
     }
   };
@@ -209,18 +212,14 @@ const ProductFormPage = () => {
   // Fetch categories function (separate for reuse)
   const fetchCategories = async () => {
     try {
-      console.log('Fetching categories for product form');
-      const categoriesResponse = await api.admin.getAllCategories();
+      const categoriesResponse = await api.products.getCategories();
       
       if (categoriesResponse.data && categoriesResponse.data.success) {
-        console.log('Categories loaded:', categoriesResponse.data.data.length);
         setCategories(categoriesResponse.data.data || []);
       } else {
-        console.warn('No categories found or unexpected response format');
         setCategories([]);
       }
     } catch (error) {
-      console.error('Error fetching categories:', error);
       setError('Failed to load categories. Please try again.');
     }
   };
@@ -247,15 +246,13 @@ const ProductFormPage = () => {
     setCategoryError('');
     
     try {
-      // Use the admin API service for better error handling and consistency
-      const response = await api.admin.createCategory({
+      // Use the product API service since admin createCategory doesn't exist
+      const response = await api.products.createCategory({
         name: newCategoryName.trim(),
         description: newCategoryDescription.trim()
       });
       
       if (response.data && response.data.success) {
-        console.log('Category created successfully:', response.data.data);
-        
         // Fetch updated categories
         await fetchCategories();
         
@@ -274,7 +271,6 @@ const ProductFormPage = () => {
         setCategoryError('Failed to create category');
       }
     } catch (error) {
-      console.error('Error creating category:', error);
       setCategoryError(error.response?.data?.message || 'Failed to create category. Please try again.');
     } finally {
       setSavingCategory(false);
@@ -309,9 +305,67 @@ const ProductFormPage = () => {
     
     setSaving(true);
     setError('');
+    setSuccess(false);
     
     try {
-      console.log('Submitting product form data:', formData);
+      // Handle image upload first if we have a new file
+      let uploadedImageUrl = formData.imageUrl;
+      
+      if (formData.imageFile) {
+        try {
+          console.log('Starting image upload process...');
+          console.log('Image file details:', {
+            name: formData.imageFile.name,
+            type: formData.imageFile.type,
+            size: formData.imageFile.size,
+            lastModified: formData.imageFile.lastModified
+          });
+          
+          // Create FormData for image upload
+          const imageFormData = new FormData();
+          
+          // IMPORTANT: Make sure the field name is 'image' - this is what the server expects
+          imageFormData.append('image', formData.imageFile, formData.imageFile.name);
+          
+          // Add additional metadata - ensure productId is always included
+          const productIdParam = productId || 'new';
+          imageFormData.append('productId', productIdParam);
+          imageFormData.append('path', `products/${productIdParam}`);
+          
+          // Log FormData contents
+          console.log('Form data keys:', [...imageFormData.keys()]);
+          console.log('Product ID being sent:', productIdParam);
+          
+          // Upload the image first
+          console.log('Sending image upload request...');
+          const uploadResponse = await api.products.uploadImage(imageFormData);
+          console.log('Image upload response:', uploadResponse);
+          
+          if (uploadResponse && uploadResponse.data && uploadResponse.data.success) {
+            uploadedImageUrl = uploadResponse.data.imageUrl;
+            console.log('Successfully uploaded image:', uploadedImageUrl);
+          } else {
+            // Extract error message from response
+            const errorMsg = 
+              (uploadResponse?.data?.message) || 
+              (uploadResponse?.data?.error) || 
+              'Failed to upload image';
+            console.error('Upload error response:', errorMsg);
+            throw new Error(errorMsg);
+          }
+        } catch (uploadError) {
+          console.error('Image upload error:', uploadError);
+          console.error('Error details:', uploadError.response?.data || uploadError.message);
+          setError(`Failed to upload product image. ${uploadError.message || 'Please try again.'}`);
+          setSaving(false);
+          return;
+        }
+      } else if (!formData.imageUrl && isEditMode) {
+        // If in edit mode and no image provided, keep existing image
+        console.log('No new image provided, keeping existing image if available');
+      } else if (!formData.imageUrl) {
+        console.log('No image provided for product');
+      }
       
       // Prepare product data
       const productData = {
@@ -327,46 +381,30 @@ const ProductFormPage = () => {
         deliveryOptions: formData.deliveryOptions || []
       };
       
-      // Handle image upload if needed
-      if (formData.imageFile) {
-        try {
-          console.log('Uploading product image:', formData.imageFile.name, formData.imageFile.size, formData.imageFile.type);
-          
-          // Create a new FormData instance for the file upload
-          const imageFormData = new FormData();
-          
-          // Ensure the file is properly attached with the exact field name expected by the server
-          imageFormData.append('image', formData.imageFile);
-          
-          console.log('Sending image upload request...');
-          const imageResponse = await api.products.uploadImage(imageFormData);
-          console.log('Image upload response received:', imageResponse);
-          
-          if (imageResponse && imageResponse.success) {
-            console.log('Image uploaded successfully, URL:', imageResponse.imageUrl);
-            productData.images = [imageResponse.imageUrl];
-          } else {
-            console.error('Image upload returned unexpected response format:', imageResponse);
-            throw new Error(imageResponse?.message || 'Invalid response from image upload service');
-          }
-        } catch (imageError) {
-          console.error('Error uploading image:', imageError);
-          setError(imageError.message || 'Failed to upload product image. Please try again.');
-          setSaving(false);
-          return;
-        }
+      // Add the image URL (either existing or newly uploaded)
+      if (uploadedImageUrl) {
+        // Lưu URL hình ảnh vào mảng images
+        productData.images = [uploadedImageUrl];
+        // Thêm trường imageUrl để đảm bảo tương thích
+        productData.imageUrl = uploadedImageUrl;
       }
+      
+      console.log('Saving product with image data:', {
+        hasImage: !!uploadedImageUrl,
+        imageUrl: uploadedImageUrl,
+        images: productData.images
+      });
+      
+      console.log('Saving product with data:', productData);
       
       let response;
       if (isEditMode) {
-        console.log('Updating existing product:', productId);
         response = await api.admin.updateProduct(productId, productData);
       } else {
-        console.log('Creating new product');
         response = await api.admin.createProduct(productData);
       }
       
-      console.log('Product saved successfully:', response.data);
+      console.log('Product save response:', response);
       setSuccess(true);
       
       // Redirect after a short delay
@@ -375,12 +413,64 @@ const ProductFormPage = () => {
       }, 1500);
       
     } catch (error) {
-      console.error('Error saving product:', error);
+      console.error('Product save error:', error);
       setError(
         error.response?.data?.error || 
         error.response?.data?.message || 
+        error.message ||
         'Failed to save product. Please try again.'
       );
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  const handleImageUpload = async (imageData) => {
+    console.log('[ProductFormPage] Starting image upload with data:', imageData);
+    if (!imageData || !imageData.file) {
+      console.error('[ProductFormPage] No file provided for upload');
+      setError('Vui lòng chọn file hình ảnh để tải lên');
+      return null;
+    }
+    
+    try {
+      setSaving(true);
+      
+      // Tạo FormData cho upload
+      const formData = new FormData();
+      formData.append('file', imageData.file);
+      
+      // Thêm productId nếu có (hoặc 'new' nếu là sản phẩm mới)
+      const currentProductId = productId || 'new';
+      formData.append('productId', currentProductId);
+      
+      // Log FormData để debug
+      console.log('[ProductFormPage] FormData details:');
+      formData.forEach((value, key) => {
+        if (key === 'file') {
+          console.log(`[ProductFormPage] - ${key}: ${value.name}, type: ${value.type}, size: ${value.size} bytes`);
+        } else {
+          console.log(`[ProductFormPage] - ${key}: ${value}`);
+        }
+      });
+      
+      // Gọi API upload với formData
+      const response = await api.products.uploadImage(formData, currentProductId);
+      console.log('[ProductFormPage] Upload successful, response:', response);
+      
+      // Nếu upload thành công, lấy URL từ response
+      if (response && response.imageUrl) {
+        console.log('[ProductFormPage] Image URL received:', response.imageUrl);
+        return response.imageUrl;
+      } else {
+        console.error('[ProductFormPage] No imageUrl in response:', response);
+        setError('Lỗi khi tải lên: Server không trả về URL hình ảnh');
+        return null;
+      }
+    } catch (error) {
+      console.error('[ProductFormPage] Upload error:', error);
+      setError(`Lỗi khi tải lên: ${error.message || 'Không rõ lỗi'}`);
+      return null;
     } finally {
       setSaving(false);
     }
@@ -480,56 +570,15 @@ const ProductFormPage = () => {
             
             {/* Product Image */}
             <Grid item xs={12} md={4}>
-              <Box 
-                sx={{ 
-                  width: '100%', 
-                  height: 200, 
-                  border: '1px dashed #ccc',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  flexDirection: 'column',
-                  mb: 2,
-                  position: 'relative',
-                  backgroundImage: formData.imageUrl ? `url(${formData.imageUrl})` : 'none',
-                  backgroundSize: 'contain',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat'
-                }}
-              >
-                {!formData.imageUrl && (
-                  <Box sx={{ textAlign: 'center' }}>
-                    <UploadIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
-                    <Typography variant="body2" color="text.secondary">
-                      Click to upload product image
-                    </Typography>
-                  </Box>
-                )}
-                
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    cursor: 'pointer'
-                  }}
-                />
-              </Box>
-              
-              <Button 
-                variant="outlined" 
-                fullWidth
-                startIcon={<UploadIcon />}
-                onClick={() => document.querySelector('input[type="file"]').click()}
-              >
-                {formData.imageUrl ? 'Change Image' : 'Upload Image'}
-              </Button>
+              <Typography variant="body2" gutterBottom>
+                Product Image
+              </Typography>
+              <ImageUploader 
+                imageUrl={formData.imageUrl}
+                onImageChange={handleImageChange}
+                path={`products/${productId || 'new'}`}
+                disabled={saving}
+              />
             </Grid>
             
             <Grid item xs={12} md={8}>

@@ -20,8 +20,8 @@ const prepareRequest = (ctx) => {
   }
   
   // Đảm bảo có ctx.req.body
-  if (!ctx.req.body && ctx.request.body) {
-    ctx.req.body = ctx.request.body;
+  if (!ctx.req.body) {
+    ctx.req.body = {};
   }
   
   // Đảm bảo có ctx.req.files nếu có file
@@ -146,22 +146,18 @@ const getExtensionFromMimeType = (mimeType) => {
  */
 export const parseRequestBody = (ctx) => {
   try {
-    // If body has already been parsed by koa-bodyparser, use it
-    if (ctx.request && ctx.request.body) {
-      // Make sure we assign to ctx.req.body for consistency
-      if (!ctx.req.body) {
-        ctx.req.body = ctx.request.body;
-      }
-      return ctx.req.body;
-    }
-
     // If we have ctx.req.body already, use that
     if (ctx.req && ctx.req.body) {
       return ctx.req.body;
     }
 
-    // Return empty object if no body found
-    return {};
+    // Initialize empty body if not exists
+    if (!ctx.req.body) {
+      ctx.req.body = {};
+    }
+
+    // Return body
+    return ctx.req.body;
   } catch (error) {
     console.error('Error parsing request body:', error);
     return {};
