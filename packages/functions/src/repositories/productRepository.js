@@ -25,6 +25,27 @@ const formatProduct = (doc) => {
     specifications: data.specifications || {},
     status: data.status || 'active',
     deliveryOptions: data.deliveryOptions || [],
+    productType: data.productType || 'simple',
+    childProducts: data.childProducts || [],
+    isVisible: data.isVisible !== undefined ? data.isVisible : true,
+    printPositions: data.printPositions || [],
+    printOptions: data.printOptions || {
+      basePosition: data.basePosition || 'chest_left',
+      additionalPositions: data.additionalPositions || {
+        sleeve: {
+          price: data.sleevePrice || 2,
+          available: data.sleeveAvailable !== undefined ? data.sleeveAvailable : true
+        },
+        back: {
+          price: data.backPrice || 4,
+          available: data.backAvailable !== undefined ? data.backAvailable : true
+        },
+        special: {
+          price: data.specialPrice || 4,
+          available: data.specialAvailable !== undefined ? data.specialAvailable : true
+        }
+      }
+    },
     createdAt: data.createdAt ? data.createdAt.toDate() : null,
     updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
   };
@@ -46,6 +67,7 @@ const createQuery = (options = {}) => {
   console.log('[ProductRepository] Creating query with options:', JSON.stringify(options));
   
   try {
+    // Start with base collection
     let query = collection;
     
     // Try to apply filters carefully, one at a time to avoid index errors
@@ -118,7 +140,7 @@ const productRepository = {
         };
       }
       
-      // Skip filtering, use base collection
+      // Use base collection without special filtering
       let query = collection;
       
       // Apply pagination
@@ -269,13 +291,20 @@ const productRepository = {
     try {
       console.log('[ProductRepository] Deleting product:', id);
       
-      // Instead of checking orders, just mark as inactive
-      // This is safer and doesn't require order collection access
-      await collection.doc(id).update({
-        status: 'inactive',
-        updatedAt: new Date()
-      });
-      console.log('[ProductRepository] Product marked as inactive instead of deleted');
+      // Kiểm tra sản phẩm tồn tại
+      const productDoc = await collection.doc(id).get();
+      if (!productDoc.exists) {
+        console.error(`[ProductRepository] Product not found: ${id}`);
+        throw new Error('Product not found');
+      }
+      
+      console.log(`[ProductRepository] Found product to delete: ${id}, data:`, productDoc.data());
+      
+      // Completely delete the document instead of marking it
+      await collection.doc(id).delete();
+      console.log('[ProductRepository] Product document completely deleted');
+      
+      return { success: true };
     } catch (error) {
       console.error('[ProductRepository] Error deleting product:', error);
       throw error;

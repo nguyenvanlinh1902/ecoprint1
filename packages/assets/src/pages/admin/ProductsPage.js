@@ -57,6 +57,15 @@ const ProductsPage = () => {
   
   // Determine if we're in view mode based on URL path
   const isViewMode = location.pathname.includes('/view');
+  // Determine if we're in edit mode based on URL path
+  const isEditMode = location.pathname.includes('/edit');
+  
+  // Redirect to ProductFormPage if this is an edit route
+  useEffect(() => {
+    if (isEditMode && productId) {
+      navigate(`/admin/products/${productId}/edit`, { replace: true });
+    }
+  }, [isEditMode, productId, navigate]);
   
   // Panel state - Set to form view if we have a productId in the URL
   const [activeTab, setActiveTab] = useState(productId ? 1 : 0);
@@ -112,11 +121,22 @@ const ProductsPage = () => {
     price: '',
     category: '',
     status: 'active',
-    features: [],
-    specifications: {},
-    deliveryOptions: [],
     imageUrl: '',
-    imageFile: null
+    imageFile: null,
+    productType: 'simple',
+    childProducts: [],
+    isVisible: true,
+    stock: 0,
+    hasProductionOptions: false,
+    productionOptionType: 'print', // Default option type
+    printOptions: {
+      basePosition: 'chest_left',
+      additionalPositions: {
+        sleeve: { price: 2, available: true },
+        back: { price: 4, available: true },
+        special: { price: 4, available: true }
+      }
+    }
   });
   
   // Form UI state
@@ -130,6 +150,32 @@ const ProductsPage = () => {
   const [newSpecValue, setNewSpecValue] = useState('');
   const [newDeliveryName, setNewDeliveryName] = useState('');
   const [newDeliveryPrice, setNewDeliveryPrice] = useState('');
+  
+  // Product Options modal state
+  const [productOptionModalOpen, setProductOptionModalOpen] = useState(false);
+  const [productOptionFormData, setProductOptionFormData] = useState({ 
+    name: '', 
+    description: '',
+    type: 'print', // print, rental, etc.
+    basePrice: 0,
+    positions: [] // List of positions for this option
+  });
+  const [productOptionError, setProductOptionError] = useState('');
+  const [editingProductOption, setEditingProductOption] = useState(null);
+  const [savingProductOption, setSavingProductOption] = useState(false);
+  const [productOptions, setProductOptions] = useState([
+    { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
+      positions: [
+        { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
+        { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
+        { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
+        { id: 'back', name: 'Back', basePrice: 4 },
+        { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
+        { id: 'special', name: 'Special', basePrice: 4 }
+      ]
+    },
+    { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+  ]);
   
   // Load products and categories
   useEffect(() => {
@@ -156,6 +202,10 @@ const ProductsPage = () => {
       if (response?.data?.success) {
         const product = response.data.data;
         
+        // Kiểm tra xem sản phẩm có printOptions hay không
+        const hasPrintOptions = product.hasProductionOptions || 
+          (product.printOptions && Object.keys(product.printOptions).length > 0);
+        
         // Format data to match form structure
         setFormData({
           name: product.name || '',
@@ -164,11 +214,22 @@ const ProductsPage = () => {
           sku: product.sku || '',
           category: product.categoryId || '',
           status: product.status || 'active',
-          features: product.features || [],
-          specifications: product.specifications || {},
-          deliveryOptions: product.deliveryOptions || [],
           imageUrl: product.images && product.images.length > 0 ? product.images[0] : '',
-          imageFile: null
+          imageFile: null,
+          productType: product.productType || 'simple',
+          childProducts: product.childProducts || [],
+          isVisible: product.isVisible !== undefined ? product.isVisible : true,
+          stock: product.stock || 0,
+          hasProductionOptions: hasPrintOptions,
+          productionOptionType: product.productionOptionType || 'print',
+          printOptions: product.printOptions || {
+            basePosition: 'chest_left',
+            additionalPositions: {
+              sleeve: { price: 2, available: true },
+              back: { price: 4, available: true },
+              special: { price: 4, available: true }
+            }
+          }
         });
       } else {
         setFormError('Failed to load product data. Invalid response format.');
@@ -473,11 +534,20 @@ const ProductsPage = () => {
       submitData.append('price', formData.price);
       submitData.append('category', formData.category);
       submitData.append('status', formData.status);
+      submitData.append('productType', formData.productType);
+      submitData.append('isVisible', formData.isVisible);
+      submitData.append('stock', formData.stock);
+      submitData.append('hasProductionOptions', formData.hasProductionOptions);
       
-      // Add arrays and objects as JSON strings
-      submitData.append('features', JSON.stringify(formData.features));
-      submitData.append('specifications', JSON.stringify(formData.specifications));
-      submitData.append('deliveryOptions', JSON.stringify(formData.deliveryOptions));
+      // Add printOptions (Production Options) as JSON string only if enabled
+      if (formData.hasProductionOptions) {
+        submitData.append('printOptions', JSON.stringify(formData.printOptions));
+      }
+      
+      // Add childProducts if any
+      if (formData.childProducts && formData.childProducts.length > 0) {
+        submitData.append('childProducts', JSON.stringify(formData.childProducts));
+      }
       
       // Add image file if present
       if (formData.imageFile) {
@@ -551,11 +621,22 @@ const ProductsPage = () => {
         price: '',
         category: '',
         status: 'active',
-        features: [],
-        specifications: {},
-        deliveryOptions: [],
         imageUrl: '',
-        imageFile: null
+        imageFile: null,
+        productType: 'simple',
+        childProducts: [],
+        isVisible: true,
+        stock: 0,
+        hasProductionOptions: false,
+        productionOptionType: 'print',
+        printOptions: {
+          basePosition: 'chest_left',
+          additionalPositions: {
+            sleeve: { price: 2, available: true },
+            back: { price: 4, available: true },
+            special: { price: 4, available: true }
+          }
+        }
       });
       setActiveTab(0);
     }
@@ -777,6 +858,135 @@ const ProductsPage = () => {
     }
   };
 
+  // Product Options Management functions
+  const handleOpenProductOptionModal = (option = null) => {
+    if (option) {
+      setEditingProductOption(option);
+      setProductOptionFormData({
+        name: option.name || '',
+        description: option.description || '',
+        type: option.type || 'print',
+        basePrice: option.basePrice || 0,
+        positions: option.positions || []
+      });
+    } else {
+      setEditingProductOption(null);
+      setProductOptionFormData({
+        name: '',
+        description: '',
+        type: 'print',
+        basePrice: 0,
+        positions: []
+      });
+    }
+    setProductOptionError('');
+    setProductOptionModalOpen(true);
+  };
+
+  const handleCloseProductOptionModal = () => {
+    setProductOptionModalOpen(false);
+    setProductOptionFormData({
+      name: '',
+      description: '',
+      type: 'print',
+      basePrice: 0,
+      positions: []
+    });
+    setProductOptionError('');
+    setEditingProductOption(null);
+  };
+
+  const handleProductOptionInputChange = (e) => {
+    const { name, value } = e.target;
+    setProductOptionFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleAddPosition = () => {
+    setProductOptionFormData(prev => ({
+      ...prev,
+      positions: [
+        ...prev.positions,
+        {
+          id: `position_${Date.now()}`,
+          name: 'New Position',
+          basePrice: 0,
+          default: prev.positions.length === 0 // First position is default
+        }
+      ]
+    }));
+  };
+
+  const handlePositionChange = (index, field, value) => {
+    const newPositions = [...productOptionFormData.positions];
+    newPositions[index] = {
+      ...newPositions[index],
+      [field]: value
+    };
+    
+    setProductOptionFormData(prev => ({
+      ...prev,
+      positions: newPositions
+    }));
+  };
+
+  const handleRemovePosition = (index) => {
+    const newPositions = [...productOptionFormData.positions];
+    newPositions.splice(index, 1);
+    
+    // If we removed the default position, make the first one default
+    if (newPositions.length > 0 && productOptionFormData.positions[index].default) {
+      newPositions[0].default = true;
+    }
+    
+    setProductOptionFormData(prev => ({
+      ...prev,
+      positions: newPositions
+    }));
+  };
+
+  const handleSetDefaultPosition = (index) => {
+    const newPositions = [...productOptionFormData.positions].map((pos, i) => ({
+      ...pos,
+      default: i === index
+    }));
+    
+    setProductOptionFormData(prev => ({
+      ...prev,
+      positions: newPositions
+    }));
+  };
+
+  const handleSaveProductOption = () => {
+    if (!productOptionFormData.name.trim()) {
+      setProductOptionError('Product option name is required');
+      return;
+    }
+
+    // Generate a unique ID if new
+    const optionId = editingProductOption ? 
+      editingProductOption.id : 
+      productOptionFormData.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+    
+    const updatedOption = {
+      ...productOptionFormData,
+      id: optionId
+    };
+    
+    // Update or add to the list
+    if (editingProductOption) {
+      setProductOptions(prev => 
+        prev.map(opt => opt.id === editingProductOption.id ? updatedOption : opt)
+      );
+    } else {
+      setProductOptions(prev => [...prev, updatedOption]);
+    }
+    
+    handleCloseProductOptionModal();
+  };
+
   return (
     <Box sx={{ width: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -919,6 +1129,7 @@ const ProductsPage = () => {
                   <TableCell>Name</TableCell>
                   <TableCell>Category</TableCell>
                   <TableCell>Price</TableCell>
+                  <TableCell>Stock</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell align="center">Image</TableCell>
                   <TableCell align="right">Actions</TableCell>
@@ -984,6 +1195,9 @@ const ProductsPage = () => {
                           style: 'currency',
                           currency: 'VND'
                         }).format(product.price || 0)}
+                      </TableCell>
+                      <TableCell>
+                        {product.stock}
                       </TableCell>
                       <TableCell>
                         <Chip 
@@ -1176,6 +1390,19 @@ const ProductsPage = () => {
                     />
                   </Grid>
                   
+                  <Grid item xs={12}>
+                    <TextField
+                      name="description"
+                      label="Description"
+                      fullWidth
+                      multiline
+                      rows={4}
+                      value={formData.description}
+                      onChange={handleInputChange}
+                      disabled={isViewMode}
+                    />
+                  </Grid>
+                  
                   <Grid item xs={12} sm={6}>
                     <TextField
                       name="price"
@@ -1186,6 +1413,21 @@ const ProductsPage = () => {
                       onChange={handleInputChange}
                       InputProps={{
                         startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                      }}
+                      disabled={isViewMode}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      name="stock"
+                      label="Stock Quantity"
+                      type="number"
+                      fullWidth
+                      value={formData.stock}
+                      onChange={handleInputChange}
+                      InputProps={{
+                        inputProps: { min: 0 }
                       }}
                       disabled={isViewMode}
                     />
@@ -1237,179 +1479,199 @@ const ProductsPage = () => {
                 </Grid>
               </Grid>
               
+              {/* Production Options (Renamed from Print Options) */}
               <Grid item xs={12}>
-                <TextField
-                  name="description"
-                  label="Description"
-                  fullWidth
-                  multiline
-                  rows={4}
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  disabled={isViewMode}
-                />
-              </Grid>
-              
-              {/* Features */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                  Features
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                
-                <Box sx={{ mb: 2 }}>
-                  {formData.features.map((feature, index) => (
-                    <Chip
-                      key={index}
-                      label={feature}
-                      onDelete={isViewMode ? undefined : () => handleRemoveFeature(index)}
-                      sx={{ mr: 1, mb: 1 }}
-                    />
-                  ))}
-                </Box>
-                
-                {!isViewMode && (
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <TextField
-                      label="Add Feature"
-                      value={newFeature}
-                      onChange={(e) => setNewFeature(e.target.value)}
-                      sx={{ flexGrow: 1, mr: 1 }}
-                    />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                    Production Options
+                  </Typography>
+                  <Box>
                     <Button
                       variant="outlined"
+                      size="small"
                       startIcon={<AddIcon />}
-                      onClick={handleAddFeature}
-                      disabled={!newFeature.trim()}
+                      onClick={() => handleOpenProductOptionModal()}
+                      sx={{ mr: 2 }}
+                      disabled={isViewMode}
                     >
-                      Add
+                      Manage Options
                     </Button>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={formData.hasProductionOptions}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            hasProductionOptions: e.target.checked
+                          }))}
+                          color="primary"
+                          disabled={isViewMode}
+                        />
+                      }
+                      label="Enable Production Options"
+                    />
                   </Box>
-                )}
-              </Grid>
-              
-              {/* Specifications */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                  Specifications
-                </Typography>
+                </Box>
                 <Divider sx={{ mb: 2 }} />
                 
-                <List dense>
-                  {Object.entries(formData.specifications).map(([key, value]) => (
-                    <ListItem
-                      key={key}
-                      secondaryAction={
-                        isViewMode ? null : (
-                          <IconButton edge="end" onClick={() => handleRemoveSpecification(key)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        )
-                      }
-                    >
-                      <ListItemText
-                        primary={<Typography component="span" fontWeight="bold">{key}</Typography>}
-                        secondary={value}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-                
-                {!isViewMode && (
-                  <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        label="Specification Name"
-                        fullWidth
-                        value={newSpecKey}
-                        onChange={(e) => setNewSpecKey(e.target.value)}
-                        placeholder="e.g. Weight, Dimensions"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        label="Value"
-                        fullWidth
-                        value={newSpecValue}
-                        onChange={(e) => setNewSpecValue(e.target.value)}
-                        placeholder="e.g. 5kg, 10x15x2 cm"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={2}>
-                      <Button
-                        variant="outlined"
-                        fullWidth
-                        onClick={handleAddSpecification}
-                        disabled={!newSpecKey.trim() || !newSpecValue.trim()}
-                      >
-                        Add
-                      </Button>
-                    </Grid>
-                  </Grid>
-                )}
-              </Grid>
-              
-              {/* Delivery Options */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                  Delivery Options
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                
-                <List dense>
-                  {formData.deliveryOptions.map((option, index) => (
-                    <ListItem
-                      key={index}
-                      secondaryAction={
-                        isViewMode ? null : (
-                          <IconButton edge="end" onClick={() => handleRemoveDeliveryOption(index)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        )
-                      }
-                    >
-                      <ListItemText
-                        primary={option.name}
-                        secondary={`$${option.price.toFixed(2)}`}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-                
-                {!isViewMode && (
-                  <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        label="Delivery Option"
-                        fullWidth
-                        value={newDeliveryName}
-                        onChange={(e) => setNewDeliveryName(e.target.value)}
-                        placeholder="e.g. Express Shipping"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={5}>
-                      <TextField
-                        label="Price"
-                        fullWidth
-                        value={newDeliveryPrice}
-                        onChange={(e) => setNewDeliveryPrice(e.target.value)}
-                        InputProps={{
-                          startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                        }}
-                        placeholder="e.g. 10.99"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={2}>
-                      <Button
-                        variant="outlined"
-                        fullWidth
-                        onClick={handleAddDeliveryOption}
-                        disabled={!newDeliveryName.trim() || !newDeliveryPrice.trim()}
-                      >
-                        Add
-                      </Button>
-                    </Grid>
-                  </Grid>
+                {formData.hasProductionOptions ? (
+                  <>
+                    {/* Select Production Option Type */}
+                    <Box sx={{ mb: 3 }}>
+                      <FormControl fullWidth required disabled={isViewMode}>
+                        <InputLabel>Production Option Type</InputLabel>
+                        <Select
+                          name="productionOptionType"
+                          label="Production Option Type"
+                          value={formData.productionOptionType || 'print'}
+                          onChange={(e) => {
+                            const selectedOptionType = e.target.value;
+                            const selectedOption = productOptions.find(opt => opt.id === selectedOptionType);
+                            
+                            // Find default position
+                            const defaultPosition = selectedOption?.positions?.find(pos => pos.default);
+                            
+                            setFormData(prev => ({
+                              ...prev,
+                              productionOptionType: selectedOptionType,
+                              printOptions: {
+                                basePosition: defaultPosition?.id || 'chest_left',
+                                additionalPositions: selectedOption?.positions
+                                  ?.filter(pos => !pos.default)
+                                  ?.reduce((acc, pos) => ({
+                                    ...acc,
+                                    [pos.id]: { price: pos.basePrice, available: false }
+                                  }), {}) || {}
+                              }
+                            }));
+                          }}
+                        >
+                          {productOptions.map(option => (
+                            <MenuItem key={option.id} value={option.id}>
+                              {option.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    {/* Base Position Selection */}
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle1" gutterBottom>
+                        Base Position (included in product price)
+                      </Typography>
+                      <FormControl fullWidth required disabled={isViewMode}>
+                        <InputLabel>Base Position</InputLabel>
+                        <Select
+                          name="printOptions.basePosition"
+                          label="Base Position"
+                          value={formData.printOptions?.basePosition || 'chest_left'}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              basePosition: e.target.value
+                            }
+                          }))}
+                        >
+                          {/* Get positions from selected option */}
+                          {productOptions
+                            .find(opt => opt.id === (formData.productionOptionType || 'print'))
+                            ?.positions.map(position => (
+                              <MenuItem key={position.id} value={position.id}>
+                                {position.name}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    {/* Additional Production Positions */}
+                    <Box>
+                      <Typography variant="subtitle1" gutterBottom>
+                        Additional Production Positions (extra charge)
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {/* Map through additional positions from selected option */}
+                        {productOptions
+                          .find(opt => opt.id === (formData.productionOptionType || 'print'))
+                          ?.positions
+                          .filter(pos => pos.id !== formData.printOptions?.basePosition)
+                          .map((position, index) => (
+                            <Grid item xs={12} md={4} key={position.id}>
+                              <Paper 
+                                elevation={2} 
+                                sx={{ 
+                                  p: 2, 
+                                  border: formData.printOptions?.additionalPositions?.[position.id]?.available 
+                                    ? '2px solid #1976d2' 
+                                    : 'none',
+                                  height: '100%',
+                                  display: 'flex',
+                                  flexDirection: 'column'
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                  <Typography variant="subtitle2">{position.name}</Typography>
+                                  <Switch
+                                    checked={formData.printOptions?.additionalPositions?.[position.id]?.available || false}
+                                    onChange={(e) => setFormData((prev) => ({
+                                      ...prev,
+                                      printOptions: {
+                                        ...prev.printOptions,
+                                        additionalPositions: {
+                                          ...prev.printOptions?.additionalPositions,
+                                          [position.id]: {
+                                            ...(prev.printOptions?.additionalPositions?.[position.id] || { price: position.basePrice }),
+                                            available: e.target.checked
+                                          }
+                                        }
+                                      }
+                                    }))}
+                                    color="primary"
+                                    disabled={isViewMode}
+                                  />
+                                </Box>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                  Add production on the {position.name.toLowerCase()} area
+                                </Typography>
+                                <Box sx={{ mt: 'auto' }}>
+                                  <TextField
+                                    label="Price"
+                                    type="number"
+                                    size="small"
+                                    fullWidth
+                                    InputProps={{
+                                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                    }}
+                                    value={formData.printOptions?.additionalPositions?.[position.id]?.price || position.basePrice}
+                                    onChange={(e) => setFormData((prev) => ({
+                                      ...prev,
+                                      printOptions: {
+                                        ...prev.printOptions,
+                                        additionalPositions: {
+                                          ...prev.printOptions?.additionalPositions,
+                                          [position.id]: {
+                                            ...(prev.printOptions?.additionalPositions?.[position.id] || {}),
+                                            price: Number(e.target.value)
+                                          }
+                                        }
+                                      }
+                                    }))}
+                                    disabled={isViewMode || !formData.printOptions?.additionalPositions?.[position.id]?.available}
+                                  />
+                                </Box>
+                              </Paper>
+                            </Grid>
+                          ))
+                        }
+                      </Grid>
+                    </Box>
+                  </>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Production options are disabled for this product. Enable the switch above to configure production options.
+                  </Typography>
                 )}
               </Grid>
               
@@ -1629,6 +1891,147 @@ const ProductsPage = () => {
             disabled={deletingCategory}
           >
             {deletingCategory ? <CircularProgress size={24} /> : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Product Options Management Modal */}
+      <Dialog
+        open={productOptionModalOpen}
+        onClose={handleCloseProductOptionModal}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          {editingProductOption ? 'Edit Production Option' : 'Add Production Option'}
+        </DialogTitle>
+        <DialogContent>
+          {productOptionError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {productOptionError}
+            </Alert>
+          )}
+
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                name="name"
+                label="Option Name"
+                fullWidth
+                required
+                value={productOptionFormData.name}
+                onChange={handleProductOptionInputChange}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Option Type</InputLabel>
+                <Select
+                  name="type"
+                  label="Option Type"
+                  value={productOptionFormData.type}
+                  onChange={handleProductOptionInputChange}
+                >
+                  <MenuItem value="print">Print</MenuItem>
+                  <MenuItem value="rental">Rental</MenuItem>
+                  <MenuItem value="custom">Custom</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                name="description"
+                label="Description"
+                fullWidth
+                multiline
+                rows={2}
+                value={productOptionFormData.description}
+                onChange={handleProductOptionInputChange}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="subtitle1">Positions</Typography>
+                <Button
+                  startIcon={<AddIcon />}
+                  onClick={handleAddPosition}
+                >
+                  Add Position
+                </Button>
+              </Box>
+              
+              {productOptionFormData.positions.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ my: 2 }}>
+                  No positions added yet. Click "Add Position" to add your first position.
+                </Typography>
+              ) : (
+                <Box>
+                  {productOptionFormData.positions.map((position, index) => (
+                    <Paper key={index} elevation={1} sx={{ p: 2, mb: 2 }}>
+                      <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} sm={6} md={4}>
+                          <TextField
+                            label="Position Name"
+                            fullWidth
+                            value={position.name}
+                            onChange={(e) => handlePositionChange(index, 'name', e.target.value)}
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={12} sm={6} md={3}>
+                          <TextField
+                            label="Base Price"
+                            type="number"
+                            fullWidth
+                            InputProps={{
+                              startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                            }}
+                            value={position.basePrice}
+                            onChange={(e) => handlePositionChange(index, 'basePrice', Number(e.target.value))}
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={12} sm={6} md={3}>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={position.default || false}
+                                onChange={() => handleSetDefaultPosition(index)}
+                              />
+                            }
+                            label="Default Position"
+                          />
+                        </Grid>
+                        
+                        <Grid item xs={12} sm={6} md={2}>
+                          <Button
+                            color="error"
+                            startIcon={<DeleteIcon />}
+                            fullWidth
+                            onClick={() => handleRemovePosition(index)}
+                          >
+                            Remove
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  ))}
+                </Box>
+              )}
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseProductOptionModal}>Cancel</Button>
+          <Button
+            onClick={handleSaveProductOption}
+            variant="contained"
+            disabled={savingProductOption}
+          >
+            {savingProductOption ? <CircularProgress size={24} /> : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

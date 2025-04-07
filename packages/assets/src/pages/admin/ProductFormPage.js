@@ -34,7 +34,19 @@ const ProductFormPage = () => {
     specifications: {},
     deliveryOptions: [],
     imageUrl: '',
-    imageFile: null
+    imageFile: null,
+    productType: 'simple',
+    childProducts: [],
+    isVisible: true,
+    stock: 0,
+    printOptions: {
+      basePosition: 'chest_left',
+      additionalPositions: {
+        sleeve: { price: 2, available: true },
+        back: { price: 4, available: true },
+        special: { price: 4, available: true }
+      }
+    }
   });
   
   // UI state
@@ -43,6 +55,7 @@ const ProductFormPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [categories, setCategories] = useState([]);
+  const [simpleProducts, setSimpleProducts] = useState([]);
   
   // Category modal state
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -84,18 +97,36 @@ const ProductFormPage = () => {
               features: product.features || [],
               specifications: formattedSpecs,
               deliveryOptions: product.deliveryOptions || [],
-              imageUrl: product.images && product.images.length > 0 ? product.images[0] : ''
+              imageUrl: product.images && product.images.length > 0 ? product.images[0] : '',
+              imageFile: null,
+              productType: product.productType || 'simple',
+              childProducts: product.childProducts || [],
+              isVisible: product.isVisible !== undefined ? product.isVisible : true,
+              stock: product.stock || 0,
+              printOptions: product.printOptions || {
+                basePosition: 'chest_left',
+                additionalPositions: {
+                  sleeve: { price: 2, available: true },
+                  back: { price: 4, available: true },
+                  special: { price: 4, available: true }
+                }
+              }
             });
           } else {
-            setError('Failed to load product data. Please try again later.');
+            console.error('Failed to load product data:', response);
+            setError('Failed to load product data. ' + (response?.data?.message || 'Invalid response format.'));
           }
         }
         
         // Fetch categories using the dedicated function
         await fetchCategories();
         
+        // Fetch simple products for configurable product
+        await fetchSimpleProducts();
+        
       } catch (error) {
-        setError('Failed to load data. Please try again later.');
+        console.error('Error in ProductFormPage fetchData:', error);
+        setError('Failed to load data: ' + (error.response?.data?.message || error.message || 'Unknown error'));
       } finally {
         setLoading(false);
       }
@@ -103,6 +134,25 @@ const ProductFormPage = () => {
     
     fetchData();
   }, [productId, isEditMode]);
+  
+  // Fetch simple products for configurable product
+  const fetchSimpleProducts = async () => {
+    try {
+      const response = await api.admin.getAllProducts();
+      if (response.data && response.data.success) {
+        const products = response.data.data?.products || [];
+        // Lọc chỉ lấy sản phẩm simple
+        const simpleProductsList = products.filter(product => 
+          product.productType === 'simple' || !product.productType
+        );
+        setSimpleProducts(simpleProductsList);
+      } else {
+        console.error('Failed to fetch simple products');
+      }
+    } catch (error) {
+      console.error('Error fetching simple products:', error);
+    }
+  };
   
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -378,7 +428,18 @@ const ProductFormPage = () => {
         status: formData.status || 'active',
         features: formData.features || [],
         specifications: formData.specifications || {},
-        deliveryOptions: formData.deliveryOptions || []
+        deliveryOptions: formData.deliveryOptions || [],
+        productType: formData.productType || 'simple',
+        childProducts: formData.childProducts || [],
+        isVisible: formData.isVisible || true,
+        printOptions: formData.printOptions || {
+          basePosition: 'chest_left',
+          additionalPositions: {
+            sleeve: { price: 2, available: true },
+            back: { price: 4, available: true },
+            special: { price: 4, available: true }
+          }
+        }
       };
       
       // Add the image URL (either existing or newly uploaded)
@@ -609,6 +670,20 @@ const ProductFormPage = () => {
                 </Grid>
                 
                 <Grid item xs={12} sm={6}>
+                  <TextField
+                    name="stock"
+                    label="Stock Quantity"
+                    type="number"
+                    fullWidth
+                    value={formData.stock}
+                    onChange={handleInputChange}
+                    InputProps={{
+                      inputProps: { min: 0 }
+                    }}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
                   <FormControl fullWidth required>
                     <InputLabel>Category</InputLabel>
                     <Select
@@ -665,154 +740,347 @@ const ProductFormPage = () => {
             {/* Features */}
             <Grid item xs={12}>
               <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                Features
+                Product Type
               </Typography>
               <Divider sx={{ mb: 2 }} />
-              
-              <Box sx={{ mb: 2 }}>
-                {formData.features.map((feature, index) => (
-                  <Chip
-                    key={index}
-                    label={feature}
-                    onDelete={() => handleRemoveFeature(index)}
-                    sx={{ mr: 1, mb: 1 }}
-                  />
-                ))}
-              </Box>
-              
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <TextField
-                  label="Add Feature"
-                  value={newFeature}
-                  onChange={(e) => setNewFeature(e.target.value)}
-                  sx={{ flexGrow: 1, mr: 1 }}
-                />
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddFeature}
-                  disabled={!newFeature.trim()}
+              <FormControl fullWidth required>
+                <InputLabel>Product Type</InputLabel>
+                <Select
+                  name="productType"
+                  label="Product Type"
+                  value={formData.productType}
+                  onChange={handleInputChange}
                 >
-                  Add
-                </Button>
+                  <MenuItem value="simple">Simple</MenuItem>
+                  <MenuItem value="configurable">Configurable</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            {/* Child Products */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                Child Products
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              {formData.productType === 'configurable' ? (
+                <>
+                  <List dense>
+                    {formData.childProducts.map((childId, index) => {
+                      // Tìm thông tin sản phẩm con từ danh sách simpleProducts
+                      const childProduct = simpleProducts.find(p => p.id === childId);
+                      return (
+                        <ListItem
+                          key={index}
+                          secondaryAction={
+                            <IconButton edge="end" onClick={() => {
+                              const updatedChildProducts = formData.childProducts.filter((id) => id !== childId);
+                              setFormData((prev) => ({
+                                ...prev,
+                                childProducts: updatedChildProducts
+                              }));
+                            }}>
+                              <DeleteIcon />
+                            </IconButton>
+                          }
+                        >
+                          <ListItemText
+                            primary={childProduct ? childProduct.name : childId}
+                            secondary={childProduct ? `SKU: ${childProduct.sku}, Price: $${childProduct.price}` : 'Unknown product'}
+                          />
+                        </ListItem>
+                      );
+                    })}
+                  </List>
+
+                  <FormControl fullWidth sx={{ mt: 2 }}>
+                    <InputLabel>Add Child Product</InputLabel>
+                    <Select
+                      label="Add Child Product"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          // Kiểm tra trùng lặp
+                          if (!formData.childProducts.includes(e.target.value)) {
+                            setFormData((prev) => ({
+                              ...prev,
+                              childProducts: [...prev.childProducts, e.target.value]
+                            }));
+                          }
+                        }
+                      }}
+                    >
+                      <MenuItem value="">-- Select a product --</MenuItem>
+                      {simpleProducts
+                        .filter(p => !formData.childProducts.includes(p.id))
+                        .map((product) => (
+                          <MenuItem key={product.id} value={product.id}>
+                            {product.name} (SKU: {product.sku})
+                          </MenuItem>
+                        ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Note: Only simple products can be added as child products.
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Child products are only available for configurable products. Change product type to "Configurable" first.
+                </Typography>
+              )}
+            </Grid>
+            
+            {/* Visibility */}
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.isVisible}
+                    onChange={(e) => setFormData((prev) => ({
+                      ...prev,
+                      isVisible: e.target.checked
+                    }))}
+                    color="primary"
+                  />
+                }
+                label="Visible"
+              />
+            </Grid>
+            
+            {/* Print Options */}
+            <Grid item xs={12}>
+              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                Print Options
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              
+              {/* Base Position Selection */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Base Position (included in product price)
+                </Typography>
+                <FormControl fullWidth required>
+                  <InputLabel>Base Position</InputLabel>
+                  <Select
+                    name="printOptions.basePosition"
+                    label="Base Position"
+                    value={formData.printOptions.basePosition}
+                    onChange={(e) => setFormData((prev) => ({
+                      ...prev,
+                      printOptions: {
+                        ...prev.printOptions,
+                        basePosition: e.target.value
+                      }
+                    }))}
+                  >
+                    <MenuItem value="chest_left">Chest Left</MenuItem>
+                    <MenuItem value="chest_right">Chest Right</MenuItem>
+                    <MenuItem value="chest_center">Chest Center</MenuItem>
+                  </Select>
+                </FormControl>
               </Box>
-            </Grid>
-            
-            {/* Specifications */}
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                Specifications
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              
-              <List dense>
-                {Object.entries(formData.specifications).map(([key, value]) => (
-                  <ListItem
-                    key={key}
-                    secondaryAction={
-                      <IconButton edge="end" onClick={() => handleRemoveSpecification(key)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText
-                      primary={<Typography component="span" fontWeight="bold">{key}</Typography>}
-                      secondary={value}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-              
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={5}>
-                  <TextField
-                    label="Specification Name"
-                    fullWidth
-                    value={newSpecKey}
-                    onChange={(e) => setNewSpecKey(e.target.value)}
-                    placeholder="e.g. Weight, Dimensions"
-                  />
+
+              {/* Additional Print Positions */}
+              <Box>
+                <Typography variant="subtitle1" gutterBottom>
+                  Additional Print Positions (extra charge)
+                </Typography>
+                <Grid container spacing={2}>
+                  {/* Sleeve Position Option */}
+                  <Grid item xs={12} md={4}>
+                    <Paper 
+                      elevation={2} 
+                      sx={{ 
+                        p: 2, 
+                        border: formData.printOptions.additionalPositions.sleeve.available ? '2px solid #1976d2' : 'none',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2">Sleeve (left/right)</Typography>
+                        <Switch
+                          checked={formData.printOptions.additionalPositions.sleeve.available}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                sleeve: {
+                                  ...prev.printOptions.additionalPositions.sleeve,
+                                  available: e.target.checked
+                                }
+                              }
+                            }
+                          }))}
+                          color="primary"
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Add printing on the sleeve area
+                      </Typography>
+                      <Box sx={{ mt: 'auto' }}>
+                        <TextField
+                          label="Price"
+                          type="number"
+                          size="small"
+                          fullWidth
+                          InputProps={{
+                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                          }}
+                          value={formData.printOptions.additionalPositions.sleeve.price}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                sleeve: {
+                                  ...prev.printOptions.additionalPositions.sleeve,
+                                  price: Number(e.target.value)
+                                }
+                              }
+                            }
+                          }))}
+                          disabled={!formData.printOptions.additionalPositions.sleeve.available}
+                        />
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  {/* Back Position Option */}
+                  <Grid item xs={12} md={4}>
+                    <Paper 
+                      elevation={2} 
+                      sx={{ 
+                        p: 2, 
+                        border: formData.printOptions.additionalPositions.back.available ? '2px solid #1976d2' : 'none',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2">Back</Typography>
+                        <Switch
+                          checked={formData.printOptions.additionalPositions.back.available}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                back: {
+                                  ...prev.printOptions.additionalPositions.back,
+                                  available: e.target.checked
+                                }
+                              }
+                            }
+                          }))}
+                          color="primary"
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Add printing on the back area
+                      </Typography>
+                      <Box sx={{ mt: 'auto' }}>
+                        <TextField
+                          label="Price"
+                          type="number"
+                          size="small"
+                          fullWidth
+                          InputProps={{
+                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                          }}
+                          value={formData.printOptions.additionalPositions.back.price}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                back: {
+                                  ...prev.printOptions.additionalPositions.back,
+                                  price: Number(e.target.value)
+                                }
+                              }
+                            }
+                          }))}
+                          disabled={!formData.printOptions.additionalPositions.back.available}
+                        />
+                      </Box>
+                    </Paper>
+                  </Grid>
+
+                  {/* Special Position Option */}
+                  <Grid item xs={12} md={4}>
+                    <Paper 
+                      elevation={2} 
+                      sx={{ 
+                        p: 2, 
+                        border: formData.printOptions.additionalPositions.special.available ? '2px solid #1976d2' : 'none',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                        <Typography variant="subtitle2">Special</Typography>
+                        <Switch
+                          checked={formData.printOptions.additionalPositions.special.available}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                special: {
+                                  ...prev.printOptions.additionalPositions.special,
+                                  available: e.target.checked
+                                }
+                              }
+                            }
+                          }))}
+                          color="primary"
+                        />
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Add printing on special areas (collar, hem, etc.)
+                      </Typography>
+                      <Box sx={{ mt: 'auto' }}>
+                        <TextField
+                          label="Price"
+                          type="number"
+                          size="small"
+                          fullWidth
+                          InputProps={{
+                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                          }}
+                          value={formData.printOptions.additionalPositions.special.price}
+                          onChange={(e) => setFormData((prev) => ({
+                            ...prev,
+                            printOptions: {
+                              ...prev.printOptions,
+                              additionalPositions: {
+                                ...prev.printOptions.additionalPositions,
+                                special: {
+                                  ...prev.printOptions.additionalPositions.special,
+                                  price: Number(e.target.value)
+                                }
+                              }
+                            }
+                          }))}
+                          disabled={!formData.printOptions.additionalPositions.special.available}
+                        />
+                      </Box>
+                    </Paper>
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={5}>
-                  <TextField
-                    label="Value"
-                    fullWidth
-                    value={newSpecValue}
-                    onChange={(e) => setNewSpecValue(e.target.value)}
-                    placeholder="e.g. 5kg, 10x15x2 cm"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    onClick={handleAddSpecification}
-                    disabled={!newSpecKey.trim() || !newSpecValue.trim()}
-                  >
-                    Add
-                  </Button>
-                </Grid>
-              </Grid>
-            </Grid>
-            
-            {/* Delivery Options */}
-            <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                Delivery Options
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              
-              <List dense>
-                {formData.deliveryOptions.map((option, index) => (
-                  <ListItem
-                    key={index}
-                    secondaryAction={
-                      <IconButton edge="end" onClick={() => handleRemoveDeliveryOption(index)}>
-                        <DeleteIcon />
-                      </IconButton>
-                    }
-                  >
-                    <ListItemText
-                      primary={option.name}
-                      secondary={`$${option.price.toFixed(2)}`}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-              
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} sm={5}>
-                  <TextField
-                    label="Delivery Option"
-                    fullWidth
-                    value={newDeliveryName}
-                    onChange={(e) => setNewDeliveryName(e.target.value)}
-                    placeholder="e.g. Express Shipping"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={5}>
-                  <TextField
-                    label="Price"
-                    fullWidth
-                    value={newDeliveryPrice}
-                    onChange={(e) => setNewDeliveryPrice(e.target.value)}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                    }}
-                    placeholder="e.g. 10.99"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={2}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    onClick={handleAddDeliveryOption}
-                    disabled={!newDeliveryName.trim() || !newDeliveryPrice.trim()}
-                  >
-                    Add
-                  </Button>
-                </Grid>
-              </Grid>
+              </Box>
             </Grid>
             
             {/* Submit Button */}

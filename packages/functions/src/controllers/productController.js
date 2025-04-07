@@ -52,6 +52,35 @@ export const createProduct = async (ctx) => {
       productData.images.push(productData.imageUrl);
     }
     
+    // Thêm xử lý cho sản phẩm cấu hình
+    if (productData.productType === 'configurable' && productData.childProducts) {
+      // Xác minh các sản phẩm con tồn tại
+      for (const childId of productData.childProducts) {
+        const childProduct = await productService.findById(childId);
+        if (!childProduct) {
+          ctx.status = 400;
+          ctx.body = { 
+            success: false,
+            error: 'Invalid child product',
+            message: `Child product with ID ${childId} does not exist` 
+          };
+          return;
+        }
+      }
+    }
+    
+    // Đảm bảo các tùy chọn in/thêu có cấu trúc đúng
+    if (!productData.printOptions) {
+      productData.printOptions = {
+        basePosition: 'chest_left',
+        additionalPositions: {
+          sleeve: { price: 2, available: true },
+          back: { price: 4, available: true },
+          special: { price: 4, available: true }
+        }
+      };
+    }
+    
     // Create product using the product service
     const newProduct = await productService.create(productData);
     console.log('[ProductController] Product created successfully:', newProduct.id);
@@ -74,52 +103,83 @@ export const createProduct = async (ctx) => {
 };
 
 /**
- * Update an existing product
- * @param {Object} ctx - Koa context
+ * Cập nhật sản phẩm hiện có (Admin only)
  */
 export const updateProduct = async (ctx) => {
   try {
-    // Lấy productId từ đúng nguồn, ưu tiên params.productId, sau đó mới đến params.id
-    const productId = ctx.params.productId || ctx.params.id;
-    console.log('[ProductController] Updating product:', productId);
-    console.log('[ProductController] Request params:', ctx.params);
-    console.log('[ProductController] Request body:', ctx.req.body);
+    const productId = ctx.params.id;
     
     if (!productId) {
       ctx.status = 400;
       ctx.body = { 
         success: false,
         error: 'Missing product ID',
-        message: 'Product ID is required' 
+        message: 'Please provide a product ID' 
       };
       return;
     }
     
-    if (!ctx.req.body) {
-      ctx.status = 400;
+    const updateData = ctx.req.body;
+    
+    // Kiểm tra xem sản phẩm có tồn tại không
+    const existingProduct = await productService.findById(productId);
+    
+    if (!existingProduct) {
+      ctx.status = 404;
       ctx.body = { 
         success: false,
-        error: 'No update data provided',
-        message: 'Please provide data to update' 
+        error: 'Product not found',
+        message: `No product found with ID: ${productId}` 
       };
       return;
     }
     
-    const updateData = {...ctx.req.body};
-    
-    // Đảm bảo trường images luôn là một mảng
-    if (!updateData.images) {
-      updateData.images = [];
-    }
-    
-    // Nếu có imageUrl nhưng không có trong mảng images, thêm vào
-    if (updateData.imageUrl && !updateData.images.includes(updateData.imageUrl)) {
+    // Xử lý cập nhật hình ảnh nếu có
+    if (updateData.imageUrl && (!updateData.images || !updateData.images.includes(updateData.imageUrl))) {
+      if (!updateData.images) {
+        updateData.images = [...(existingProduct.images || [])];
+      }
       updateData.images.push(updateData.imageUrl);
     }
+
+    // Xử lý cập nhật cho sản phẩm cấu hình
+    if (updateData.productType === 'configurable' && updateData.childProducts) {
+      // Xác minh các sản phẩm con tồn tại
+      for (const childId of updateData.childProducts) {
+        const childProduct = await productService.findById(childId);
+        if (!childProduct) {
+          ctx.status = 400;
+          ctx.body = { 
+            success: false,
+            error: 'Invalid child product',
+            message: `Child product with ID ${childId} does not exist` 
+          };
+          return;
+        }
+      }
+    }
     
-    // Update product using the product service
+    // Cập nhật các tùy chọn in/thêu nếu có
+    if (updateData.printOptions) {
+      // Đảm bảo cấu trúc đúng
+      if (!updateData.printOptions.basePosition) {
+        updateData.printOptions.basePosition = existingProduct.printOptions?.basePosition || 'chest_left';
+      }
+      
+      if (!updateData.printOptions.additionalPositions) {
+        updateData.printOptions.additionalPositions = existingProduct.printOptions?.additionalPositions || {
+          sleeve: { price: 2, available: true },
+          back: { price: 4, available: true },
+          special: { price: 4, available: true }
+        };
+      }
+    }
+    
+    // Thêm timestamp cập nhật
+    updateData.updatedAt = new Date();
+    
+    // Cập nhật sản phẩm
     const updatedProduct = await productService.update(productId, updateData);
-    console.log('[ProductController] Product updated successfully:', productId);
     
     ctx.status = 200;
     ctx.body = {
@@ -129,11 +189,12 @@ export const updateProduct = async (ctx) => {
     };
   } catch (error) {
     console.error('[ProductController] Error updating product:', error);
-    ctx.status = error.status || 500;
+    
+    ctx.status = 500;
     ctx.body = { 
       success: false,
-      error: error.message,
-      message: error.status === 404 ? 'Product not found' : 'Failed to update product' 
+      error: 'Failed to update product',
+      message: error.message
     };
   }
 };
@@ -296,7 +357,7 @@ export const deleteProduct = async (ctx) => {
     }
     
     // Delete product using the product service
-    await productService.deleteProduct(productId);
+    await productService.delete(productId);
     console.log('[ProductController] Product deleted successfully:', productId);
     
     ctx.status = 200;

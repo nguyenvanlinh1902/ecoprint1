@@ -37,7 +37,9 @@ const AdminRouter = () => {
           {/* Products management */}
           <Route path="products" element={<AdminProductsPage />} />
           <Route path="products/new" element={<AdminProductFormPage />} />
-          <Route path="products/:productId" element={<AdminProductFormPage />} />
+          <Route path="products/:productId" element={<AdminProductsPage />} />
+          <Route path="products/:productId/edit" element={<AdminProductFormPage />} />
+          <Route path="products/:productId/view" element={<AdminProductsPage />} />
           
           {/* Orders management */}
           <Route path="orders" element={<AdminOrdersPage />} />

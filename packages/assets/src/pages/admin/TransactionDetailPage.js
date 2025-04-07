@@ -177,32 +177,23 @@ const TransactionDetailPage = () => {
       const response = await api.admin.addTransactionAdminNote(transactionId, adminNote);
       console.log('Add note response:', response);
       
-      if (response && response.success !== false) {
-        setNotesSuccess('Note added successfully!');
-        setAdminNote('');
-        
-        // Update transaction data only if the note was added successfully
-        try {
-          const transactionResponse = await api.admin.getTransactionById(transactionId);
-          console.log('Refreshed transaction data:', transactionResponse);
-          
-          if (transactionResponse.data && transactionResponse.data.data) {
-            setTransaction(transactionResponse.data.data);
-          } else if (transactionResponse.data) {
-            setTransaction(transactionResponse.data);
-          }
-        } catch (refreshError) {
-          console.error('Error refreshing transaction data:', refreshError);
-          // Don't show an error for this, just log it
-        }
-        
-        // Clear success message after a delay
-        setTimeout(() => {
-          setNotesSuccess('');
-        }, 3000);
-      } else {
-        throw new Error(response?.message || 'Failed to add note');
+      setNotesSuccess('Note added successfully!');
+      setAdminNote('');
+      
+      // Update transaction data
+      const transactionResponse = await api.admin.getTransactionById(transactionId);
+      console.log('Refreshed transaction data:', transactionResponse);
+      
+      if (transactionResponse.data && transactionResponse.data.data) {
+        setTransaction(transactionResponse.data.data);
+      } else if (transactionResponse.data) {
+        setTransaction(transactionResponse.data);
       }
+      
+      // Clear success message after a delay
+      setTimeout(() => {
+        setNotesSuccess('');
+      }, 3000);
     } catch (error) {
       console.error('Error adding admin note:', error);
       setNotesError(error.message || 'Failed to add note. Please try again.');

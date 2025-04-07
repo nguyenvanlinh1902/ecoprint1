@@ -1,51 +1,32 @@
-import cors from '@koa/cors';
-
 /**
- * Tạo middleware CORS với cấu hình tùy chỉnh
- * @returns {Function} CORS middleware
+ * Custom CORS middleware for Koa
+ * Provides proper CORS headers for API endpoints
  */
 export default function corsMiddleware() {
-  console.log('[CORS Middleware] Initializing CORS middleware');
-  
-  const corsOptions = {
-    origin: '*', // Cho phép tất cả các origin
-    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowHeaders: [
-      'Content-Type', 
-      'Authorization', 
-      'X-User-Email', 
-      'X-User-Role',
-      'X-Requested-With'
-    ],
-    credentials: true, // Cho phép gửi cookies cross-origin
-    maxAge: 86400, // Thời gian cache của preflight request
-    exposeHeaders: ['WWW-Authenticate', 'Server-Authorization']
-  };
-
-  // Log CORS configuration
-  console.log('[CORS Middleware] CORS configuration:', corsOptions);
-  
-  // Include special handling for OPTIONS requests
   return async (ctx, next) => {
-    // Log the request
-    console.log(`[CORS Middleware] Request: ${ctx.method} ${ctx.url}`);
-    console.log('[CORS Middleware] Headers:', ctx.request.headers);
+    const requestOrigin = ctx.headers.origin || '*';
     
-    // Set CORS headers directly for immediate effect
-    ctx.set('Access-Control-Allow-Origin', '*');
+    // Allow requests from any origin
+    ctx.set('Access-Control-Allow-Origin', requestOrigin);
+    
+    // Allow common HTTP methods
     ctx.set('Access-Control-Allow-Methods', 'GET, HEAD, PUT, POST, DELETE, PATCH, OPTIONS');
+    
+    // Allow common headers plus custom headers
     ctx.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Role, X-Requested-With');
+    
+    // Allow credentials (cookies, authentication headers)
     ctx.set('Access-Control-Allow-Credentials', 'true');
+    
+    // Set max age for preflight requests
     ctx.set('Access-Control-Max-Age', '86400');
     
-    // Handle OPTIONS requests specially
+    // Handle preflight OPTIONS requests
     if (ctx.method === 'OPTIONS') {
-      console.log('[CORS Middleware] Handling OPTIONS preflight request');
-      ctx.status = 204;
+      ctx.status = 204; // No content
       return;
     }
     
-    // Continue to the next middleware
     await next();
   };
 } 

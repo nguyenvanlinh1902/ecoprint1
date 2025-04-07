@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Box, Typography, Grid, Paper, Button, CircularProgress,
   Breadcrumbs, Divider, Tabs, Tab, Table, TableBody,
-  TableCell, TableContainer, TableRow, Card, CardMedia
+  TableCell, TableContainer, TableRow, Card, CardMedia,
+  FormControl, InputLabel, Select, MenuItem, FormGroup, FormControlLabel, Checkbox
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -38,13 +39,39 @@ const ProductDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tabValue, setTabValue] = useState(0);
+  
+  // State để quản lý sản phẩm con được chọn (đối với sản phẩm cấu hình)
+  const [selectedChildProduct, setSelectedChildProduct] = useState(null);
+  // State để quản lý các vị trí in/thêu được chọn
+  const [selectedPrintPositions, setSelectedPrintPositions] = useState({
+    base: true,
+    sleeve_left: false,
+    sleeve_right: false,
+    back: false,
+    special: false
+  });
+  // Tính toán giá cuối cùng dựa trên các tùy chọn
+  const [calculatedPrice, setCalculatedPrice] = useState(0);
 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
         setLoading(true);
         const response = await api.get(`/api/products/${productId}`);
-        setProduct(response.data.data);
+        const productData = response.data.data;
+        setProduct(productData);
+        
+        // Nếu là sản phẩm cấu hình, tải thêm thông tin về các sản phẩm con
+        if (productData.productType === 'configurable' && productData.childProducts?.length > 0) {
+          const firstChildId = productData.childProducts[0];
+          const childResponse = await api.get(`/api/products/${firstChildId}`);
+          setSelectedChildProduct(childResponse.data.data);
+        }
+        
+        // Khởi tạo giá ban đầu
+        if (productData.price) {
+          setCalculatedPrice(productData.price);
+        }
       } catch (error) {
         /* error removed */
         setError('Failed to load product details. Please try again later.');
@@ -55,9 +82,62 @@ const ProductDetailPage = () => {
 
     fetchProduct();
   }, [productId]);
+  
+  // Cập nhật giá khi thay đổi vị trí in/thêu
+  useEffect(() => {
+    if (!product) return;
+    
+    let basePrice = selectedChildProduct?.price || product.price || 0;
+    let additionalCost = 0;
+    
+    const printOptions = product.printOptions || {
+      additionalPositions: {
+        sleeve: { price: 2 },
+        back: { price: 4 },
+        special: { price: 4 }
+      }
+    };
+    
+    // Giá cơ bản đã bao gồm 1 vị trí in chính
+    if (selectedPrintPositions.sleeve_left) {
+      additionalCost += printOptions.additionalPositions.sleeve.price;
+    }
+    
+    if (selectedPrintPositions.sleeve_right) {
+      additionalCost += printOptions.additionalPositions.sleeve.price;
+    }
+    
+    if (selectedPrintPositions.back) {
+      additionalCost += printOptions.additionalPositions.back.price;
+    }
+    
+    if (selectedPrintPositions.special) {
+      additionalCost += printOptions.additionalPositions.special.price;
+    }
+    
+    setCalculatedPrice(basePrice + additionalCost);
+  }, [product, selectedChildProduct, selectedPrintPositions]);
 
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
+  };
+  
+  // Xử lý khi chọn sản phẩm con
+  const handleChildProductChange = async (childId) => {
+    try {
+      const response = await api.get(`/api/products/${childId}`);
+      setSelectedChildProduct(response.data.data);
+    } catch (error) {
+      console.error('Error fetching child product:', error);
+    }
+  };
+  
+  // Xử lý khi thay đổi vị trí in/thêu
+  const handlePrintPositionChange = (position) => {
+    setSelectedPrintPositions(prev => ({
+      ...prev,
+      [position]: !prev[position]
+    }));
   };
 
   if (loading) {
@@ -142,19 +222,95 @@ const ProductDetailPage = () => {
           </Typography>
           
           <Typography variant="h5" color="primary" sx={{ my: 2 }}>
-            {formatCurrency(product.basePrice)}
+            {formatCurrency(calculatedPrice)}
           </Typography>
           
           <Typography variant="body1" paragraph>
             {product.description}
           </Typography>
           
+          {/* Tùy chọn sản phẩm cấu hình */}
+          {product.productType === 'configurable' && product.childProducts?.length > 0 && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+                Product Options
+              </Typography>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Select Option</InputLabel>
+                <Select
+                  value={selectedChildProduct?.id || ''}
+                  onChange={(e) => handleChildProductChange(e.target.value)}
+                  label="Select Option"
+                >
+                  {product.childProducts.map((childId) => (
+                    <MenuItem key={childId} value={childId}>
+                      {product.childProductsMap?.[childId]?.name || childId}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          )}
+          
+          {/* Tùy chọn vị trí in/thêu */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>
+              Print/Embroidery Options
+            </Typography>
+            <FormGroup>
+              <FormControlLabel
+                control={<Checkbox checked={selectedPrintPositions.base} disabled />}
+                label={`Base position (included in price)`}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox 
+                    checked={selectedPrintPositions.sleeve_left} 
+                    onChange={() => handlePrintPositionChange('sleeve_left')}
+                    disabled={!product.printOptions?.additionalPositions?.sleeve?.available}
+                  />
+                }
+                label={`Left sleeve (+$${product.printOptions?.additionalPositions?.sleeve?.price || 2})`}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox 
+                    checked={selectedPrintPositions.sleeve_right} 
+                    onChange={() => handlePrintPositionChange('sleeve_right')}
+                    disabled={!product.printOptions?.additionalPositions?.sleeve?.available}
+                  />
+                }
+                label={`Right sleeve (+$${product.printOptions?.additionalPositions?.sleeve?.price || 2})`}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox 
+                    checked={selectedPrintPositions.back} 
+                    onChange={() => handlePrintPositionChange('back')}
+                    disabled={!product.printOptions?.additionalPositions?.back?.available}
+                  />
+                }
+                label={`Back (+$${product.printOptions?.additionalPositions?.back?.price || 4})`}
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox 
+                    checked={selectedPrintPositions.special} 
+                    onChange={() => handlePrintPositionChange('special')}
+                    disabled={!product.printOptions?.additionalPositions?.special?.available}
+                  />
+                }
+                label={`Special position (collar, hem, etc.) (+$${product.printOptions?.additionalPositions?.special?.price || 4})`}
+              />
+            </FormGroup>
+          </Box>
+          
           <Box sx={{ mt: 4 }}>
             <Button
               variant="contained"
               size="large"
               component={Link}
-              to={`/orders/create?product=${product.id}`}
+              to={`/orders/create?product=${product.id}${selectedChildProduct ? `&childProduct=${selectedChildProduct.id}` : ''}&printPositions=${encodeURIComponent(JSON.stringify(selectedPrintPositions))}`}
               startIcon={<ShoppingCartIcon />}
               sx={{ mr: 2 }}
             >
@@ -220,8 +376,81 @@ const ProductDetailPage = () => {
                     <TableCell component="th" scope="row" sx={{ width: '30%', fontWeight: 'bold' }}>
                       Base Price
                     </TableCell>
-                    <TableCell>{formatCurrency(product.basePrice)}</TableCell>
+                    <TableCell>{formatCurrency(selectedChildProduct?.price || product.price || 0)}</TableCell>
                   </TableRow>
+                  
+                  {/* Print Position Pricing */}
+                  <TableRow>
+                    <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>
+                      Print/Embroidery Options
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        Base position (front left/right/center): Included in price
+                      </Typography>
+                      
+                      {product.printOptions?.additionalPositions?.sleeve?.available && (
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          Sleeve (left/right): +${product.printOptions?.additionalPositions?.sleeve?.price || 2} per position
+                        </Typography>
+                      )}
+                      
+                      {product.printOptions?.additionalPositions?.back?.available && (
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          Back: +${product.printOptions?.additionalPositions?.back?.price || 4}
+                        </Typography>
+                      )}
+                      
+                      {product.printOptions?.additionalPositions?.special?.available && (
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          Special position (collar, hem, etc.): +${product.printOptions?.additionalPositions?.special?.price || 4}
+                        </Typography>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  
+                  {/* Current Price Calculation */}
+                  <TableRow>
+                    <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>
+                      Current Price Calculation
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ mb: 1 }}>
+                        Base product: {formatCurrency(selectedChildProduct?.price || product.price || 0)}
+                      </Box>
+                      
+                      {selectedPrintPositions.sleeve_left && (
+                        <Box sx={{ mb: 1 }}>
+                          Left sleeve: +{formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)}
+                        </Box>
+                      )}
+                      
+                      {selectedPrintPositions.sleeve_right && (
+                        <Box sx={{ mb: 1 }}>
+                          Right sleeve: +{formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)}
+                        </Box>
+                      )}
+                      
+                      {selectedPrintPositions.back && (
+                        <Box sx={{ mb: 1 }}>
+                          Back: +{formatCurrency(product.printOptions?.additionalPositions?.back?.price || 4)}
+                        </Box>
+                      )}
+                      
+                      {selectedPrintPositions.special && (
+                        <Box sx={{ mb: 1 }}>
+                          Special position: +{formatCurrency(product.printOptions?.additionalPositions?.special?.price || 4)}
+                        </Box>
+                      )}
+                      
+                      <Divider sx={{ my: 1 }} />
+                      
+                      <Box sx={{ fontWeight: 'bold' }}>
+                        Total: {formatCurrency(calculatedPrice)}
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                  
                   <TableRow>
                     <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>
                       Discount Options

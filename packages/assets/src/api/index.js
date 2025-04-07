@@ -505,25 +505,8 @@ export const admin = {
     return put(`/admin/products/${id}`, enhancedData);
   },
   deleteProduct: (id) => {
-    const userEmail = localStorage.getItem('user_email');
-    const userRole = localStorage.getItem('user_role');
-    const token = localStorage.getItem('token');
-    
-    console.log(`[API] Deleting product ID: ${id}`);
-    console.log(`[API] User email: ${userEmail}, role: ${userRole}`);
-    
     const enhancedParams = addAuthData();
-    
-    return del(`/admin/products/${id}`, { 
-      params: enhancedParams,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Email': userEmail || '',
-        'X-User-Role': userRole || 'user',
-        'Authorization': token ? `Bearer ${token}` : ''
-      },
-      withCredentials: true
-    });
+    return del(`/admin/products/${id}`, { params: enhancedParams });
   },
   
   // Categories
