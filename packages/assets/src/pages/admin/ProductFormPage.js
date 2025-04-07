@@ -39,6 +39,8 @@ const ProductFormPage = () => {
     childProducts: [],
     isVisible: true,
     stock: 0,
+    hasProductionOptions: false,
+    productionOptionType: '',
     printOptions: {
       basePosition: 'chest_left',
       additionalPositions: {
@@ -56,6 +58,7 @@ const ProductFormPage = () => {
   const [success, setSuccess] = useState(false);
   const [categories, setCategories] = useState([]);
   const [simpleProducts, setSimpleProducts] = useState([]);
+  const [productOptions, setProductOptions] = useState([]);
   
   // Category modal state
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
@@ -103,6 +106,8 @@ const ProductFormPage = () => {
               childProducts: product.childProducts || [],
               isVisible: product.isVisible !== undefined ? product.isVisible : true,
               stock: product.stock || 0,
+              hasProductionOptions: product.hasProductionOptions || false,
+              productionOptionType: product.productionOptionType || '',
               printOptions: product.printOptions || {
                 basePosition: 'chest_left',
                 additionalPositions: {
@@ -124,6 +129,9 @@ const ProductFormPage = () => {
         // Fetch simple products for configurable product
         await fetchSimpleProducts();
         
+        // Fetch product options
+        await fetchProductOptions();
+        
       } catch (error) {
         console.error('Error in ProductFormPage fetchData:', error);
         setError('Failed to load data: ' + (error.response?.data?.message || error.message || 'Unknown error'));
@@ -141,7 +149,7 @@ const ProductFormPage = () => {
       const response = await api.admin.getAllProducts();
       if (response.data && response.data.success) {
         const products = response.data.data?.products || [];
-        // Lọc chỉ lấy sản phẩm simple
+        // Filter to get only simple products
         const simpleProductsList = products.filter(product => 
           product.productType === 'simple' || !product.productType
         );
@@ -151,6 +159,51 @@ const ProductFormPage = () => {
       }
     } catch (error) {
       console.error('Error fetching simple products:', error);
+    }
+  };
+  
+  // Fetch product options
+  const fetchProductOptions = async () => {
+    try {
+      const response = await api.productOptions.getAllProductOptions();
+      
+      if (response.data && response.data.success) {
+        setProductOptions(response.data.data || []);
+      } else {
+        console.error('Failed to load product options:', response);
+        
+        // Fallback to default options if API fails
+        setProductOptions([
+          { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
+            positions: [
+              { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
+              { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
+              { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
+              { id: 'back', name: 'Back', basePrice: 4 },
+              { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
+              { id: 'special', name: 'Special', basePrice: 4 }
+            ]
+          },
+          { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching product options:', error);
+      
+      // Fallback to default options if API fails
+      setProductOptions([
+        { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
+          positions: [
+            { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
+            { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
+            { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
+            { id: 'back', name: 'Back', basePrice: 4 },
+            { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
+            { id: 'special', name: 'Special', basePrice: 4 }
+          ]
+        },
+        { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+      ]);
     }
   };
   
@@ -432,6 +485,8 @@ const ProductFormPage = () => {
         productType: formData.productType || 'simple',
         childProducts: formData.childProducts || [],
         isVisible: formData.isVisible || true,
+        hasProductionOptions: formData.hasProductionOptions || false,
+        productionOptionType: formData.productionOptionType || '',
         printOptions: formData.printOptions || {
           basePosition: 'chest_left',
           additionalPositions: {
@@ -767,7 +822,7 @@ const ProductFormPage = () => {
                 <>
                   <List dense>
                     {formData.childProducts.map((childId, index) => {
-                      // Tìm thông tin sản phẩm con từ danh sách simpleProducts
+                      // Find child product information from simpleProducts list
                       const childProduct = simpleProducts.find(p => p.id === childId);
                       return (
                         <ListItem
@@ -800,7 +855,7 @@ const ProductFormPage = () => {
                       value=""
                       onChange={(e) => {
                         if (e.target.value) {
-                          // Kiểm tra trùng lặp
+                          // Check for duplicates
                           if (!formData.childProducts.includes(e.target.value)) {
                             setFormData((prev) => ({
                               ...prev,
@@ -821,7 +876,7 @@ const ProductFormPage = () => {
                     </Select>
                   </FormControl>
                   
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Note: Only simple products can be added as child products.
                   </Typography>
                 </>
@@ -851,236 +906,201 @@ const ProductFormPage = () => {
             
             {/* Print Options */}
             <Grid item xs={12}>
-              <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                Print Options
-              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
+                  Production Options
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={formData.hasProductionOptions}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        hasProductionOptions: e.target.checked
+                      }))}
+                      color="primary"
+                    />
+                  }
+                  label="Enable Production Options"
+                />
+              </Box>
               <Divider sx={{ mb: 2 }} />
               
-              {/* Base Position Selection */}
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Base Position (included in product price)
-                </Typography>
-                <FormControl fullWidth required>
-                  <InputLabel>Base Position</InputLabel>
-                  <Select
-                    name="printOptions.basePosition"
-                    label="Base Position"
-                    value={formData.printOptions.basePosition}
-                    onChange={(e) => setFormData((prev) => ({
-                      ...prev,
-                      printOptions: {
-                        ...prev.printOptions,
-                        basePosition: e.target.value
+              {formData.hasProductionOptions ? (
+                <>
+                  {/* Select Production Option Type */}
+                  <Box sx={{ mb: 3 }}>
+                    <FormControl fullWidth required>
+                      <InputLabel>Production Option Type</InputLabel>
+                      <Select
+                        name="productionOptionType"
+                        label="Production Option Type"
+                        value={formData.productionOptionType || ''}
+                        onChange={(e) => {
+                          const selectedOptionType = e.target.value;
+                          const selectedOption = productOptions.find(opt => opt.id === selectedOptionType);
+                          
+                          // Find default position
+                          const defaultPosition = selectedOption?.positions?.find(pos => pos.default);
+                          
+                          setFormData(prev => ({
+                            ...prev,
+                            productionOptionType: selectedOptionType,
+                            printOptions: {
+                              basePosition: defaultPosition?.id || (selectedOption?.positions?.[0]?.id || ''),
+                              additionalPositions: selectedOption?.positions
+                                ?.filter(pos => !pos.default && pos.id !== defaultPosition?.id)
+                                ?.reduce((acc, pos) => ({
+                                  ...acc,
+                                  [pos.id]: { price: pos.basePrice, available: false }
+                                }), {}) || {}
+                            }
+                          }));
+                        }}
+                      >
+                        <MenuItem value="">-- Select Option Type --</MenuItem>
+                        {productOptions.map(option => (
+                          <MenuItem key={option.id} value={option.id}>
+                            {option.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Box>
+
+                  {formData.productionOptionType ? (
+                    (() => {
+                      const selectedOption = productOptions.find(opt => opt.id === formData.productionOptionType);
+                      
+                      // If no positions or no option selected, show a message
+                      if (!selectedOption || !selectedOption?.positions || selectedOption.positions.length === 0) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            This option type does not have any positions configured. Please select a different option or add positions to this option.
+                          </Typography>
+                        );
                       }
-                    }))}
-                  >
-                    <MenuItem value="chest_left">Chest Left</MenuItem>
-                    <MenuItem value="chest_right">Chest Right</MenuItem>
-                    <MenuItem value="chest_center">Chest Center</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
 
-              {/* Additional Print Positions */}
-              <Box>
-                <Typography variant="subtitle1" gutterBottom>
-                  Additional Print Positions (extra charge)
+                      return (
+                        <>
+                          {/* Base Position Selection */}
+                          <Box sx={{ mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom>
+                              Base Position (included in product price)
+                            </Typography>
+                            <FormControl fullWidth required>
+                              <InputLabel>Base Position</InputLabel>
+                              <Select
+                                name="printOptions.basePosition"
+                                label="Base Position"
+                                value={formData.printOptions?.basePosition || ''}
+                                onChange={(e) => setFormData((prev) => ({
+                                  ...prev,
+                                  printOptions: {
+                                    ...prev.printOptions,
+                                    basePosition: e.target.value
+                                  }
+                                }))}
+                              >
+                                {selectedOption.positions.map(position => (
+                                  <MenuItem key={position.id} value={position.id}>
+                                    {position.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
+
+                          {/* Additional Print Positions */}
+                          <Box>
+                            <Typography variant="subtitle1" gutterBottom>
+                              Additional Positions (extra charge)
+                            </Typography>
+                            <Grid container spacing={2}>
+                              {selectedOption.positions
+                                .filter(pos => pos.id !== formData.printOptions?.basePosition)
+                                .map((position) => (
+                                  <Grid item xs={12} md={4} key={position.id}>
+                                    <Paper 
+                                      elevation={2} 
+                                      sx={{ 
+                                        p: 2, 
+                                        border: formData.printOptions?.additionalPositions?.[position.id]?.available 
+                                          ? '2px solid #1976d2' 
+                                          : 'none',
+                                        height: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                      }}
+                                    >
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                        <Typography variant="subtitle2">{position.name}</Typography>
+                                        <Switch
+                                          checked={formData.printOptions?.additionalPositions?.[position.id]?.available || false}
+                                          onChange={(e) => setFormData((prev) => ({
+                                            ...prev,
+                                            printOptions: {
+                                              ...prev.printOptions,
+                                              additionalPositions: {
+                                                ...prev.printOptions?.additionalPositions,
+                                                [position.id]: {
+                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || { price: position.basePrice }),
+                                                  available: e.target.checked
+                                                }
+                                              }
+                                            }
+                                          }))}
+                                          color="primary"
+                                        />
+                                      </Box>
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Add this position
+                                      </Typography>
+                                      <Box sx={{ mt: 'auto' }}>
+                                        <TextField
+                                          label="Price"
+                                          type="number"
+                                          size="small"
+                                          fullWidth
+                                          InputProps={{
+                                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                          }}
+                                          value={formData.printOptions?.additionalPositions?.[position.id]?.price || position.basePrice}
+                                          onChange={(e) => setFormData((prev) => ({
+                                            ...prev,
+                                            printOptions: {
+                                              ...prev.printOptions,
+                                              additionalPositions: {
+                                                ...prev.printOptions?.additionalPositions,
+                                                [position.id]: {
+                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || {}),
+                                                  price: Number(e.target.value)
+                                                }
+                                              }
+                                            }
+                                          }))}
+                                          disabled={!formData.printOptions?.additionalPositions?.[position.id]?.available}
+                                        />
+                                      </Box>
+                                    </Paper>
+                                  </Grid>
+                                ))}
+                            </Grid>
+                          </Box>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Please select a production option type to configure positions.
+                    </Typography>
+                  )}
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Production options are disabled for this product. Enable the switch above to configure production options.
                 </Typography>
-                <Grid container spacing={2}>
-                  {/* Sleeve Position Option */}
-                  <Grid item xs={12} md={4}>
-                    <Paper 
-                      elevation={2} 
-                      sx={{ 
-                        p: 2, 
-                        border: formData.printOptions.additionalPositions.sleeve.available ? '2px solid #1976d2' : 'none',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="subtitle2">Sleeve (left/right)</Typography>
-                        <Switch
-                          checked={formData.printOptions.additionalPositions.sleeve.available}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                sleeve: {
-                                  ...prev.printOptions.additionalPositions.sleeve,
-                                  available: e.target.checked
-                                }
-                              }
-                            }
-                          }))}
-                          color="primary"
-                        />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Add printing on the sleeve area
-                      </Typography>
-                      <Box sx={{ mt: 'auto' }}>
-                        <TextField
-                          label="Price"
-                          type="number"
-                          size="small"
-                          fullWidth
-                          InputProps={{
-                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                          }}
-                          value={formData.printOptions.additionalPositions.sleeve.price}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                sleeve: {
-                                  ...prev.printOptions.additionalPositions.sleeve,
-                                  price: Number(e.target.value)
-                                }
-                              }
-                            }
-                          }))}
-                          disabled={!formData.printOptions.additionalPositions.sleeve.available}
-                        />
-                      </Box>
-                    </Paper>
-                  </Grid>
-
-                  {/* Back Position Option */}
-                  <Grid item xs={12} md={4}>
-                    <Paper 
-                      elevation={2} 
-                      sx={{ 
-                        p: 2, 
-                        border: formData.printOptions.additionalPositions.back.available ? '2px solid #1976d2' : 'none',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="subtitle2">Back</Typography>
-                        <Switch
-                          checked={formData.printOptions.additionalPositions.back.available}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                back: {
-                                  ...prev.printOptions.additionalPositions.back,
-                                  available: e.target.checked
-                                }
-                              }
-                            }
-                          }))}
-                          color="primary"
-                        />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Add printing on the back area
-                      </Typography>
-                      <Box sx={{ mt: 'auto' }}>
-                        <TextField
-                          label="Price"
-                          type="number"
-                          size="small"
-                          fullWidth
-                          InputProps={{
-                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                          }}
-                          value={formData.printOptions.additionalPositions.back.price}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                back: {
-                                  ...prev.printOptions.additionalPositions.back,
-                                  price: Number(e.target.value)
-                                }
-                              }
-                            }
-                          }))}
-                          disabled={!formData.printOptions.additionalPositions.back.available}
-                        />
-                      </Box>
-                    </Paper>
-                  </Grid>
-
-                  {/* Special Position Option */}
-                  <Grid item xs={12} md={4}>
-                    <Paper 
-                      elevation={2} 
-                      sx={{ 
-                        p: 2, 
-                        border: formData.printOptions.additionalPositions.special.available ? '2px solid #1976d2' : 'none',
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="subtitle2">Special</Typography>
-                        <Switch
-                          checked={formData.printOptions.additionalPositions.special.available}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                special: {
-                                  ...prev.printOptions.additionalPositions.special,
-                                  available: e.target.checked
-                                }
-                              }
-                            }
-                          }))}
-                          color="primary"
-                        />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        Add printing on special areas (collar, hem, etc.)
-                      </Typography>
-                      <Box sx={{ mt: 'auto' }}>
-                        <TextField
-                          label="Price"
-                          type="number"
-                          size="small"
-                          fullWidth
-                          InputProps={{
-                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                          }}
-                          value={formData.printOptions.additionalPositions.special.price}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              additionalPositions: {
-                                ...prev.printOptions.additionalPositions,
-                                special: {
-                                  ...prev.printOptions.additionalPositions.special,
-                                  price: Number(e.target.value)
-                                }
-                              }
-                            }
-                          }))}
-                          disabled={!formData.printOptions.additionalPositions.special.available}
-                        />
-                      </Box>
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </Box>
+              )}
             </Grid>
             
             {/* Submit Button */}

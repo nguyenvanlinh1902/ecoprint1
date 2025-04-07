@@ -163,24 +163,18 @@ const ProductsPage = () => {
   const [productOptionError, setProductOptionError] = useState('');
   const [editingProductOption, setEditingProductOption] = useState(null);
   const [savingProductOption, setSavingProductOption] = useState(false);
-  const [productOptions, setProductOptions] = useState([
-    { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
-      positions: [
-        { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
-        { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
-        { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
-        { id: 'back', name: 'Back', basePrice: 4 },
-        { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
-        { id: 'special', name: 'Special', basePrice: 4 }
-      ]
-    },
-    { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
-  ]);
+  const [productOptions, setProductOptions] = useState([]);
   
+  // State for delete product option dialog
+  const [deleteProductOptionDialogOpen, setDeleteProductOptionDialogOpen] = useState(false);
+  const [productOptionToDelete, setProductOptionToDelete] = useState(null);
+  const [deletingProductOption, setDeletingProductOption] = useState(false);
+
   // Load products and categories
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchProductOptions();
   }, [page, rowsPerPage, filters]);
   
   // Load product data if in edit/view mode
@@ -959,32 +953,136 @@ const ProductsPage = () => {
     }));
   };
 
-  const handleSaveProductOption = () => {
+  const handleSaveProductOption = async () => {
     if (!productOptionFormData.name.trim()) {
       setProductOptionError('Product option name is required');
       return;
     }
 
-    // Generate a unique ID if new
-    const optionId = editingProductOption ? 
-      editingProductOption.id : 
-      productOptionFormData.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
-    
-    const updatedOption = {
-      ...productOptionFormData,
-      id: optionId
-    };
-    
-    // Update or add to the list
-    if (editingProductOption) {
-      setProductOptions(prev => 
-        prev.map(opt => opt.id === editingProductOption.id ? updatedOption : opt)
-      );
-    } else {
-      setProductOptions(prev => [...prev, updatedOption]);
+    try {
+      setSavingProductOption(true);
+      
+      // Generate a unique ID if new
+      const optionId = editingProductOption ? 
+        editingProductOption.id : 
+        productOptionFormData.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+      
+      const updatedOption = {
+        ...productOptionFormData,
+        id: optionId
+      };
+      
+      let result;
+      
+      if (editingProductOption) {
+        // Update existing option using API
+        result = await api.productOptions.updateProductOption(optionId, updatedOption);
+      } else {
+        // Create new option using API
+        result = await api.productOptions.createProductOption(updatedOption);
+      }
+      
+      if (!result.data || !result.data.success) {
+        throw new Error(result.data?.message || 'Failed to save product option');
+      }
+      
+      // Refresh product options list
+      await fetchProductOptions();
+      
+      // Show success message or notification
+      setError('');
+      
+      // Close the modal
+      handleCloseProductOptionModal();
+    } catch (error) {
+      console.error('Error saving product option:', error);
+      setProductOptionError(error.message || 'Failed to save product option');
+    } finally {
+      setSavingProductOption(false);
     }
+  };
+
+  // Fetch product options
+  const fetchProductOptions = async () => {
+    try {
+      const response = await api.productOptions.getAllProductOptions();
+      
+      if (response.data && response.data.success) {
+        setProductOptions(response.data.data || []);
+      } else {
+        console.error('Failed to load product options:', response);
+        
+        // Fallback to default options if API fails
+        setProductOptions([
+          { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
+            positions: [
+              { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
+              { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
+              { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
+              { id: 'back', name: 'Back', basePrice: 4 },
+              { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
+              { id: 'special', name: 'Special', basePrice: 4 }
+            ]
+          },
+          { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching product options:', error);
+      
+      // Fallback to default options if API fails
+      setProductOptions([
+        { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
+          positions: [
+            { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
+            { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
+            { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
+            { id: 'back', name: 'Back', basePrice: 4 },
+            { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
+            { id: 'special', name: 'Special', basePrice: 4 }
+          ]
+        },
+        { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+      ]);
+    }
+  };
+
+  // Open delete product option dialog
+  const handleOpenDeleteProductOptionDialog = (option) => {
+    setProductOptionToDelete(option);
+    setDeleteProductOptionDialogOpen(true);
+  };
+
+  // Close delete product option dialog
+  const handleCloseDeleteProductOptionDialog = () => {
+    setProductOptionToDelete(null);
+    setDeleteProductOptionDialogOpen(false);
+  };
+
+  // Delete product option
+  const handleDeleteProductOption = async () => {
+    if (!productOptionToDelete) return;
     
-    handleCloseProductOptionModal();
+    try {
+      setDeletingProductOption(true);
+      
+      const result = await api.productOptions.deleteProductOption(productOptionToDelete.id);
+      
+      if (!result.data || !result.data.success) {
+        throw new Error(result.data?.message || 'Failed to delete product option');
+      }
+      
+      // Refresh product options list
+      await fetchProductOptions();
+      
+      // Close dialog
+      handleCloseDeleteProductOptionDialog();
+    } catch (error) {
+      console.error('Error deleting product option:', error);
+      setError(error.message || 'Failed to delete product option');
+    } finally {
+      setDeletingProductOption(false);
+    }
   };
 
   return (
@@ -1535,9 +1633,9 @@ const ProductsPage = () => {
                               ...prev,
                               productionOptionType: selectedOptionType,
                               printOptions: {
-                                basePosition: defaultPosition?.id || 'chest_left',
+                                basePosition: defaultPosition?.id || (selectedOption?.positions?.[0]?.id || ''),
                                 additionalPositions: selectedOption?.positions
-                                  ?.filter(pos => !pos.default)
+                                  ?.filter(pos => !pos.default && pos.id !== defaultPosition?.id)
                                   ?.reduce((acc, pos) => ({
                                     ...acc,
                                     [pos.id]: { price: pos.basePrice, available: false }
@@ -1555,118 +1653,130 @@ const ProductsPage = () => {
                       </FormControl>
                     </Box>
 
-                    {/* Base Position Selection */}
-                    <Box sx={{ mb: 3 }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Base Position (included in product price)
-                      </Typography>
-                      <FormControl fullWidth required disabled={isViewMode}>
-                        <InputLabel>Base Position</InputLabel>
-                        <Select
-                          name="printOptions.basePosition"
-                          label="Base Position"
-                          value={formData.printOptions?.basePosition || 'chest_left'}
-                          onChange={(e) => setFormData((prev) => ({
-                            ...prev,
-                            printOptions: {
-                              ...prev.printOptions,
-                              basePosition: e.target.value
-                            }
-                          }))}
-                        >
-                          {/* Get positions from selected option */}
-                          {productOptions
-                            .find(opt => opt.id === (formData.productionOptionType || 'print'))
-                            ?.positions.map(position => (
-                              <MenuItem key={position.id} value={position.id}>
-                                {position.name}
-                              </MenuItem>
-                            ))}
-                        </Select>
-                      </FormControl>
-                    </Box>
+                    {/* Dynamic Option Display based on selected type */}
+                    {(() => {
+                      const selectedOption = productOptions.find(opt => opt.id === formData.productionOptionType);
+                      
+                      // If no positions, show a message
+                      if (!selectedOption?.positions || selectedOption.positions.length === 0) {
+                        return (
+                          <Typography variant="body2" color="text.secondary">
+                            This option type does not have any positions. You can add positions in the Manage Options dialog.
+                          </Typography>
+                        );
+                      }
 
-                    {/* Additional Production Positions */}
-                    <Box>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Additional Production Positions (extra charge)
-                      </Typography>
-                      <Grid container spacing={2}>
-                        {/* Map through additional positions from selected option */}
-                        {productOptions
-                          .find(opt => opt.id === (formData.productionOptionType || 'print'))
-                          ?.positions
-                          .filter(pos => pos.id !== formData.printOptions?.basePosition)
-                          .map((position, index) => (
-                            <Grid item xs={12} md={4} key={position.id}>
-                              <Paper 
-                                elevation={2} 
-                                sx={{ 
-                                  p: 2, 
-                                  border: formData.printOptions?.additionalPositions?.[position.id]?.available 
-                                    ? '2px solid #1976d2' 
-                                    : 'none',
-                                  height: '100%',
-                                  display: 'flex',
-                                  flexDirection: 'column'
-                                }}
+                      return (
+                        <>
+                          {/* Base Position Selection - only show if positions exist */}
+                          <Box sx={{ mb: 3 }}>
+                            <Typography variant="subtitle1" gutterBottom>
+                              Base Position (included in product price)
+                            </Typography>
+                            <FormControl fullWidth required disabled={isViewMode}>
+                              <InputLabel>Base Position</InputLabel>
+                              <Select
+                                name="printOptions.basePosition"
+                                label="Base Position"
+                                value={formData.printOptions?.basePosition || ''}
+                                onChange={(e) => setFormData((prev) => ({
+                                  ...prev,
+                                  printOptions: {
+                                    ...prev.printOptions,
+                                    basePosition: e.target.value
+                                  }
+                                }))}
                               >
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                  <Typography variant="subtitle2">{position.name}</Typography>
-                                  <Switch
-                                    checked={formData.printOptions?.additionalPositions?.[position.id]?.available || false}
-                                    onChange={(e) => setFormData((prev) => ({
-                                      ...prev,
-                                      printOptions: {
-                                        ...prev.printOptions,
-                                        additionalPositions: {
-                                          ...prev.printOptions?.additionalPositions,
-                                          [position.id]: {
-                                            ...(prev.printOptions?.additionalPositions?.[position.id] || { price: position.basePrice }),
-                                            available: e.target.checked
-                                          }
-                                        }
-                                      }
-                                    }))}
-                                    color="primary"
-                                    disabled={isViewMode}
-                                  />
-                                </Box>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                  Add production on the {position.name.toLowerCase()} area
-                                </Typography>
-                                <Box sx={{ mt: 'auto' }}>
-                                  <TextField
-                                    label="Price"
-                                    type="number"
-                                    size="small"
-                                    fullWidth
-                                    InputProps={{
-                                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                                    }}
-                                    value={formData.printOptions?.additionalPositions?.[position.id]?.price || position.basePrice}
-                                    onChange={(e) => setFormData((prev) => ({
-                                      ...prev,
-                                      printOptions: {
-                                        ...prev.printOptions,
-                                        additionalPositions: {
-                                          ...prev.printOptions?.additionalPositions,
-                                          [position.id]: {
-                                            ...(prev.printOptions?.additionalPositions?.[position.id] || {}),
-                                            price: Number(e.target.value)
-                                          }
-                                        }
-                                      }
-                                    }))}
-                                    disabled={isViewMode || !formData.printOptions?.additionalPositions?.[position.id]?.available}
-                                  />
-                                </Box>
-                              </Paper>
+                                {selectedOption.positions.map(position => (
+                                  <MenuItem key={position.id} value={position.id}>
+                                    {position.name}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Box>
+
+                          {/* Additional Production Positions */}
+                          <Box>
+                            <Typography variant="subtitle1" gutterBottom>
+                              Additional Production Positions (extra charge)
+                            </Typography>
+                            <Grid container spacing={2}>
+                              {selectedOption.positions
+                                .filter(pos => pos.id !== formData.printOptions?.basePosition)
+                                .map((position) => (
+                                  <Grid item xs={12} md={4} key={position.id}>
+                                    <Paper 
+                                      elevation={2} 
+                                      sx={{ 
+                                        p: 2, 
+                                        border: formData.printOptions?.additionalPositions?.[position.id]?.available 
+                                          ? '2px solid #1976d2' 
+                                          : 'none',
+                                        height: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column'
+                                      }}
+                                    >
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                        <Typography variant="subtitle2">{position.name}</Typography>
+                                        <Switch
+                                          checked={formData.printOptions?.additionalPositions?.[position.id]?.available || false}
+                                          onChange={(e) => setFormData((prev) => ({
+                                            ...prev,
+                                            printOptions: {
+                                              ...prev.printOptions,
+                                              additionalPositions: {
+                                                ...prev.printOptions?.additionalPositions,
+                                                [position.id]: {
+                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || { price: position.basePrice }),
+                                                  available: e.target.checked
+                                                }
+                                              }
+                                            }
+                                          }))}
+                                          color="primary"
+                                          disabled={isViewMode}
+                                        />
+                                      </Box>
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Add production on the {position.name.toLowerCase()} area
+                                      </Typography>
+                                      <Box sx={{ mt: 'auto' }}>
+                                        <TextField
+                                          label="Price"
+                                          type="number"
+                                          size="small"
+                                          fullWidth
+                                          InputProps={{
+                                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                          }}
+                                          value={formData.printOptions?.additionalPositions?.[position.id]?.price || position.basePrice}
+                                          onChange={(e) => setFormData((prev) => ({
+                                            ...prev,
+                                            printOptions: {
+                                              ...prev.printOptions,
+                                              additionalPositions: {
+                                                ...prev.printOptions?.additionalPositions,
+                                                [position.id]: {
+                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || {}),
+                                                  price: Number(e.target.value)
+                                                }
+                                              }
+                                            }
+                                          }))}
+                                          disabled={isViewMode || !formData.printOptions?.additionalPositions?.[position.id]?.available}
+                                        />
+                                      </Box>
+                                    </Paper>
+                                  </Grid>
+                                ))
+                              }
                             </Grid>
-                          ))
-                        }
-                      </Grid>
-                    </Box>
+                          </Box>
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
@@ -2026,12 +2136,45 @@ const ProductsPage = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseProductOptionModal}>Cancel</Button>
+          {editingProductOption && (
+            <Button
+              onClick={() => handleOpenDeleteProductOptionDialog(editingProductOption)}
+              color="error"
+              startIcon={<DeleteIcon />}
+            >
+              Delete
+            </Button>
+          )}
           <Button
             onClick={handleSaveProductOption}
             variant="contained"
             disabled={savingProductOption}
           >
             {savingProductOption ? <CircularProgress size={24} /> : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Product Option Dialog */}
+      <Dialog
+        open={deleteProductOptionDialogOpen}
+        onClose={handleCloseDeleteProductOptionDialog}
+      >
+        <DialogTitle>Delete Product Option</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete the product option "{productOptionToDelete?.name}"?
+            This cannot be undone, and any products assigned to this option will need to be reassigned.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteProductOptionDialog}>Cancel</Button>
+          <Button 
+            onClick={handleDeleteProductOption} 
+            color="error"
+            disabled={deletingProductOption}
+          >
+            {deletingProductOption ? <CircularProgress size={24} /> : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>

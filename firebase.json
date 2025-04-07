@@ -1,25 +1,16 @@
 {
+  "functions": {
+    "predeploy": [
+      "echo \"Skipping npm ci as it's already installed\""
+    ],
+    "source": "packages/functions"
+  },
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": [
-    {
-      "source": "packages/functions",
-      "codebase": "default",
-      "runtime": "nodejs18",
-      "timeoutSeconds": 300,
-      "memory": "1GB",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log"
-      ]
-    }
-  ],
   "hosting": {
-    "public": "static",
+    "public": "public",
     "ignore": [
       "firebase.json",
       "**/.*",
@@ -27,32 +18,8 @@
     ],
     "rewrites": [
       {
-        "source": "/api/**",
-        "function": "api"
-      },
-      {
         "source": "**",
         "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(js|css)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=31536000"
-          }
-        ]
-      },
-      {
-        "source": "**/*.@(jpg|jpeg|gif|png|svg|webp)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=31536000"
-          }
-        ]
       }
     ]
   },
@@ -61,37 +28,16 @@
   },
   "emulators": {
     "functions": {
-      "port": 5001,
-      "host": "0.0.0.0"
-    },
-    "hosting": {
-      "port": 5010,
-      "host": "0.0.0.0"
-    },
-    "auth": {
-      "port": 9098,
-      "host": "0.0.0.0"
+      "port": 5001
     },
     "firestore": {
-      "port": 8081,
-      "host": "0.0.0.0"
+      "port": 8080
     },
-    "storage": {
-      "port": 9198,
-      "host": "0.0.0.0"
+    "hosting": {
+      "port": 5000
     },
     "ui": {
-      "enabled": true,
-      "port": 4041,
-      "host": "0.0.0.0"
-    },
-    "hub": {
-      "port": 4401,
-      "host": "0.0.0.0"
-    },
-    "logging": {
-      "port": 4501,
-      "host": "0.0.0.0"
+      "enabled": true
     }
   }
 }

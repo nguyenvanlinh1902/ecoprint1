@@ -38,7 +38,8 @@
   "devDependencies": {
     "chalk": "^4.1.2",
     "concurrently": "^8.0.1",
-    "firebase-tools": "^12.0.1"
+    "firebase-tools": "^12.0.1",
+    "terser": "^5.39.0"
   },
   "type": "module",
   "dependencies": {

@@ -260,8 +260,8 @@ const useFetchApi = (endpoint, options = {}) => {
 
   return {
     loading,
-    error,
-    data,
+    error: error ? { message: error } : null,
+    data: data,
     params,
     pagination,
     fetchResource,

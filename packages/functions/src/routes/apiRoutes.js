@@ -5,6 +5,7 @@ import * as userController from '../controllers/userController.js';
 import * as orderController from '../controllers/orderController.js';
 import * as transactionController from '../controllers/transactionController.js';
 import * as adminController from '../controllers/adminController.js';
+import { getAllOptions, getOptionById, createOption, updateOption, deleteOption, addPosition, removePosition } from '../controllers/productOptionController.js';
 import { authMiddleware, adminMiddleware } from '../middlewares/authMiddleware.js';
 import * as simpleUploadMiddleware from '../middleware/simpleUploadMiddleware.js';
 import { imageUploadMiddleware, receiptUploadMiddleware } from '../middleware/simpleUploadMiddleware.js';
@@ -318,6 +319,15 @@ export default function apiRouter(withPrefix = true) {
   router.post('/upload/image', uploadProductImage);
   router.post('/upload/receipt', uploadReceiptFile);
 
+  // Product options routes
+  router.get('/product-options', getAllOptions);
+  router.get('/product-options/:id', getOptionById);
+  router.post('/product-options', createOption);
+  router.put('/product-options/:id', updateOption);
+  router.delete('/product-options/:id', deleteOption);
+  router.post('/product-options/:id/positions', addPosition);
+  router.delete('/product-options/:id/positions/:positionId', removePosition);
+
   // Duplicate all routes to the API router if using prefix
   if (withPrefix && apiRouter !== router) {
     // Test endpoints
@@ -617,6 +627,15 @@ export default function apiRouter(withPrefix = true) {
     // Upload routes
     apiRouter.post('/upload/image', uploadProductImage);
     apiRouter.post('/upload/receipt', uploadReceiptFile);
+
+    // Product options routes
+    apiRouter.get('/product-options', getAllOptions);
+    apiRouter.get('/product-options/:id', getOptionById);
+    apiRouter.post('/product-options', createOption);
+    apiRouter.put('/product-options/:id', updateOption);
+    apiRouter.delete('/product-options/:id', deleteOption);
+    apiRouter.post('/product-options/:id/positions', addPosition);
+    apiRouter.delete('/product-options/:id/positions/:positionId', removePosition);
 
     // Use apiRouter with the main router
     router.use(apiRouter.routes(), apiRouter.allowedMethods());

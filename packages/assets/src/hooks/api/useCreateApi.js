@@ -27,7 +27,7 @@ export default function useCreateApi({
   const handleCreate = useCallback(async data => {
     try {
       setCreating(true);
-      const resp = await api(url, {body: {data}, method: 'POST'});
+      const resp = await api(url, {body: data, method: 'POST'});
       if (resp.success) {
         setToast(dispatch, resp.message || successMsg);
       }

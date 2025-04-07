@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import AdminLayout from '../layouts/AdminLayout';
 
 // Import the AdminProvider
@@ -17,6 +17,9 @@ import AdminTransactionsPage from '../loadable/AdminTransactionsPage';
 import AdminTransactionDetailPage from '../loadable/AdminTransactionDetailPage';
 import AdminSettingsPage from '../loadable/AdminSettingsPage';
 import AdminReportsPage from '../loadable/AdminReportsPage';
+import AdminCustomersPage from '@/pages/admin/CustomersPage';
+import AdminCategoriesPage from '@/pages/admin/CategoriesPage';
+import AdminProductOptionsPage from '@/pages/admin/ProductOptionsPage';
 
 /**
  * Admin Router Component
@@ -52,6 +55,15 @@ const AdminRouter = () => {
           {/* Settings and Reports */}
           <Route path="settings" element={<AdminSettingsPage />} />
           <Route path="reports" element={<AdminReportsPage />} />
+          
+          {/* Customers management */}
+          <Route path="customers" element={<AdminCustomersPage />} />
+          
+          {/* Categories management */}
+          <Route path="categories" element={<AdminCategoriesPage />} />
+          
+          {/* Product options management */}
+          <Route path="product-options" element={<AdminProductOptionsPage />} />
           
           {/* Default redirect */}
           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />

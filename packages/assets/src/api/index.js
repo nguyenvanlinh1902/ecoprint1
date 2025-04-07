@@ -3,6 +3,7 @@
  */
 import axios from 'axios';
 import { createResourceMethods, storage } from './helpers';
+import productOptions from './productOptions';
 
 const API_URL = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
 
@@ -144,7 +145,7 @@ const addAuthData = (params = {}) => {
 };
 
 // API Resource Methods
-export const products = {
+export const productsApi = {
   getAll: (params) => {
     // Không gửi params để lấy tất cả sản phẩm, frontend sẽ lọc sau
     const enhancedParams = addAuthData({});
@@ -284,7 +285,8 @@ export const products = {
   }
 };
 
-export const orders = {
+// Order API endpoints
+export const ordersApi = {
   getAll: (params) => {
     const enhancedParams = addAuthData(params);
     return get('/orders', { params: enhancedParams });
@@ -394,73 +396,37 @@ export const transactions = {
   uploadReceipt: (id, formData) => {
     const userEmail = localStorage.getItem('user_email');
     const userRole = localStorage.getItem('user_role');
-    const token = localStorage.getItem('token');
-    
-    // Make sure email is included in the formData
-    if (userEmail && !formData.has('email')) {
-      formData.append('email', userEmail);
-    }
     
     const config = {
       headers: {
         'Content-Type': 'multipart/form-data',
         'X-User-Email': userEmail || '',
-        'X-User-Role': userRole || 'user',
-        'Authorization': token ? `Bearer ${token}` : ''
-      },
-      withCredentials: true
+        'X-User-Role': userRole || 'user'
+      }
     };
     
-    return uploadWithProgress(`/transactions/${id}/upload-receipt`, formData, null, config);
-  },
-  updateUserNotes: (transactionId, userNotes) => {
-    return apiClient.put(`/transactions/${transactionId}/userNotes`, { userNotes }, addAuthData());
-  },
-  updateTransactionAdminNotes: (transactionId, adminNotes) => {
-    return apiClient.put(`/admin/transactions/${transactionId}/notes`, { adminNotes }, addAuthData());
-  },
-  addTransactionAdminNote: (id, note) => {
-    const userEmail = localStorage.getItem('user_email');
-    const userRole = localStorage.getItem('user_role');
-    const token = localStorage.getItem('token');
-    
-    // Include query parameters for extra compatibility
-    const query = {
-      email: userEmail,
-      role: userRole
-    };
-    
-    return post(`/admin/transactions/${id}/admin-notes`, { note }, {
-      params: query,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Email': userEmail || '',
-        'X-User-Role': userRole || 'user',
-        'Authorization': token ? `Bearer ${token}` : ''
-      },
-      withCredentials: true
-    });
+    return uploadWithProgress(`/transactions/${id}/receipt`, formData, null, config);
   }
 };
 
 // Admin API endpoints
-export const admin = {
+export const adminApi = {
   // Users
   getUsers: (params) => {
     const enhancedParams = addAuthData(params);
-    const userEmail = localStorage.getItem('user_email');
-    
-    return get('/admin/users', { 
-      params: enhancedParams,
-      headers: {
-        'X-User-Email': userEmail || '',
-        'X-User-Role': 'admin' // Luôn gửi role admin để nhận đầy đủ dữ liệu
-      }
-    });
+    return get('/admin/users', { params: enhancedParams });
   },
   getUserById: (id) => {
     const enhancedParams = addAuthData();
     return get(`/admin/users/${id}`, { params: enhancedParams });
+  },
+  getUserOrders: (userId, params) => {
+    const enhancedParams = addAuthData(params);
+    return get(`/admin/users/${userId}/orders`, { params: enhancedParams });
+  },
+  getUserTransactions: (userId, params) => {
+    const enhancedParams = addAuthData(params);
+    return get(`/admin/users/${userId}/transactions`, { params: enhancedParams });
   },
   updateUser: (id, data) => {
     const enhancedData = addAuthData(data);
@@ -476,15 +442,7 @@ export const admin = {
   },
   updateUserStatus: (id, status) => {
     const enhancedData = addAuthData({ status });
-    return put(`/admin/users/${id}/status`, enhancedData);
-  },
-  getUserOrders: (userId, params) => {
-    const enhancedParams = addAuthData(params);
-    return get(`/admin/users/${userId}/orders`, { params: enhancedParams });
-  },
-  getUserTransactions: (userId, params) => {
-    const enhancedParams = addAuthData(params);
-    return get(`/admin/users/${userId}/transactions`, { params: enhancedParams });
+    return patch(`/admin/users/${id}/status`, enhancedData);
   },
   
   // Products
@@ -608,25 +566,32 @@ export const admin = {
   }
 };
 
-// Export API helpers
-export { createResourceMethods, storage };
-
-// Re-export hooks - do this after setting up the client
-// This avoids circular dependencies
-export * from '../hooks/api';
-
-// Default export
+// Export default with proper mappings for backward compatibility
 export default {
   apiClient,
   get,
   post,
   put,
   delete: del,
+  patch,
   uploadWithProgress,
   createResourceMethods,
   storage,
-  products,
-  orders,
+  
+  // Self-reference for backwards compatibility
+  api: {
+    get, post, put, delete: del, patch,
+    uploadWithProgress
+  },
+  
+  // Map renamed exports back to original names for backward compatibility
+  products: productsApi,
+  orders: ordersApi,
+  admin: adminApi,
+  
+  // Include other existing properties from the original default export
   transactions,
-  admin
+  
+  // Include productOptions
+  productOptions
 }; 

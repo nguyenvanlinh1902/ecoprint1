@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, Box, Drawer, Divider,
   List, ListItem, ListItemIcon, ListItemText, IconButton,
@@ -14,7 +14,10 @@ import {
   AccountCircle as AccountIcon,
   Menu as MenuIcon,
   ChevronLeft as ChevronLeftIcon,
-  Notifications as NotificationsIcon
+  Notifications as NotificationsIcon,
+  Inbox as InboxIcon,
+  Category as CategoryIcon,
+  Settings as SettingsIcon
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { useApp } from '../context/AppContext';
@@ -63,12 +66,25 @@ const DrawerHeader = styled('div')(({ theme }) => ({
   justifyContent: 'flex-end',
 }));
 
+// Define the missing nestedItemStyle
+const nestedItemStyle = {
+  pl: 4,
+  '&.Mui-selected': {
+    backgroundColor: 'rgba(0, 0, 0, 0.08)'
+  },
+  '&.Mui-selected:hover': {
+    backgroundColor: 'rgba(0, 0, 0, 0.12)'
+  }
+};
+
 const AdminLayout = ({ children }) => {
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationsEl, setNotificationsEl] = useState(null);
   const { user, logout } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const pathname = location.pathname;
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -109,7 +125,6 @@ const AdminLayout = ({ children }) => {
   const menuItems = [
     { text: 'Dashboard', icon: <DashboardIcon />, path: '/admin/dashboard' },
     { text: 'Users', icon: <PeopleIcon />, path: '/admin/users' },
-    { text: 'Products', icon: <InventoryIcon />, path: '/admin/products' },
     { text: 'Orders', icon: <ReceiptIcon />, path: '/admin/orders' },
     { text: 'Transactions', icon: <MoneyIcon />, path: '/admin/transactions' },
   ];
@@ -202,11 +217,67 @@ const AdminLayout = ({ children }) => {
               key={item.text} 
               component={Link} 
               to={item.path}
+              selected={pathname.startsWith(item.path)}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
             </ListItem>
           ))}
+
+          {/* Products section with sub-menu items */}
+          <ListItem 
+            button 
+            component={Link} 
+            to="/admin/products"
+            selected={pathname.startsWith('/admin/products') || 
+                     pathname.startsWith('/admin/categories') || 
+                     pathname.startsWith('/admin/product-options')}
+          >
+            <ListItemIcon><InventoryIcon /></ListItemIcon>
+            <ListItemText primary="Products" />
+          </ListItem>
+          
+          {/* Sub-items for Products */}
+          <List component="div" disablePadding>
+            <ListItem
+              button
+              component={Link}
+              to="/admin/products"
+              selected={pathname === '/admin/products'}
+              sx={nestedItemStyle}
+            >
+              <ListItemIcon>
+                <InboxIcon />
+              </ListItemIcon>
+              <ListItemText primary="All Products" />
+            </ListItem>
+            
+            <ListItem
+              button
+              component={Link}
+              to="/admin/categories"
+              selected={pathname.startsWith('/admin/categories')}
+              sx={nestedItemStyle}
+            >
+              <ListItemIcon>
+                <CategoryIcon />
+              </ListItemIcon>
+              <ListItemText primary="Categories" />
+            </ListItem>
+            
+            <ListItem
+              button
+              component={Link}
+              to="/admin/product-options"
+              selected={pathname.startsWith('/admin/product-options')}
+              sx={nestedItemStyle}
+            >
+              <ListItemIcon>
+                <SettingsIcon />
+              </ListItemIcon>
+              <ListItemText primary="Production Options" />
+            </ListItem>
+          </List>
         </List>
       </Drawer>
       )}

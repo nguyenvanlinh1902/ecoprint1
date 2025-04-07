@@ -99,6 +99,208 @@ export const useOrdersApi = () => {
 };
 
 /**
+ * Custom hook for Product Options API operations
+ * @returns {Object} API methods for product options resource
+ */
+export const useProductOptionsApi = () => {
+  return {
+    // Product Options API operations
+    fetchOptions: async (params) => {
+      try {
+        // Sử dụng fetch trực tiếp thay vì useFetchApi
+        let url = '/api/product-options';
+        if (params) {
+          const queryString = new URLSearchParams(params).toString();
+          url += `?${queryString}`;
+        }
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to fetch product options');
+        }
+        
+        // Format the response to match expected structure
+        return {
+          data: result.data || [],
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in fetchOptions:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to fetch product options'
+          }
+        };
+      }
+    },
+    
+    createOption: async (optionData) => {
+      try {
+        // Sử dụng post trực tiếp thay vì useCreateApi
+        const response = await fetch('/api/product-options', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(optionData),
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to create product option');
+        }
+        
+        return {
+          data: result.data || null,
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in createOption:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to create product option'
+          }
+        };
+      }
+    },
+
+    updateOption: async (id, optionData) => {
+      try {
+        // Sử dụng fetch trực tiếp thay vì useEditApi
+        const response = await fetch(`/api/product-options/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(optionData),
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to update product option');
+        }
+        
+        return {
+          data: result.data || null,
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in updateOption:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to update product option'
+          }
+        };
+      }
+    },
+
+    deleteOption: async (id) => {
+      try {
+        // Sử dụng fetch trực tiếp thay vì useDeleteApi
+        const response = await fetch(`/api/product-options/${id}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to delete product option');
+        }
+        
+        return {
+          data: result.data || null,
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in deleteOption:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to delete product option'
+          }
+        };
+      }
+    },
+    
+    addPosition: async (optionId, positionData) => {
+      try {
+        // Sử dụng fetch trực tiếp
+        const response = await fetch(`/api/product-options/${optionId}/positions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(positionData),
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to add position');
+        }
+        
+        return {
+          data: result.data || null,
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in addPosition:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to add position'
+          }
+        };
+      }
+    },
+    
+    removePosition: async (optionId, positionId) => {
+      try {
+        // Sử dụng fetch trực tiếp
+        const response = await fetch(`/api/product-options/${optionId}/positions/${positionId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.message || 'Failed to remove position');
+        }
+        
+        return {
+          data: result.data || null,
+          error: null
+        };
+      } catch (error) {
+        console.error('Error in removePosition:', error);
+        return {
+          data: null,
+          error: {
+            message: error.message || 'Failed to remove position'
+          }
+        };
+      }
+    }
+  };
+};
+
+/**
  * Custom hook for auth operations
  * @returns {Object} API methods for authentication
  */
@@ -124,5 +326,6 @@ export default {
   useUsersApi,
   useProductsApi,
   useOrdersApi,
+  useProductOptionsApi,
   useAuthApi
 }; 
