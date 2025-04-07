@@ -1,27 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import {
-  Typography, Box, Paper, Stepper, Step, StepLabel, Grid,
-  TextField, Button, Divider, FormControlLabel, Checkbox,
-  RadioGroup, Radio, FormControl, FormLabel, InputAdornment,
-  CircularProgress, Alert, Card, CardContent, CardMedia
+  Typography, Box, Paper, Grid, TextField, Button, Divider, FormControlLabel, Checkbox,
+  RadioGroup, Radio, FormControl, FormLabel, InputAdornment, CircularProgress, Alert,
+  Card, CardContent, CardMedia, Select, MenuItem, InputLabel
 } from '@mui/material';
 import api from '@/api';
 import { formatCurrency } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
 import useFetchApi from '../hooks/api/useFetchApi';
 
-const steps = ['Select Product', 'Order Details', 'Shipping Information', 'Review & Confirm'];
-
 const CreateOrderPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth() || {};
   const user = auth.user;
-  const [activeStep, setActiveStep] = useState(0);
-  
-  // Ref để track việc đã fetch product detail
-  const fetchedProductId = useRef(null);
   
   // Product selection state
   const [products, setProducts] = useState([]);
@@ -46,154 +39,56 @@ const CreateOrderPage = () => {
     useCompanyAddress: false
   });
   
-  // Order summary state
-  const [orderSummary, setOrderSummary] = useState({
-    subtotal: 0,
-    shippingCost: 0,
-    total: 0
-  });
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  
-  // Extract product ID from URL if provided
+
+  // Fetch products only once when component mounts
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const productId = params.get('product');
-    if (productId) {
-      setSelectedProductId(productId);
-    }
-  }, [location]);
-  
-  // Sử dụng useFetchApi để lấy danh sách sản phẩm
-  const { 
-    data: productsData, 
-    loading: loadingProductsList,
-    error: productsError 
-  } = useFetchApi('products', {
-    fetchOnMount: true
-  });
-  
-  // Cập nhật state products khi có dữ liệu từ API
-  useEffect(() => {
-    if (productsData) {
-      setProducts(productsData.products || []);
-    }
-    if (productsError) {
-      setError('Failed to load products. Please try again later.');
-    }
-  }, [productsData, productsError]);
-  
-  // Sử dụng useFetchApi để lấy chi tiết sản phẩm khi có selectedProductId
-  const {
-    data: productDetail,
-    loading: loadingProductDetail,
-    error: productDetailError,
-    getById
-  } = useFetchApi(`products`, {
-    fetchOnMount: false
-  });
-  
-  // Fetch product detail when selectedProductId changes
-  useEffect(() => {
-    if (selectedProductId && selectedProductId !== fetchedProductId.current) {
-      // Chỉ fetch khi ID mới khác ID đã fetch trước đó
-      getById(selectedProductId);
-      fetchedProductId.current = selectedProductId;
-    }
-  }, [selectedProductId, getById]);
-  
-  // Cập nhật state khi có dữ liệu chi tiết sản phẩm
-  useEffect(() => {
-    if (productDetail) {
-      setSelectedProduct(productDetail);
-      
-      // Initialize options if available
-      if (productDetail.options) {
-        const initialOptions = {};
-        productDetail.options.forEach(optionGroup => {
-          if (optionGroup.items && optionGroup.items.length > 0) {
-            initialOptions[optionGroup.name] = optionGroup.items[0].id;
-          }
-        });
-        setSelectedOptions(initialOptions);
+    const fetchProducts = async () => {
+      try {
+        setLoadingProducts(true);
+        const response = await api.products.getAll();
+        setProducts(response.data.products || []);
+      } catch (error) {
+        console.error('Error fetching products:', error);
+        setError('Failed to load products. Please try again.');
+      } finally {
+        setLoadingProducts(false);
       }
-      
-      setLoadingProducts(false);
-    }
-    
-    if (productDetailError) {
-      setError('Failed to load product details. Please try again later.');
-      setLoadingProducts(false);
-    }
-  }, [productDetail, productDetailError]);
-  
-  // Calculate order total when relevant factors change
+    };
+
+    fetchProducts();
+  }, []);
+
+  // Fetch product details when selected
   useEffect(() => {
-    if (!selectedProduct) return;
-    
-    let subtotal = selectedProduct.basePrice * quantity;
-    
-    // Add cost of selected options
-    if (selectedProduct.options) {
-      selectedProduct.options.forEach(optionGroup => {
-        if (selectedOptions[optionGroup.name]) {
-          const selectedOption = optionGroup.items.find(
-            item => item.id === selectedOptions[optionGroup.name]
-          );
-          if (selectedOption && selectedOption.priceAdjustment) {
-            subtotal += selectedOption.priceAdjustment * quantity;
-          }
+    const fetchProductDetails = async () => {
+      if (!selectedProductId) return;
+      
+      try {
+        setLoadingProducts(true);
+        const response = await api.products.getById(selectedProductId);
+        console.log('Product details response:', response);
+        // Make sure we're setting the correct data structure
+        const productData = response.data?.product || response.data;
+        if (!productData) {
+          console.error('No product data found in response');
+          return;
         }
-      });
-    }
-    
-    // Calculate shipping cost
-    let shippingCost = 0;
-    if (shippingInfo.shippingMethod === 'express') {
-      shippingCost = 15; // Example express shipping cost
-    } else if (shippingInfo.shippingMethod === 'standard') {
-      shippingCost = 5; // Example standard shipping cost
-    }
-    
-    setOrderSummary({
-      subtotal,
-      shippingCost,
-      total: subtotal + shippingCost
-    });
-  }, [selectedProduct, quantity, selectedOptions, shippingInfo.shippingMethod]);
-  
-  const handleNext = () => {
-    // Validate current step
-    if (activeStep === 0 && !selectedProduct) {
-      setError('Please select a product to continue');
-      return;
-    }
-    
-    if (activeStep === 1 && quantity <= 0) {
-      setError('Please enter a valid quantity');
-      return;
-    }
-    
-    if (activeStep === 2) {
-      if (!shippingInfo.useCompanyAddress && 
-          (!shippingInfo.recipientName || !shippingInfo.address || 
-           !shippingInfo.city || !shippingInfo.state || 
-           !shippingInfo.zipCode || !shippingInfo.phone)) {
-        setError('Please fill in all required shipping fields');
-        return;
+        console.log('Setting product data:', productData);
+        setSelectedProduct(productData);
+      } catch (error) {
+        console.error('Error fetching product details:', error);
+        setError('Failed to load product details. Please try again.');
+      } finally {
+        setLoadingProducts(false);
       }
-    }
-    
-    setError('');
-    setActiveStep((prevStep) => prevStep + 1);
-  };
-  
-  const handleBack = () => {
-    setActiveStep((prevStep) => prevStep - 1);
-  };
-  
+    };
+
+    fetchProductDetails();
+  }, [selectedProductId]);
+
   const handleShippingChange = (e) => {
     const { name, value, checked, type } = e.target;
     
@@ -202,7 +97,6 @@ const CreateOrderPage = () => {
       [name]: type === 'checkbox' ? checked : value
     }));
     
-    // If using company address, populate with user details
     if (name === 'useCompanyAddress' && checked && user) {
       setShippingInfo(prev => ({
         ...prev,
@@ -215,7 +109,7 @@ const CreateOrderPage = () => {
       }));
     }
   };
-  
+
   const handleOptionChange = (e) => {
     const { name, value } = e.target;
     setSelectedOptions(prev => ({
@@ -223,48 +117,145 @@ const CreateOrderPage = () => {
       [name]: value
     }));
   };
-  
+
   const handleSubmitOrder = async () => {
     try {
       setLoading(true);
       setError('');
       
+      // Validate required fields
+      if (!selectedProduct?.id) {
+        setError('Please select a product');
+        return;
+      }
+      
+      if (!quantity || quantity < 1) {
+        setError('Please enter a valid quantity');
+        return;
+      }
+      
+      if (!shippingInfo?.address || !shippingInfo?.city || !shippingInfo?.state || !shippingInfo?.zipCode) {
+        setError('Please fill in all shipping information');
+        return;
+      }
+      
       const orderData = {
-        productId: selectedProduct.id,
-        quantity,
-        options: selectedOptions,
-        additionalRequirements,
-        shipping: {
-          ...shippingInfo,
-          cost: orderSummary.shippingCost
+        items: [{
+          productId: selectedProduct.id,
+          quantity: parseInt(quantity),
+          customizationOptions: selectedOptions || []
+        }],
+        shippingAddress: {
+          recipientName: shippingInfo.recipientName,
+          address: shippingInfo.address,
+          city: shippingInfo.city,
+          state: shippingInfo.state,
+          zipCode: shippingInfo.zipCode,
+          phone: shippingInfo.phone || ''
         },
-        totalPrice: orderSummary.total
+        notes: additionalRequirements || '',
+        customizations: [] // Add customizations if needed
       };
       
-      const response = await api.orders.create(orderData);
+      // Add retry logic
+      let retries = 3;
+      let lastError = null;
       
-      setSuccess(true);
+      while (retries > 0) {
+        try {
+          const response = await api.orders.create(orderData);
+          setSuccess(true);
+          
+          // Navigate to the order details page after a delay
+          setTimeout(() => {
+            navigate(`/orders/${response.data.orderId}`);
+          }, 2000);
+    
+          return; // Success, exit the function
+        } catch (error) {
+          lastError = error;
+          retries--;
+          
+          if (retries > 0) {
+            // Wait before retrying (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, 3 - retries) * 1000));
+          }
+        }
+      }
       
-      // Navigate to the order details page after a delay
-      setTimeout(() => {
-        navigate(`/orders/${response.data.data.id}`);
-      }, 2000);
+      // If we get here, all retries failed
+      throw lastError;
       
     } catch (error) {
-      /* error removed */
-      setError(error.response?.data?.message || 'Failed to create order. Please try again.');
+      console.error('Error creating order:', error);
+      setError(error.response?.data?.error || 'Failed to create order. Please try again.');
     } finally {
       setLoading(false);
     }
   };
-  
-  const renderStepContent = (step) => {
-    switch (step) {
-      case 0:
-        return (
-          <Box>
+
+  // Calculate order summary
+  const calculateOrderSummary = useCallback(() => {
+    if (!selectedProduct) return { subtotal: 0, shippingCost: 0, total: 0 };
+
+    console.log('Calculating summary for product:', selectedProduct);
+    
+    // Calculate base price from product price
+    const basePrice = Number(selectedProduct.price) || 0;
+    console.log('Base price:', basePrice);
+    let subtotal = basePrice * quantity;
+    console.log('Subtotal after quantity:', subtotal);
+    
+    // Add customization options costs
+    if (selectedProduct.customizationOptions && Object.keys(selectedOptions).length > 0) {
+      Object.entries(selectedOptions).forEach(([optionId, valueId]) => {
+        const option = selectedProduct.customizationOptions.find(opt => opt.id === optionId);
+        if (option) {
+          const value = option.values.find(val => val.id === valueId);
+          if (value && value.price) {
+            const optionPrice = Number(value.price) || 0;
+            subtotal += optionPrice * quantity;
+            console.log(`Added option price: ${optionPrice} * ${quantity}`);
+          }
+        }
+      });
+    }
+    
+    // Calculate shipping cost
+    const shippingCost = shippingInfo.shippingMethod === 'express' ? 15 : 5;
+    const total = subtotal + shippingCost;
+    console.log('Final calculation:', { subtotal, shippingCost, total });
+
+    return { subtotal, shippingCost, total };
+  }, [selectedProduct, quantity, selectedOptions, shippingInfo.shippingMethod]);
+
+  const orderSummary = calculateOrderSummary();
+  const hasInsufficientCredit = user?.balance < orderSummary.total;
+
+  return (
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Create Order
+      </Typography>
+      
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+      
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }}>
+          Order created successfully! You will be redirected to your order details.
+        </Alert>
+      )}
+      
+      <Grid container spacing={3}>
+        {/* Left column - Product selection and details */}
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Select a Product
+              Select Product
             </Typography>
             
             {loadingProducts ? (
@@ -272,7 +263,7 @@ const CreateOrderPage = () => {
             ) : (
               <Grid container spacing={3}>
                 {products.map((product) => (
-                  <Grid item xs={12} sm={6} md={4} key={product.id}>
+                  <Grid item xs={12} sm={6} key={product.id}>
                     <Card 
                       sx={{ 
                         cursor: 'pointer',
@@ -297,122 +288,70 @@ const CreateOrderPage = () => {
                           {product.description?.length > 100 ? '...' : ''}
                         </Typography>
                         <Typography variant="h6" color="primary">
-                          {formatCurrency(product.basePrice)}
+                          {formatCurrency(product.price || 0)}
                         </Typography>
                       </CardContent>
                     </Card>
                   </Grid>
                 ))}
-                
-                {products.length === 0 && !loadingProducts && (
-                  <Box sx={{ textAlign: 'center', width: '100%', mt: 2 }}>
-                    <Typography>No products available.</Typography>
-                  </Box>
-                )}
               </Grid>
             )}
-          </Box>
-        );
-        
-      case 1:
-        return (
-          <Box>
-            <Typography variant="h6" gutterBottom>
-              Order Details
-            </Typography>
-            
-            {selectedProduct && (
-              <>
-                <Box sx={{ mb: 3 }}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} sm={3}>
-                      <img 
-                        src={selectedProduct.imageUrl || 'https://via.placeholder.com/300x200?text=No+Image'} 
-                        alt={selectedProduct.name}
-                        style={{ width: '100%', height: 'auto', borderRadius: '4px' }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} sm={9}>
-                      <Typography variant="h5">{selectedProduct.name}</Typography>
-                      <Typography variant="body1" color="text.secondary" gutterBottom>
-                        {selectedProduct.description?.substring(0, 200)}
-                        {selectedProduct.description?.length > 200 ? '...' : ''}
-                      </Typography>
-                      <Typography variant="h6" color="primary">
-                        {formatCurrency(selectedProduct.basePrice)} per unit
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </Box>
-                
-                <Divider sx={{ mb: 3 }} />
-                
-                <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      label="Quantity"
-                      type="number"
-                      fullWidth
-                      value={quantity}
-                      onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
-                      InputProps={{
-                        inputProps: { min: 1 }
-                      }}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={12}>
-                    <TextField
-                      label="Additional Requirements or Notes"
-                      fullWidth
-                      multiline
-                      rows={4}
-                      value={additionalRequirements}
-                      onChange={(e) => setAdditionalRequirements(e.target.value)}
-                      placeholder="Any special instructions or requirements for this order"
-                    />
-                  </Grid>
-                  
-                  {/* Product Options */}
-                  {selectedProduct.options && selectedProduct.options.map((optionGroup, index) => (
-                    <Grid item xs={12} key={index}>
-                      <FormControl component="fieldset">
-                        <FormLabel component="legend">{optionGroup.name}</FormLabel>
-                        <RadioGroup
-                          name={optionGroup.name}
-                          value={selectedOptions[optionGroup.name] || ''}
-                          onChange={handleOptionChange}
-                        >
-                          {optionGroup.items.map((option) => (
-                            <FormControlLabel
-                              key={option.id}
-                              value={option.id}
-                              control={<Radio />}
-                              label={
-                                <Box component="span">
-                                  {option.name} 
-                                  {option.priceAdjustment !== 0 && (
-                                    <Typography component="span" color={option.priceAdjustment > 0 ? 'error' : 'success'}>
-                                      {' '}({option.priceAdjustment > 0 ? '+' : ''}{formatCurrency(option.priceAdjustment)})
-                                    </Typography>
-                                  )}
-                                </Box>
-                              }
-                            />
-                          ))}
-                        </RadioGroup>
-                      </FormControl>
-                    </Grid>
-                  ))}
+          </Paper>
+
+          {selectedProduct && (
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Order Details
+              </Typography>
+              
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    label="Quantity"
+                    type="number"
+                    fullWidth
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 0))}
+                    InputProps={{
+                      inputProps: { min: 1 }
+                    }}
+                  />
                 </Grid>
-              </>
-            )}
-          </Box>
-        );
-        
-      case 2:
-        return (
-          <Box>
+                
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle1" sx={{ mt: 2 }}>
+                    Price per unit: {formatCurrency(selectedProduct.price || 0)}
+                  </Typography>
+                </Grid>
+                
+                {/* Delivery Options */}
+                {selectedProduct.deliveryOptions && selectedProduct.deliveryOptions.length > 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1">
+                      Delivery Option: {selectedProduct.deliveryOptions[0].name} (+{formatCurrency(selectedProduct.deliveryOptions[0].price || 0)})
+                    </Typography>
+                  </Grid>
+                )}
+                
+                <Grid item xs={12}>
+                  <TextField
+                    label="Additional Requirements or Notes"
+                    fullWidth
+                    multiline
+                    rows={4}
+                    value={additionalRequirements}
+                    onChange={(e) => setAdditionalRequirements(e.target.value)}
+                    placeholder="Any special instructions or requirements for this order"
+                  />
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+        </Grid>
+
+        {/* Right column - Shipping info and order summary */}
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Shipping Information
             </Typography>
@@ -428,7 +367,7 @@ const CreateOrderPage = () => {
               label="Use company address"
             />
             
-            <Grid container spacing={3}>
+            <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
                   label="Recipient Name"
@@ -502,8 +441,8 @@ const CreateOrderPage = () => {
               </Grid>
               
               <Grid item xs={12}>
-                <FormControl component="fieldset">
-                  <FormLabel component="legend">Shipping Method</FormLabel>
+                <FormControl fullWidth>
+                  <FormLabel>Shipping Method</FormLabel>
                   <RadioGroup
                     name="shippingMethod"
                     value={shippingInfo.shippingMethod}
@@ -523,203 +462,74 @@ const CreateOrderPage = () => {
                 </FormControl>
               </Grid>
             </Grid>
-          </Box>
-        );
-        
-      case 3:
-        return (
-          <Box>
+          </Paper>
+
+          <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Review & Confirm
+              Order Summary
             </Typography>
             
-            {success && (
-              <Alert severity="success" sx={{ mb: 3 }}>
-                Order created successfully! You will be redirected to your order details.
-              </Alert>
-            )}
-            
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Order Summary
-              </Typography>
-              
-              <Grid container>
-                <Grid item xs={6}>
-                  <Typography>Product:</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography align="right">{selectedProduct?.name}</Typography>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography>Quantity:</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography align="right">{quantity}</Typography>
-                </Grid>
-                
-                {/* Display selected options */}
-                {selectedProduct?.options && selectedProduct.options.map((optionGroup) => {
-                  const selectedOption = optionGroup.items.find(
-                    item => item.id === selectedOptions[optionGroup.name]
-                  );
-                  
-                  if (!selectedOption) return null;
-                  
-                  return (
-                    <React.Fragment key={optionGroup.name}>
-                      <Grid item xs={6}>
-                        <Typography>{optionGroup.name}:</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography align="right">{selectedOption.name}</Typography>
-                      </Grid>
-                    </React.Fragment>
-                  );
-                })}
-                
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 2 }} />
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography>Subtotal:</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography align="right">{formatCurrency(orderSummary.subtotal)}</Typography>
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography>Shipping ({shippingInfo.shippingMethod}):</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography align="right">{formatCurrency(orderSummary.shippingCost)}</Typography>
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 2 }} />
-                </Grid>
-                
-                <Grid item xs={6}>
-                  <Typography variant="h6">Total:</Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="h6" align="right" color="primary">
-                    {formatCurrency(orderSummary.total)}
-                  </Typography>
-                </Grid>
+            <Grid container spacing={1}>
+              <Grid item xs={6}>
+                <Typography>Subtotal ({quantity} items):</Typography>
               </Grid>
-            </Paper>
-            
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Shipping Information
-              </Typography>
-              
-              <Grid container>
-                <Grid item xs={12}>
-                  <Typography>
-                    {shippingInfo.recipientName}<br />
-                    {shippingInfo.address}<br />
-                    {shippingInfo.city}, {shippingInfo.state} {shippingInfo.zipCode}<br />
-                    Phone: {shippingInfo.phone}
-                  </Typography>
-                </Grid>
+              <Grid item xs={6}>
+                <Typography align="right">{formatCurrency(orderSummary.subtotal)}</Typography>
               </Grid>
-            </Paper>
-            
-            {additionalRequirements && (
-              <Paper sx={{ p: 2, mb: 3 }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Additional Requirements
+              
+              <Grid item xs={6}>
+                <Typography>Shipping ({shippingInfo.shippingMethod}):</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography align="right">{formatCurrency(orderSummary.shippingCost)}</Typography>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
+              
+              <Grid item xs={6}>
+                <Typography variant="h6">Total:</Typography>
+              </Grid>
+              <Grid item xs={6}>
+                <Typography variant="h6" align="right">
+                  {formatCurrency(orderSummary.total)}
                 </Typography>
-                <Typography>{additionalRequirements}</Typography>
-              </Paper>
-            )}
-            
-            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
-              <Typography>
-                Funds will be deducted from your account balance upon confirmation.
-              </Typography>
-              <Typography color="primary" fontWeight="bold">
-                Current Balance: {formatCurrency(user?.balance || 0)}
-              </Typography>
-            </Box>
-          </Box>
-        );
-        
-      default:
-        return 'Unknown step';
-    }
-  };
-  
-  return (
-    <Box>
-      <Typography variant="h4" gutterBottom>
-        Create Order
-      </Typography>
-      
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Stepper activeStep={activeStep} alternativeLabel>
-          {steps.map((label) => (
-            <Step key={label}>
-              <StepLabel>{label}</StepLabel>
-            </Step>
-          ))}
-        </Stepper>
-      </Paper>
-      
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
-      )}
-      
-      <Paper sx={{ p: 3, mb: 4 }}>
-        {renderStepContent(activeStep)}
-      </Paper>
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          disabled={activeStep === 0 || loading}
-          onClick={handleBack}
-        >
-          Back
-        </Button>
-        
-        {activeStep === steps.length - 1 ? (
-          <Button
-            variant="contained"
-            onClick={handleSubmitOrder}
-            disabled={loading || success || (user?.balance < orderSummary.total)}
-          >
-            {loading ? <CircularProgress size={24} /> : 'Place Order'}
-          </Button>
-        ) : (
-          <Button
-            variant="contained"
-            onClick={handleNext}
-            disabled={loading}
-          >
-            Next
-          </Button>
-        )}
-      </Box>
-      
-      {activeStep === steps.length - 1 && user?.balance < orderSummary.total && (
-        <Alert severity="warning" sx={{ mt: 2 }}>
-          Insufficient funds. Please <Button 
-            color="inherit" 
-            component={Link} 
-            to="/deposit"
-            sx={{ fontWeight: 'bold', textDecoration: 'underline' }}
-          >
-            deposit
-          </Button> more funds to place this order.
-        </Alert>
-      )}
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Typography 
+                  color={hasInsufficientCredit ? "error" : "text.secondary"} 
+                  variant="body2"
+                  sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}
+                >
+                  <span>Current Balance:</span>
+                  <span>{formatCurrency(user?.balance || 0)}</span>
+                </Typography>
+              </Grid>
+
+              {hasInsufficientCredit && (
+                <Grid item xs={12}>
+                  <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+                    Insufficient credit. You need {formatCurrency(orderSummary.total - (user?.balance || 0))} more to place this order.
+                  </Alert>
+                </Grid>
+              )}
+              
+              <Grid item xs={12}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={handleSubmitOrder}
+                  disabled={loading || success || !selectedProduct || hasInsufficientCredit}
+                >
+                  {loading ? <CircularProgress size={24} /> : 'Place Order'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
   );
 };

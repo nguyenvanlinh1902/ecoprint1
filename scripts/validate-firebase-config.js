@@ -2,7 +2,7 @@
 
 /**
  * This script validates Firebase configuration to ensure:
- * 1. Storage bucket uses the correct format (project-id.appspot.com)
+ * 1. Storage bucket uses the correct format (project-id.firebasestorage.app)
  * 2. Required configuration keys are present
  */
 
@@ -73,9 +73,9 @@ ENV_PATHS.forEach(envPath => {
     // Check storage bucket format
     if (envVars['VITE_FIREBASE_STORAGE_BUCKET']) {
       const storageBucket = envVars['VITE_FIREBASE_STORAGE_BUCKET'];
-      if (!storageBucket.endsWith('.appspot.com')) {
+      if (!storageBucket.endsWith('.firebasestorage.app')) {
         console.log(chalk.red(`Invalid storage bucket format in ${path.basename(envPath)}: ${storageBucket}`));
-        console.log(chalk.yellow(`  Storage bucket should end with '.appspot.com', not '.firebasestorage.app'`));
+        console.log(chalk.yellow(`  Storage bucket should end with '.firebasestorage.app', not '.appspot.com'`));
         allValid = false;
       } else {
         console.log(chalk.green(`  Storage bucket format is valid: ${storageBucket}`));
@@ -85,9 +85,9 @@ ENV_PATHS.forEach(envPath => {
     // Check for APP_ variables as well
     if (envVars['APP_STORAGE_BUCKET']) {
       const storageBucket = envVars['APP_STORAGE_BUCKET'];
-      if (!storageBucket.endsWith('.appspot.com')) {
+      if (!storageBucket.endsWith('.firebasestorage.app')) {
         console.log(chalk.red(`Invalid APP_STORAGE_BUCKET format in ${path.basename(envPath)}: ${storageBucket}`));
-        console.log(chalk.yellow(`  Storage bucket should end with '.appspot.com', not '.firebasestorage.app'`));
+        console.log(chalk.yellow(`  Storage bucket should end with '.firebasestorage.app', not '.appspot.com'`));
         allValid = false;
       } else {
         console.log(chalk.green(`  APP_STORAGE_BUCKET format is valid: ${storageBucket}`));
@@ -103,12 +103,12 @@ CLIENT_CONFIG_PATHS.forEach(configPath => {
     
     const configContent = fs.readFileSync(configPath, 'utf8');
     
-    // Check if it contains firebasestorage.app
-    if (configContent.includes('.firebasestorage.app')) {
+    // Check if it contains appspot.com
+    if (configContent.includes('.appspot.com')) {
       console.log(chalk.red(`Found invalid storage bucket format in ${path.basename(configPath)}`));
-      console.log(chalk.yellow(`  Storage bucket should end with '.appspot.com', not '.firebasestorage.app'`));
+      console.log(chalk.yellow(`  Storage bucket should end with '.firebasestorage.app', not '.appspot.com'`));
       allValid = false;
-    } else if (configContent.includes('storageBucket') && configContent.includes('.appspot.com')) {
+    } else if (configContent.includes('storageBucket') && configContent.includes('.firebasestorage.app')) {
       console.log(chalk.green(`  Storage bucket format appears valid in ${path.basename(configPath)}`));
     }
   }
@@ -122,7 +122,7 @@ if (allValid) {
   console.log(chalk.green('✓ Firebase configuration validation passed!'));
 } else {
   console.log(chalk.red('✗ Firebase configuration validation failed! Please correct the issues above.'));
-  console.log(chalk.yellow('  Hint: Firebase Storage bucket URL must use the format: "your-project-id.appspot.com"'));
+  console.log(chalk.yellow('  Hint: Firebase Storage bucket URL must use the format: "your-project-id.firebasestorage.app"'));
 }
 
 /**

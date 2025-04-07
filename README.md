@@ -14,9 +14,14 @@ The project is organized as a monorepo with the following packages:
 The application uses Firebase for authentication, storage, and database. The correct configuration is essential for the application to function properly.
 
 #### Storage Bucket Configuration
-The Firebase Storage bucket URL must follow the standard format: `your-project-id.appspot.com`
+The Firebase Storage bucket URL must follow the format: `your-project-id.firebasestorage.app`
 
 Correct format:
+```
+storageBucket: "ecoprint1-3cd5c.firebasestorage.app"
+```
+
+Incorrect format (will cause errors):
 ```
 storageBucket: "ecoprint1-3cd5c.appspot.com"
 ```

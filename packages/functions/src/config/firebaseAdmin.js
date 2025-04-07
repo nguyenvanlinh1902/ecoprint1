@@ -12,7 +12,7 @@ const __dirname = dirname(__filename);
 // Get project ID
 const projectId = process.env.GCLOUD_PROJECT || 'ecoprint1-3cd5c';
 // Set bucket name explicitly
-const bucketName = `${projectId}.appspot.com`;
+const bucketName = `${projectId}.firebasestorage.app`;
 console.log('Firebase Storage bucket name:', bucketName);
 
 // Initialize Firebase Admin

@@ -279,6 +279,7 @@ export default function apiRouter(withPrefix = true) {
   router.get('/admin/users', authMiddleware, adminMiddleware, adminController.getUsers);
   router.get('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
   router.get('/admin/users/:userId/orders', authMiddleware, adminMiddleware, adminController.getUserOrders);
+  router.get('/admin/orders', authMiddleware, adminMiddleware, orderController.getAllOrders);
   router.get('/admin/users/:userId/transactions', authMiddleware, adminMiddleware, adminController.getUserTransactions);
   router.put('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
   router.put('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);
@@ -571,6 +572,7 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.get('/admin/users', authMiddleware, adminMiddleware, adminController.getUsers);
     apiRouter.get('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
     apiRouter.get('/admin/users/:userId/orders', authMiddleware, adminMiddleware, adminController.getUserOrders);
+    apiRouter.get('/admin/orders', authMiddleware, adminMiddleware, orderController.getAllOrders);
     apiRouter.get('/admin/users/:userId/transactions', authMiddleware, adminMiddleware, adminController.getUserTransactions);
     apiRouter.put('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
     apiRouter.put('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);

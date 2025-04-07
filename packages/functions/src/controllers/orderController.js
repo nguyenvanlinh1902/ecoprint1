@@ -1,5 +1,5 @@
 import { CustomError } from '../exceptions/customError.js';
-import { Firestore } from '@google-cloud/firestore';
+import { Firestore, FieldValue } from '@google-cloud/firestore';
 import multer from '@koa/multer';
 import { parse } from 'csv-parse/sync';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,7 +13,7 @@ const firestore = new Firestore();
  */
 export const createOrder = async (ctx) => {
   try {
-    const { uid } = ctx.state.user;
+    const { email } = ctx.state.user;
     const { 
       items, 
       shippingAddress, 
@@ -27,102 +27,128 @@ export const createOrder = async (ctx) => {
       ctx.body = { error: 'Missing required fields' };
       return;
     }
-    
-    // Calculate order details and validate items
-    let subtotal = 0;
-    let totalQuantity = 0;
-    const orderItems = [];
-    
-    // Process each item
+
+    // Validate each item
     for (const item of items) {
-      // Get product from database
-      const productDoc = await firestore.collection('products').doc(item.productId).get();
-      
-      if (!productDoc.exists) {
+      if (!item.productId || typeof item.productId !== 'string' || item.productId.trim() === '') {
         ctx.status = 400;
-        ctx.body = { error: `Product with ID ${item.productId} not found` };
+        ctx.body = { error: 'Invalid product ID' };
         return;
       }
-      
-      const product = productDoc.data();
-      
-      // Check stock availability
-      if (product.stock < item.quantity) {
+      if (!item.quantity || isNaN(item.quantity) || item.quantity <= 0) {
         ctx.status = 400;
-        ctx.body = { error: `Not enough stock for product: ${product.name}` };
+        ctx.body = { error: 'Invalid quantity' };
         return;
       }
+    }
+    
+    // Start a Firestore transaction
+    const result = await firestore.runTransaction(async (transaction) => {
+      // Calculate order details and validate items
+      let subtotal = 0;
+      let totalQuantity = 0;
+      const orderItems = [];
       
-      // Calculate item price
-      const itemPrice = product.price * item.quantity;
-      subtotal += itemPrice;
-      totalQuantity += item.quantity;
+      // Process each item
+      for (const item of items) {
+        try {
+          // Get product from database within transaction
+          const productRef = firestore.collection('products').doc(item.productId);
+          const productDoc = await transaction.get(productRef);
+          
+          if (!productDoc.exists) {
+            throw new Error(`Product with ID ${item.productId} not found`);
+          }
+          
+          const product = productDoc.data();
+          
+          // Check stock availability
+          // if (product.stock < item.quantity) {
+          //   throw new Error(`Not enough stock for product: ${product.name}`);
+          // }
+          
+          // Calculate item price
+          const itemPrice = product.price * item.quantity;
+          subtotal += itemPrice;
+          totalQuantity += item.quantity;
+          
+          // Prepare order item
+          orderItems.push({
+            productId: item.productId,
+            name: product.name,
+            sku: product.sku,
+            quantity: item.quantity,
+            unitPrice: product.price,
+            totalPrice: itemPrice,
+            customizationOptions: item.customizationOptions || []
+          });
+          
+          // Update product stock within transaction
+          transaction.update(productRef, {
+            stock: FieldValue.increment(-item.quantity),
+            updatedAt: new Date()
+          });
+        } catch (error) {
+          console.error('Error processing product:', error);
+          throw error;
+        }
+      }
       
-      // Prepare order item
-      orderItems.push({
-        productId: item.productId,
-        name: product.name,
-        sku: product.sku,
-        quantity: item.quantity,
-        unitPrice: product.price,
-        totalPrice: itemPrice,
-        customizationOptions: item.customizationOptions || []
-      });
+      // Process customizations (printing, embroidery)
+      let customizationTotal = 0;
+      const processedCustomizations = [];
       
-      // Update product stock
-      await firestore.collection('products').doc(item.productId).update({
-        stock: firestore.FieldValue.increment(-item.quantity),
+      for (const customization of customizations) {
+        processedCustomizations.push({
+          type: customization.type, // 'PRINT' or 'EMBROIDERY'
+          position: customization.position,
+          price: customization.price,
+          designUrl: customization.designUrl
+        });
+        
+        customizationTotal += customization.price;
+      }
+      
+      // Calculate totals
+      const shippingFee = 0; // Free shipping for phase 1
+      const total = subtotal + customizationTotal + shippingFee;
+      
+      // Create order in database within transaction
+      const orderRef = firestore.collection('orders').doc();
+      const orderData = {
+        email: email,
+        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+        items: orderItems,
+        customizations: processedCustomizations,
+        subtotal,
+        customizationTotal,
+        shippingFee,
+        total,
+        totalQuantity,
+        shippingAddress,
+        notes: notes || '',
+        status: 'pending', // pending, confirmed, processing, shipping, delivered, cancelled
+        paymentStatus: 'unpaid', // unpaid, paid
+        createdAt: new Date(),
         updatedAt: new Date()
-      });
-    }
-    
-    // Process customizations (printing, embroidery)
-    let customizationTotal = 0;
-    const processedCustomizations = [];
-    
-    for (const customization of customizations) {
-      processedCustomizations.push({
-        type: customization.type, // 'PRINT' or 'EMBROIDERY'
-        position: customization.position,
-        price: customization.price,
-        designUrl: customization.designUrl
-      });
+      };
       
-      customizationTotal += customization.price;
-    }
-    
-    // Calculate totals
-    const shippingFee = 0; // Free shipping for phase 1
-    const total = subtotal + customizationTotal + shippingFee;
-    
-    // Create order in database
-    const orderRef = firestore.collection('orders').doc();
-    await orderRef.set({
-      userId: uid,
-      orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-      items: orderItems,
-      customizations: processedCustomizations,
-      subtotal,
-      customizationTotal,
-      shippingFee,
-      total,
-      totalQuantity,
-      shippingAddress,
-      notes: notes || '',
-      status: 'pending', // pending, confirmed, processing, shipping, delivered, cancelled
-      paymentStatus: 'unpaid', // unpaid, paid
-      createdAt: new Date(),
-      updatedAt: new Date()
+      transaction.set(orderRef, orderData);
+      
+      return {
+        orderId: orderRef.id,
+        orderNumber: orderData.orderNumber,
+        total
+      };
     });
     
     ctx.status = 201;
     ctx.body = { 
       message: 'Order created successfully',
-      orderId: orderRef.id,
-      orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-      total
+      ...result
     };
   } catch (error) {
+    console.error('Error creating order:', error);
     ctx.status = 500;
     ctx.body = { error: error.message };
   }
@@ -143,7 +169,7 @@ export const importOrders = async (ctx) => {
       return;
     }
     
-    const { uid } = ctx.state.user;
+    const { email } = ctx.state.user;
     const fileBuffer = ctx.req.file.buffer;
     const fileContent = fileBuffer.toString();
     
@@ -236,7 +262,7 @@ export const importOrders = async (ctx) => {
     const batchId = uuidv4();
     
     await firestore.collection('order_import_batches').doc(batchId).set({
-      userId: uid,
+      email: email,
       createdAt: new Date(),
       status: 'pending',
       validationResults,
@@ -253,7 +279,6 @@ export const importOrders = async (ctx) => {
       }
     };
   } catch (error) {
-    
     ctx.status = 500;
     ctx.body = {
       success: false,
@@ -287,7 +312,7 @@ export const uploadCsvMiddleware = multer({
 export const getBatchImportOrders = async (ctx) => {
   try {
     const { batchId } = ctx.params;
-    const { uid } = ctx.state.user;
+    const { email } = ctx.state.user;
     
     const batchDoc = await firestore.collection('order_import_batches').doc(batchId).get();
     
@@ -303,7 +328,7 @@ export const getBatchImportOrders = async (ctx) => {
     const batch = batchDoc.data();
     
     // Check if user owns this batch
-    if (batch.userId !== uid) {
+    if (batch.email !== email) {
       ctx.status = 403;
       ctx.body = {
         success: false,
@@ -334,7 +359,7 @@ export const getBatchImportOrders = async (ctx) => {
 export const confirmBatchImport = async (ctx) => {
   try {
     const { batchId } = ctx.params;
-    const { uid } = ctx.state.user;
+    const { email } = ctx.state.user;
     
     // Get batch document
     const batchDoc = await firestore.collection('order_import_batches').doc(batchId).get();
@@ -351,7 +376,7 @@ export const confirmBatchImport = async (ctx) => {
     const batchData = batchDoc.data();
     
     // Check if user owns this batch
-    if (batchData.userId !== uid) {
+    if (batchData.email !== email) {
       ctx.status = 403;
       ctx.body = {
         success: false,
@@ -391,7 +416,7 @@ export const confirmBatchImport = async (ctx) => {
       
       // Create order
       batchWrite.set(orderRef, {
-        userId: uid,
+        email: email,
         status: 'pending',
         items: [
           {
@@ -416,7 +441,7 @@ export const confirmBatchImport = async (ctx) => {
       // Update product stock
       const productRef = firestore.collection('products').doc(record.product.id);
       batchWrite.update(productRef, {
-        stock: firestore.FieldValue.increment(-record.quantity),
+        stock: FieldValue.increment(-record.quantity),
         updatedAt: new Date()
       });
     }
@@ -456,7 +481,7 @@ export const confirmBatchImport = async (ctx) => {
  */
 export const getAllOrders = async (ctx) => {
   try {
-    const { status, userId, startDate, endDate, limit = 20, page = 1 } = ctx.query;
+    const { status, email, startDate, endDate, limit = 20, page = 1 } = ctx.query;
     
     let query = firestore.collection('orders');
     
@@ -465,8 +490,8 @@ export const getAllOrders = async (ctx) => {
       query = query.where('status', '==', status);
     }
     
-    if (userId) {
-      query = query.where('userId', '==', userId);
+    if (email) {
+      query = query.where('email', '==', email);
     }
     
     // Apply date range if both start and end dates are provided
@@ -522,50 +547,10 @@ export const getAllOrders = async (ctx) => {
  */
 export const getUserOrders = async (ctx) => {
   try {
-    const { uid } = ctx.state.user;
-    const { status, limit = 20, page = 1, email } = ctx.query;
+    const { email } = ctx.state.user;
+    const { status, limit = 20, page = 1 } = ctx.query;
     
-    // If email is provided, first get the userId associated with that email
-    let userIdForQuery = uid;
-    let userNotFound = false;
-    
-    if (email) {
-      try {
-        // Find user by email
-        const userSnapshot = await firestore.collection('users')
-          .where('email', '==', email)
-          .limit(1)
-          .get();
-          
-        if (userSnapshot.empty) {
-          // User with this email doesn't exist, return empty results
-          console.log(`No user found with email: ${email}, returning empty results`);
-          userNotFound = true;
-        } else {
-          userIdForQuery = userSnapshot.docs[0].id;
-        }
-      } catch (error) {
-        console.error('Error finding user by email:', error);
-        // Continue with current user ID if email lookup fails
-      }
-    }
-    
-    // If email was provided but user not found, return empty results
-    if (userNotFound) {
-      ctx.status = 200;
-      ctx.body = { 
-        orders: [],
-        pagination: {
-          total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: 0
-        }
-      };
-      return;
-    }
-    
-    let query = firestore.collection('orders').where('userId', '==', userIdForQuery);
+    let query = firestore.collection('orders').where('email', '==', email);
     
     if (status) {
       query = query.where('status', '==', status);
@@ -672,7 +657,7 @@ export const updateOrderStatus = async (ctx) => {
 export const cancelOrder = async (ctx) => {
   try {
     const { orderId } = ctx.params;
-    const { uid } = ctx.state.user;
+    const { email } = ctx.state.user;
     
     // Check if order exists
     const orderDoc = await firestore.collection('orders').doc(orderId).get();
@@ -686,7 +671,7 @@ export const cancelOrder = async (ctx) => {
     const orderData = orderDoc.data();
     
     // Check if user owns this order
-    if (orderData.userId !== uid) {
+    if (orderData.email !== email) {
       ctx.status = 403;
       ctx.body = { error: 'Not authorized to cancel this order' };
       return;
@@ -708,7 +693,7 @@ export const cancelOrder = async (ctx) => {
     // Return items to stock
     for (const item of orderData.items) {
       await firestore.collection('products').doc(item.productId).update({
-        stock: firestore.FieldValue.increment(item.quantity),
+        stock: FieldValue.increment(item.quantity),
         updatedAt: new Date()
       });
     }

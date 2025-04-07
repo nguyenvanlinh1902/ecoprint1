@@ -24,8 +24,8 @@ if (!fs.existsSync(serviceAccountPath)) {
 
 // Project ID and bucket name
 const projectId = 'ecoprint1-3cd5c'; 
-const correctBucketName = `${projectId}.appspot.com`;
-const incorrectBucketName = `${projectId}.firebasestorage.app`;
+const correctBucketName = `${projectId}.firebasestorage.app`;
+const incorrectBucketName = `${projectId}.appspot.com`;
 
 console.log('Testing Firebase Storage connectivity...');
 console.log('Correct bucket name format:', correctBucketName);
@@ -92,4 +92,4 @@ try {
 }
 
 console.log('\n===== Storage Test Complete =====');
-console.log('Always use the correct bucket name format: PROJECT_ID.appspot.com'); 
+console.log('Always use the correct bucket name format: PROJECT_ID.firebasestorage.app');

@@ -6875,7 +6875,7 @@ klaw@^3.0.0:
 
 koa-body@^6.0.1:
   version "6.0.1"
-  resolved "https://registry.npmjs.org/koa-body/-/koa-body-6.0.1.tgz"
+  resolved "https://registry.yarnpkg.com/koa-body/-/koa-body-6.0.1.tgz#46c490033cceebb2874c53cfbb04c45562cf3c84"
   integrity sha512-M8ZvMD8r+kPHy28aWP9VxL7kY8oPWA+C7ZgCljrCMeaU7uX6wsIQgDHskyrAr9sw+jqnIXyv4Mlxri5R4InIJg==
   dependencies:
     "@types/co-body" "^6.1.0"

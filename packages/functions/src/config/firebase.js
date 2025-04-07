@@ -58,7 +58,7 @@ function initializeFirebase() {
     // Trong trường hợp này, Firebase Admin SDK sẽ tự động sử dụng file này
     const app = admin.initializeApp({
       projectId: projectId,
-      storageBucket: `${projectId}.appspot.com`
+      storageBucket: `${projectId}.firebasestorage.app`
     });
     
     return {
@@ -104,7 +104,7 @@ function initializeFirebase() {
   // Cấu hình Firebase
   const config = {
     projectId: projectId,
-    storageBucket: `${projectId}.appspot.com`
+    storageBucket: `${projectId}.firebasestorage.app`
   };
   
   // Thêm credential từ serviceAccount nếu có
