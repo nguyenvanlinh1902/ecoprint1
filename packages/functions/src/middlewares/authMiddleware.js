@@ -13,10 +13,30 @@ const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
  * @returns {Promise<void>}
  */
 export const authMiddleware = async (ctx, next) => {
+  console.log('[AuthMiddleware] Processing request');
+  console.log('[AuthMiddleware] Headers:', ctx.request.headers);
+  console.log('[AuthMiddleware] Query params:', ctx.query);
+  console.log('[AuthMiddleware] Body params:', ctx.request.body);
+  
   try {
-    const authHeader = ctx.headers.authorization;
-    const userEmail = ctx.headers['x-user-email'];
-    if (!authHeader && !userEmail) {
+    // Get token from Authorization header or query string
+    let token = ctx.headers.authorization;
+    
+    if (token && token.startsWith('Bearer ')) {
+      token = token.slice(7, token.length);
+    } else {
+      token = ctx.query.token;
+    }
+    
+    console.log('[AuthMiddleware] Token found:', token ? 'Yes' : 'No');
+    
+    // Get user email from X-User-Email header or query params
+    const userEmail = ctx.headers['x-user-email'] || ctx.request.query.email;
+    console.log('[AuthMiddleware] User email:', userEmail);
+    
+    // If no token or user email, require authentication
+    if (!token || !userEmail) {
+      console.error('[AuthMiddleware] Missing token or user email, authentication required');
       ctx.status = 401;
       ctx.body = {
         success: false,
@@ -26,109 +46,39 @@ export const authMiddleware = async (ctx, next) => {
       };
       return;
     }
-    let user = null;
-    if (userEmail) {
-      const userProfile = await userProfileRepository.getUserProfileByEmail(userEmail);
-      if (!userProfile) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'Invalid email',
-          code: 'invalid_email',
-          timestamp: new Date().toISOString()
-        };
-        return;
-      }
-      if (userProfile.status !== 'active') {
-        ctx.status = 403;
-        ctx.body = {
-          success: false,
-          message: 'User account is not active',
-          code: 'account_inactive',
-          timestamp: new Date().toISOString()
-        };
-        return;
-      }
+    
+    // Verify token
+    try {
+      const decoded = await admin.auth().verifyIdToken(token);
+      console.log('[AuthMiddleware] Token verified successfully:', decoded);
       
-      user = {
-        id: userProfile.id,
-        email: userProfile.email,
-        role: userProfile.role,
-        status: userProfile.status
+      // Store user ID and email in context for later use
+      ctx.state.user = {
+        uid: decoded.uid,
+        email: decoded.email || userEmail,
+        role: decoded.role || ctx.headers['x-user-role'] || ctx.query.role || 'user'
       };
-    } 
-    // Nếu không có email, xác thực bằng token JWT
-    else if (authHeader) {
-      // Lấy token từ header Authorization
-      const token = authHeader.split(' ')[1];
       
-      if (!token) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'No token provided',
-          code: 'no_token',
-          timestamp: new Date().toISOString()
-        };
-        return;
-      }
+      console.log('[AuthMiddleware] User context:', ctx.state.user);
       
-      try {
-        // Verify token
-        const decoded = jwt.verify(token, JWT_SECRET);
-        
-        // Kiểm tra email trong token
-        if (!decoded.email) {
-          throw new Error('Invalid token format');
-        }
-        
-        // Tìm user dựa trên email
-        const userProfile = await userProfileRepository.getUserProfileByEmail(decoded.email);
-        
-        if (!userProfile) {
-          throw new Error('User not found');
-        }
-        
-        if (userProfile.status !== 'active') {
-          ctx.status = 403;
-          ctx.body = {
-            success: false,
-            message: 'User account is not active',
-            code: 'account_inactive',
-            timestamp: new Date().toISOString()
-          };
-          return;
-        }
-        
-        user = {
-          id: userProfile.id,
-          email: userProfile.email,
-          role: userProfile.role,
-          status: userProfile.status
-        };
-      } catch (error) {
-        ctx.status = 401;
-        ctx.body = {
-          success: false,
-          message: 'Invalid or expired token',
-          code: 'invalid_token',
-          timestamp: new Date().toISOString()
-        };
-        return;
-      }
+      // Proceed to next middleware
+      await next();
+    } catch (error) {
+      console.error('[AuthMiddleware] Token verification failed:', error);
+      ctx.status = 401;
+      ctx.body = {
+        success: false,
+        message: 'Invalid or expired token',
+        code: 'invalid_token',
+        timestamp: new Date().toISOString()
+      };
     }
-    
-    // Lưu thông tin user vào context để sử dụng ở các middleware tiếp theo
-    ctx.state.user = user;
-    
-    await next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    console.error('[AuthMiddleware] Authentication error:', error);
     ctx.status = 500;
     ctx.body = {
       success: false,
-      message: 'Authentication error',
-      code: 'auth_error',
+      message: 'Internal server error',
       timestamp: new Date().toISOString()
     };
   }
@@ -155,6 +105,7 @@ export const adminMiddleware = async (ctx, next) => {
       return;
     }
     
+    // Kiểm tra nếu role là 'admin' từ trường role trong ctx.state.user được set bởi authMiddleware
     if (user.role !== 'admin') {
       ctx.status = 403;
       ctx.body = {
@@ -166,6 +117,7 @@ export const adminMiddleware = async (ctx, next) => {
       return;
     }
     
+    // Nếu là admin, cho phép tiếp tục
     await next();
   } catch (error) {
     console.error('Admin middleware error:', error);

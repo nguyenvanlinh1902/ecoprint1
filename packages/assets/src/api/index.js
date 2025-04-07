@@ -13,7 +13,8 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   },
-  timeout: 30000 // 30 seconds
+  timeout: 30000, // 30 seconds
+  withCredentials: true // Enable sending cookies with cross-origin requests
 });
 
 // Request interceptor for adding auth token
@@ -81,6 +82,7 @@ export const get = (url, config) => apiClient.get(url, config);
 export const post = (url, data, config) => apiClient.post(url, data, config);
 export const put = (url, data, config) => apiClient.put(url, data, config);
 export const del = (url, config) => apiClient.delete(url, config);
+export const patch = (url, data, config) => apiClient.patch(url, data, config);
 
 // Upload progress tracking helper
 export const uploadWithProgress = async (url, formData, onProgress, config = {}) => {
@@ -378,6 +380,17 @@ export const transactions = {
       }
     });
   },
+  addUserNote: (transactionId, note) => {
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return post(`/transactions/${transactionId}/note`, { note }, {
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
+  },
   uploadReceipt: (id, formData) => {
     const userEmail = localStorage.getItem('user_email');
     const userRole = localStorage.getItem('user_role');
@@ -399,6 +412,34 @@ export const transactions = {
     };
     
     return uploadWithProgress(`/transactions/${id}/upload-receipt`, formData, null, config);
+  },
+  updateUserNotes: (transactionId, userNotes) => {
+    return apiClient.put(`/transactions/${transactionId}/userNotes`, { userNotes }, addAuthData());
+  },
+  updateTransactionAdminNotes: (transactionId, adminNotes) => {
+    return apiClient.put(`/admin/transactions/${transactionId}/notes`, { adminNotes }, addAuthData());
+  },
+  addTransactionAdminNote: (id, note) => {
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token');
+    
+    // Include query parameters for extra compatibility
+    const query = {
+      email: userEmail,
+      role: userRole
+    };
+    
+    return post(`/admin/transactions/${id}/admin-notes`, { note }, {
+      params: query,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      withCredentials: true
+    });
   }
 };
 
@@ -407,7 +448,15 @@ export const admin = {
   // Users
   getUsers: (params) => {
     const enhancedParams = addAuthData(params);
-    return get('/admin/users', { params: enhancedParams });
+    const userEmail = localStorage.getItem('user_email');
+    
+    return get('/admin/users', { 
+      params: enhancedParams,
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': 'admin' // Luôn gửi role admin để nhận đầy đủ dữ liệu
+      }
+    });
   },
   getUserById: (id) => {
     const enhancedParams = addAuthData();
@@ -456,8 +505,25 @@ export const admin = {
     return put(`/admin/products/${id}`, enhancedData);
   },
   deleteProduct: (id) => {
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token');
+    
+    console.log(`[API] Deleting product ID: ${id}`);
+    console.log(`[API] User email: ${userEmail}, role: ${userRole}`);
+    
     const enhancedParams = addAuthData();
-    return del(`/admin/products/${id}`, { params: enhancedParams });
+    
+    return del(`/admin/products/${id}`, { 
+      params: enhancedParams,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      withCredentials: true
+    });
   },
   
   // Categories
@@ -485,7 +551,15 @@ export const admin = {
   },
   updateOrderStatus: (id, status) => {
     const enhancedData = addAuthData({ status });
-    return put(`/admin/orders/${id}/status`, enhancedData);
+    return patch(`/admin/orders/${id}/status`, enhancedData);
+  },
+  updateOrderTracking: (id, trackingInfo) => {
+    const enhancedData = addAuthData(trackingInfo);
+    return patch(`/admin/orders/${id}/tracking`, enhancedData);
+  },
+  updateOrderNotes: (id, adminNotes) => {
+    const enhancedData = addAuthData({ adminNotes });
+    return patch(`/admin/orders/${id}/notes`, enhancedData);
   },
   
   // Transactions
@@ -509,11 +583,45 @@ export const admin = {
     const enhancedData = addAuthData(data);
     return post(`/admin/transactions/${id}/reject`, enhancedData);
   },
+  addTransactionAdminNote: (id, note) => {
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token');
+    
+    // Include query parameters for extra compatibility
+    const query = {
+      email: userEmail,
+      role: userRole
+    };
+    
+    return post(`/admin/transactions/${id}/admin-notes`, { note }, {
+      params: query,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      withCredentials: true
+    });
+  },
   
   // Dashboard
   getDashboard: () => {
-    const enhancedParams = addAuthData();
-    return get('/admin/dashboard', { params: enhancedParams });
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    if (!userEmail || userRole !== 'admin') {
+      return Promise.reject(new Error('Unauthorized access'));
+    }
+    
+    return get('/admin/dashboard', { 
+      params: { email: userEmail, role: userRole },
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
   }
 };
 

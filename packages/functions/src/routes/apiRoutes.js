@@ -273,6 +273,8 @@ export default function apiRouter(withPrefix = true) {
     uploadReceiptFile
   );
   router.get('/transactions', authMiddleware, transactionController.getUserTransactions);
+  router.get('/transactions/:transactionId', authMiddleware, transactionController.getTransactionById);
+  router.patch('/transactions/:transactionId/user-notes', authMiddleware, transactionController.updateUserNotes);
 
   // Admin routes
   router.get('/admin/dashboard', authMiddleware, adminMiddleware, adminController.getDashboard);
@@ -280,6 +282,10 @@ export default function apiRouter(withPrefix = true) {
   router.get('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
   router.get('/admin/users/:userId/orders', authMiddleware, adminMiddleware, adminController.getUserOrders);
   router.get('/admin/orders', authMiddleware, adminMiddleware, orderController.getAllOrders);
+  router.get('/admin/orders/:orderId', authMiddleware, adminMiddleware, orderController.getOrderById);
+  router.patch('/admin/orders/:orderId/status', authMiddleware, adminMiddleware, orderController.updateOrderStatus);
+  router.patch('/admin/orders/:orderId/tracking', authMiddleware, adminMiddleware, orderController.updateOrderTracking);
+  router.patch('/admin/orders/:orderId/notes', authMiddleware, adminMiddleware, orderController.updateOrderNotes);
   router.get('/admin/users/:userId/transactions', authMiddleware, adminMiddleware, adminController.getUserTransactions);
   router.put('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
   router.put('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);
@@ -302,10 +308,11 @@ export default function apiRouter(withPrefix = true) {
   
   // Admin transaction routes
   router.get('/admin/transactions', authMiddleware, adminMiddleware, adminController.getAllTransactions);
-  router.get('/admin/transactions/:transactionId', authMiddleware, adminMiddleware, adminController.getTransactionById);
+  router.get('/admin/transactions/:transactionId', authMiddleware, adminMiddleware, transactionController.getTransactionById);
   router.post('/admin/transactions', authMiddleware, adminMiddleware, adminController.createTransaction);
-  router.put('/admin/transactions/:transactionId/approve', authMiddleware, adminMiddleware, adminController.approveTransaction);
-  router.put('/admin/transactions/:transactionId/reject', authMiddleware, adminMiddleware, adminController.rejectTransaction);
+  router.post('/admin/transactions/:transactionId/approve', authMiddleware, adminMiddleware, adminController.approveTransaction);
+  router.post('/admin/transactions/:transactionId/reject', authMiddleware, adminMiddleware, adminController.rejectTransaction);
+  router.post('/admin/transactions/:transactionId/admin-notes', authMiddleware, adminMiddleware, transactionController.updateAdminNotes);
 
   // Upload routes
   router.post('/upload/image', uploadProductImage);
@@ -566,6 +573,8 @@ export default function apiRouter(withPrefix = true) {
       uploadReceiptFile
     );
     apiRouter.get('/transactions', authMiddleware, transactionController.getUserTransactions);
+    apiRouter.get('/transactions/:transactionId', authMiddleware, transactionController.getTransactionById);
+    apiRouter.patch('/transactions/:transactionId/user-notes', authMiddleware, transactionController.updateUserNotes);
 
     // Admin routes
     apiRouter.get('/admin/dashboard', authMiddleware, adminMiddleware, adminController.getDashboard);
@@ -573,6 +582,10 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.get('/admin/users/:userId', authMiddleware, adminMiddleware, adminController.getUserById);
     apiRouter.get('/admin/users/:userId/orders', authMiddleware, adminMiddleware, adminController.getUserOrders);
     apiRouter.get('/admin/orders', authMiddleware, adminMiddleware, orderController.getAllOrders);
+    apiRouter.get('/admin/orders/:orderId', authMiddleware, adminMiddleware, orderController.getOrderById);
+    apiRouter.patch('/admin/orders/:orderId/status', authMiddleware, adminMiddleware, orderController.updateOrderStatus);
+    apiRouter.patch('/admin/orders/:orderId/tracking', authMiddleware, adminMiddleware, orderController.updateOrderTracking);
+    apiRouter.patch('/admin/orders/:orderId/notes', authMiddleware, adminMiddleware, orderController.updateOrderNotes);
     apiRouter.get('/admin/users/:userId/transactions', authMiddleware, adminMiddleware, adminController.getUserTransactions);
     apiRouter.put('/admin/users/:userId/approve', authMiddleware, adminMiddleware, adminController.approveUser);
     apiRouter.put('/admin/users/:userId/reject', authMiddleware, adminMiddleware, adminController.rejectUser);
@@ -595,10 +608,11 @@ export default function apiRouter(withPrefix = true) {
     
     // Admin transaction routes
     apiRouter.get('/admin/transactions', authMiddleware, adminMiddleware, adminController.getAllTransactions);
-    apiRouter.get('/admin/transactions/:transactionId', authMiddleware, adminMiddleware, adminController.getTransactionById);
+    apiRouter.get('/admin/transactions/:transactionId', authMiddleware, adminMiddleware, transactionController.getTransactionById);
     apiRouter.post('/admin/transactions', authMiddleware, adminMiddleware, adminController.createTransaction);
-    apiRouter.put('/admin/transactions/:transactionId/approve', authMiddleware, adminMiddleware, adminController.approveTransaction);
-    apiRouter.put('/admin/transactions/:transactionId/reject', authMiddleware, adminMiddleware, adminController.rejectTransaction);
+    apiRouter.post('/admin/transactions/:transactionId/approve', authMiddleware, adminMiddleware, adminController.approveTransaction);
+    apiRouter.post('/admin/transactions/:transactionId/reject', authMiddleware, adminMiddleware, adminController.rejectTransaction);
+    apiRouter.post('/admin/transactions/:transactionId/admin-notes', authMiddleware, adminMiddleware, transactionController.updateAdminNotes);
 
     // Upload routes
     apiRouter.post('/upload/image', uploadProductImage);

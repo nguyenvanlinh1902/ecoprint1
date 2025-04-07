@@ -37,6 +37,7 @@ const DashboardPage = () => {
     recentUsers: [],
     pendingApprovals: 0
   });
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -45,6 +46,9 @@ const DashboardPage = () => {
         
         // Use the correct API function name
         const response = await api.admin.getDashboard();
+        
+        // Log response để debug
+        console.log('Dashboard API response:', response);
         
         // Kiểm tra cấu trúc dữ liệu trả về
         if (response.data && response.data.data) {
@@ -60,13 +64,27 @@ const DashboardPage = () => {
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         setError('Không thể tải dữ liệu dashboard. Vui lòng thử lại sau.');
+        
+        // Retry logic nếu lỗi và số lần retry còn ít
+        if (retryCount < 3) {
+          console.log(`Retrying dashboard fetch (${retryCount + 1}/3)...`);
+          setTimeout(() => {
+            setRetryCount(prev => prev + 1);
+          }, 1000);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, []);
+  }, [retryCount]);
+  
+  // Fallback cho trường hợp không có dữ liệu
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+    setError('');
+  };
 
   if (loading) {
     return (
@@ -78,13 +96,35 @@ const DashboardPage = () => {
 
   if (error) {
     return (
-      <Typography color="error" variant="h6">
-        {error}
-      </Typography>
+      <Box>
+        <Typography color="error" variant="h6" sx={{ mb: 2 }}>
+          {error}
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleRetry}
+        >
+          Retry
+        </Button>
+      </Box>
     );
   }
 
   const { stats, recentOrders, recentUsers, pendingApprovals } = dashboardData;
+
+  // Đảm bảo stats có đủ dữ liệu
+  const ensuredStats = {
+    totalUsers: stats?.totalUsers || 0,
+    activeUsers: stats?.activeUsers || 0,
+    totalProducts: stats?.totalProducts || 0,
+    totalOrders: stats?.totalOrders || 0,
+    pendingOrders: stats?.pendingOrders || 0,
+    totalRevenue: stats?.totalRevenue || 0,
+    revenueChange: stats?.revenueChange || 0,
+    newUsers: stats?.newUsers || 0,
+    newOrders: stats?.newOrders || 0
+  };
 
   return (
     <Box>
@@ -101,12 +141,12 @@ const DashboardPage = () => {
                 Total Users
               </Typography>
               <Typography variant="h4">
-                {stats?.totalUsers || 0}
+                {ensuredStats.totalUsers}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
                 <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
                   <IncreaseIcon fontSize="small" />
-                  {stats?.newUsers || 0} new
+                  {ensuredStats.newUsers} new
                 </Typography>
               </Box>
             </CardContent>
@@ -120,7 +160,7 @@ const DashboardPage = () => {
                 Products
               </Typography>
               <Typography variant="h4">
-                {stats?.totalProducts || 0}
+                {ensuredStats.totalProducts}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                 <Button 
@@ -142,15 +182,15 @@ const DashboardPage = () => {
                 Orders
               </Typography>
               <Typography variant="h4">
-                {stats?.totalOrders || 0}
+                {ensuredStats.totalOrders}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-                <Typography variant="body2" color={stats?.newOrders > 0 ? 'success.main' : 'text.secondary'} sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="body2" color={ensuredStats.newOrders > 0 ? 'success.main' : 'text.secondary'} sx={{ display: 'flex', alignItems: 'center' }}>
                   <NewIcon fontSize="small" sx={{ mr: 0.5 }} />
-                  {stats?.newOrders || 0} new
+                  {ensuredStats.newOrders} new
                 </Typography>
                 <Typography variant="body2" color="warning.main">
-                  {stats?.pendingOrders || 0} pending
+                  {ensuredStats.pendingOrders} pending
                 </Typography>
               </Box>
             </CardContent>
@@ -164,18 +204,18 @@ const DashboardPage = () => {
                 Revenue
               </Typography>
               <Typography variant="h4">
-                {formatCurrency(stats?.totalRevenue || 0)}
+                {formatCurrency(ensuredStats.totalRevenue)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                {(stats?.revenueChange || 0) >= 0 ? (
+                {ensuredStats.revenueChange >= 0 ? (
                   <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center' }}>
                     <IncreaseIcon fontSize="small" />
-                    {stats?.revenueChange || 0}% vs last month
+                    {ensuredStats.revenueChange}% vs last month
                   </Typography>
                 ) : (
                   <Typography variant="body2" color="error.main" sx={{ display: 'flex', alignItems: 'center' }}>
                     <DecreaseIcon fontSize="small" />
-                    {Math.abs(stats?.revenueChange || 0)}% vs last month
+                    {Math.abs(ensuredStats.revenueChange)}% vs last month
                   </Typography>
                 )}
               </Box>

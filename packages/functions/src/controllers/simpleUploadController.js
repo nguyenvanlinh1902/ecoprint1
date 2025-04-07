@@ -28,8 +28,8 @@ export const uploadProductImage = async (ctx) => {
   console.log('[UploadController] Legacy endpoint uploadProductImage redirecting to api handler');
   
   // Check bucket format nếu được cung cấp trong request
-  if (ctx.request.body && ctx.request.body.bucket) {
-    ctx.request.body.bucket = checkAndFixBucketName(ctx.request.body.bucket);
+  if (ctx.req.body && ctx.req.body.bucket) {
+    ctx.req.body.bucket = checkAndFixBucketName(ctx.req.body.bucket);
   }
   
   // Trả về lỗi (route này đã bị thay thế)
@@ -45,8 +45,8 @@ export const uploadReceiptFile = async (ctx) => {
   console.log('[UploadController] Legacy endpoint uploadReceiptFile redirecting to api handler');
   
   // Check bucket format nếu được cung cấp trong request
-  if (ctx.request.body && ctx.request.body.bucket) {
-    ctx.request.body.bucket = checkAndFixBucketName(ctx.request.body.bucket);
+  if (ctx.req.body && ctx.req.body.bucket) {
+    ctx.req.body.bucket = checkAndFixBucketName(ctx.req.body.bucket);
   }
   
   // Trả về lỗi (route này đã bị thay thế)

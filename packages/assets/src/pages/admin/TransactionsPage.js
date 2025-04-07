@@ -18,14 +18,17 @@ import {
   CheckCircle as ApproveIcon,
   Cancel as RejectIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import api from '../../api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDateTime } from '../../helpers/formatters';
+import { useAdmin } from '../../context/AdminContext';
+import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 const TransactionsPage = () => {
   const navigate = useNavigate();
   const { transactionId } = useParams();
   const location = useLocation();
+  const { getAllUsers, refreshUsers } = useAdmin();
   
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -194,12 +197,19 @@ const TransactionsPage = () => {
     }
   };
   
-  const fetchUsers = async () => {
-    try {
-      const response = await api.get('/api/admin/users/list');
-      setUsers(response.data.data || []);
-    } catch (error) {
-      /* error removed */
+  const fetchUsers = () => {
+    // Lấy toàn bộ danh sách users từ context
+    const allUsers = getAllUsers();
+    if (allUsers && allUsers.length > 0) {
+      // Không cần lọc theo role, hiển thị tất cả user trong dropdown
+      setUsers(allUsers);
+    } else {
+      // Nếu chưa có dữ liệu, refresh để lấy
+      refreshUsers().then(() => {
+        setUsers(getAllUsers());
+      }).catch(error => {
+        console.error('Error fetching users:', error);
+      });
     }
   };
   
@@ -855,7 +865,7 @@ const TransactionsPage = () => {
                     >
                       {users.map(user => (
                         <MenuItem key={user.id} value={user.id}>
-                          {user.name} ({user.email})
+                          {user.displayName || user.email} ({user.email})
                         </MenuItem>
                       ))}
                     </Select>
@@ -910,13 +920,11 @@ const TransactionsPage = () => {
                   </FormControl>
                 </Grid>
                 
-                <Grid item xs={12}>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     name="description"
                     label="Description"
                     fullWidth
-                    multiline
-                    rows={3}
                     value={newTransaction.description}
                     onChange={handleNewTransactionChange}
                   />
@@ -927,10 +935,11 @@ const TransactionsPage = () => {
               <Button onClick={handleAddDialogClose}>Cancel</Button>
               <Button 
                 onClick={handleAddTransaction} 
-                variant="contained" 
+                color="primary" 
+                variant="contained"
                 disabled={addLoading || !newTransaction.userId || !newTransaction.amount}
               >
-                {addLoading ? <CircularProgress size={24} /> : 'Add Transaction'}
+                {addLoading ? 'Processing...' : 'Add Transaction'}
               </Button>
             </DialogActions>
           </Dialog>

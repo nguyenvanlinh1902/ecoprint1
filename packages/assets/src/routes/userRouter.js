@@ -44,6 +44,7 @@ const UserRouter = () => {
         <Route path="import-orders/:importId" element={<ImportDetailPage />} />
         <Route path="deposit" element={<DepositPage />} />
         <Route path="transactions" element={<TransactionsPage />} />
+        <Route path="transactions/:transactionId" element={<TransactionsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </MainLayout>

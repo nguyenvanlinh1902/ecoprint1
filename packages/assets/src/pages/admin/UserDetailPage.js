@@ -20,6 +20,7 @@ import {
 import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
+import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 const TabPanel = (props) => {
   const { children, value, index, ...other } = props;
@@ -88,57 +89,92 @@ const UserDetailPage = () => {
   const [transactions, setTransactions] = useState([]);
   const [transactionsLoading, setTransactionsLoading] = useState(false);
   
+  // Sử dụng context admin để lấy thông tin người dùng
+  const { 
+    getUserById, 
+    getFullUserDetails, 
+    updateUser,
+    updateUserInContext,
+    isContextAvailable
+  } = useSafeAdmin();
+  
+  // State for loading data from context
+  const [isLoadingContext, setIsLoadingContext] = useState(false);
+  
+  // Load user data from context instead of direct API call
   useEffect(() => {
-    const fetchUserDetails = async () => {
+    const fetchUserData = async () => {
+      if (!userId) return;
+      
+      setLoading(true);
+      setError(null);
+      
       try {
-        setLoading(true);
-        setError(''); // Xóa lỗi cũ nếu có
-        
-        console.log('Fetching user details for userId:', userId);
-        // Sử dụng admin.getUserById từ api client thay vì gọi trực tiếp
-        const response = await api.admin.getUserById(userId);
-        
-        console.log('User details response:', response);
-        
-        if (response.data && response.data.success && response.data.data) {
-          const userData = response.data.data;
-          setUser(userData);
-          setUserProfile({
-            name: userData.name || userData.displayName || '',
-            email: userData.email || '',
-            phone: userData.phone || '',
-            companyName: userData.companyName || '',
-            companyAddress: userData.companyAddress || '',
-            companyVat: userData.companyVat || '',
-            role: userData.role || 'user'
-          });
+        // Load từ context nếu có sẵn
+        if (isContextAvailable) {
+          setIsLoadingContext(true);
+          
+          const contextUser = getUserById(userId);
+          if (contextUser) {
+            // Set basic user info immediately
+            setUser(contextUser);
+            
+            // Get full details including orders and transactions
+            const fullUserDetails = await getFullUserDetails(userId);
+            if (fullUserDetails) {
+              setUser(fullUserDetails);
+              
+              // Set related data
+              if (fullUserDetails.orders) {
+                setRecentOrders(fullUserDetails.orders);
+              }
+              
+              if (fullUserDetails.transactions) {
+                setTransactions(fullUserDetails.transactions);
+              }
+            }
+          } else {
+            // Fallback to API if user not in context
+            await fetchUserFromAPI();
+          }
+          
+          setIsLoadingContext(false);
         } else {
-          // Xử lý khi API trả về success: false
-          throw new Error(response.data?.message || 'Failed to load user data');
+          // If context isn't available, use API directly
+          await fetchUserFromAPI();
         }
       } catch (error) {
-        console.error('Error fetching user details:', error);
-        setError(error.response?.data?.message || error.message || 'Failed to load user details. Please try again later.');
+        console.error('Error fetching user data:', error);
+        setError('Failed to load user data. Please try again.');
       } finally {
         setLoading(false);
       }
     };
     
-    if (userId) {
-      fetchUserDetails();
-    } else {
-      setError('User ID is missing or invalid');
-      setLoading(false);
-    }
-  }, [userId]);
+    fetchUserData();
+  }, [userId, getUserById, getFullUserDetails, isContextAvailable]);
   
-  useEffect(() => {
-    if (activeTab === 1) {
-      fetchRecentOrders();
-    } else if (activeTab === 2) {
-      fetchTransactions();
+  // Định nghĩa hàm fetchUserFromAPI để dùng trong trường hợp không có context
+  const fetchUserFromAPI = async () => {
+    try {
+      const response = await api.admin.getUserById(userId);
+      
+      if (response.data && response.data.data) {
+        setUser(response.data.data);
+      } else {
+        throw new Error('Invalid response format');
+      }
+      
+      // Fetch orders và transactions nếu cần
+      await Promise.all([
+        fetchRecentOrders(),
+        fetchTransactions()
+      ]);
+    } catch (error) {
+      console.error('Error fetching user from API:', error);
+      throw error;
     }
-  }, [activeTab]);
+  };
   
   const fetchRecentOrders = async () => {
     try {
@@ -234,23 +270,50 @@ const UserDetailPage = () => {
     });
   };
   
-  const handleUpdateStatus = async () => {
+  const handleStatusChange = async (newStatus) => {
+    if (!user) return;
+    
+    setStatusDialog({
+      ...statusDialog,
+      loading: true,
+      error: ''
+    });
+    
     try {
-      setStatusDialog({
-        ...statusDialog,
-        loading: true,
-        error: ''
-      });
+      // Tùy thuộc vào trạng thái
+      let response;
       
-      const response = await api.patch(`/api/admin/users/${userId}/status`, {
-        status: statusDialog.action
-      });
+      if (newStatus === 'active' && user.status === 'pending_approval') {
+        response = await api.admin.approveUser(userId);
+      } else if (newStatus === 'rejected' && user.status === 'pending_approval') {
+        response = await api.admin.rejectUser(userId);
+      } else {
+        response = await api.admin.updateUserStatus(userId, newStatus);
+      }
       
-      setUser(response.data.data);
-      setSuccess(`User status updated to ${statusDialog.action}`);
-      handleStatusDialogClose();
+      if (response.data && response.data.data) {
+        // Update thông tin user trong context
+        if (isContextAvailable) {
+          updateUserInContext(userId, { ...response.data.data });
+        }
+        
+        setUser(response.data.data);
+        setStatusDialog({
+          ...statusDialog,
+          loading: false,
+          success: `User status updated to ${newStatus} successfully.`
+        });
+        
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setStatusDialog({
+            ...statusDialog,
+            success: ''
+          });
+        }, 3000);
+      }
     } catch (error) {
-      /* error removed */
+      console.error('Error updating user status:', error);
       setStatusDialog({
         ...statusDialog,
         loading: false,
@@ -784,7 +847,7 @@ const UserDetailPage = () => {
             Cancel
           </Button>
           <Button 
-            onClick={handleUpdateStatus} 
+            onClick={() => handleStatusChange(statusDialog.action)} 
             color={statusDialog.action === 'inactive' ? 'error' : 'primary'}
             variant="contained"
             disabled={statusDialog.loading}

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Button, Chip, Divider,
   Table, TableBody, TableCell, TableContainer, TableRow,
   Stepper, Step, StepLabel, CircularProgress, Alert, Dialog,
   DialogActions, DialogContent, DialogContentText, DialogTitle,
-  TextField
+  TextField, IconButton, TableHead
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -20,13 +20,15 @@ import {
 import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
+import useFetchApi from '../../hooks/api/useFetchApi';
+import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 const OrderDetailPage = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
   
   const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
   // Update status state
@@ -39,7 +41,8 @@ const OrderDetailPage = () => {
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
   const [trackingInfo, setTrackingInfo] = useState({
     carrier: '',
-    trackingNumber: ''
+    trackingNumber: '',
+    trackingUrl: ''
   });
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState('');
@@ -51,23 +54,84 @@ const OrderDetailPage = () => {
   
   const orderStatusSteps = ['pending', 'processing', 'shipped', 'delivered'];
   
+  // Add a ref for tracking the fetch timeout
+  const fetchTimeoutRef = useRef(null);
+  
+  // Sửa lại cách sử dụng API hook
+  const {
+    data: orderData,
+    loading: orderLoading,
+    error: orderError,
+    fetchResource
+  } = useFetchApi('/admin/orders/' + orderId);
+  
+  // Use safe admin hook to access users data
+  const { getUserByEmail, isContextAvailable } = useSafeAdmin();
+  
+  // Safe fetch with debounce
+  const safeFetch = useCallback(() => {
+    // Clear any existing timeout
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // Set a new timeout to prevent multiple concurrent requests
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchResource();
+      fetchTimeoutRef.current = null;
+    }, 500);
+  }, [fetchResource]);
+  
+  // Clean up timeout on unmount
   useEffect(() => {
-    const fetchOrderDetails = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get(`/api/admin/orders/${orderId}`);
-        setOrder(response.data.data);
-        setAdminNotes(response.data.data.adminNotes || '');
-      } catch (error) {
-        /* error removed */
-        setError('Failed to load order details. Please try again later.');
-      } finally {
-        setLoading(false);
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
       }
     };
-
-    fetchOrderDetails();
-  }, [orderId]);
+  }, []);
+  
+  // Process order data only when it changes - avoid infinite loop
+  useEffect(() => {
+    if (!orderData) return;
+    
+    try {
+      const orderDataObj = orderData.data || orderData;
+      if (!orderDataObj) return;
+      
+      setOrder(orderDataObj);
+      setAdminNotes(orderDataObj.adminNotes || '');
+      
+      // Pre-fill tracking info if available - fix the undefined error
+      if (orderDataObj.tracking) {
+        setTrackingInfo({
+          trackingNumber: orderDataObj.tracking.trackingNumber || '',
+          carrier: orderDataObj.tracking.carrier || '',
+          trackingUrl: orderDataObj.tracking.trackingUrl || ''
+        });
+      }
+    } catch (err) {
+      console.error("Error processing order data:", err);
+      setError("Error processing order data. Please try refreshing the page.");
+    }
+  }, [orderData]);
+  
+  // Update loading and error state separately to avoid re-renders
+  useEffect(() => {
+    setLoading(orderLoading);
+  }, [orderLoading]);
+  
+  useEffect(() => {
+    if (orderError) {
+      setError(orderError);
+    }
+  }, [orderError]);
+  
+  // Calculate userData separately to prevent re-renders
+  const userEmail = order?.email;
+  const userData = useMemo(() => {
+    return userEmail && getUserByEmail ? getUserByEmail(userEmail) : null;
+  }, [userEmail, getUserByEmail]);
   
   const handleStatusDialogOpen = (status) => {
     setNewStatus(status);
@@ -87,15 +151,13 @@ const OrderDetailPage = () => {
     setStatusError('');
     
     try {
-      const response = await api.patch(`/api/admin/orders/${orderId}/status`, {
-        status: newStatus
-      });
+      const response = await api.admin.updateOrderStatus(orderId, newStatus);
       
-      setOrder(response.data.data);
+      setOrder(response.data.data || response.data);
       handleStatusDialogClose();
+      // Don't call fetchResource here, as the API has already returned the updated data
       
     } catch (error) {
-      /* error removed */
       setStatusError(error.response?.data?.message || 'Failed to update status. Please try again.');
     } finally {
       setStatusLoading(false);
@@ -103,10 +165,6 @@ const OrderDetailPage = () => {
   };
   
   const handleTrackingDialogOpen = () => {
-    setTrackingInfo({
-      carrier: order.tracking?.carrier || '',
-      trackingNumber: order.tracking?.trackingNumber || ''
-    });
     setTrackingDialogOpen(true);
   };
   
@@ -129,13 +187,13 @@ const OrderDetailPage = () => {
     setTrackingError('');
     
     try {
-      const response = await api.patch(`/api/admin/orders/${orderId}/tracking`, trackingInfo);
+      const response = await api.admin.updateOrderTracking(orderId, trackingInfo);
       
-      setOrder(response.data.data);
+      setOrder(response.data.data || response.data);
       handleTrackingDialogClose();
+      // Don't call fetchResource here, as the API has already returned the updated data
       
     } catch (error) {
-      /* error removed */
       setTrackingError(error.response?.data?.message || 'Failed to update tracking information. Please try again.');
     } finally {
       setTrackingLoading(false);
@@ -146,22 +204,21 @@ const OrderDetailPage = () => {
     setNotesLoading(true);
     
     try {
-      const response = await api.patch(`/api/admin/orders/${orderId}/notes`, {
-        adminNotes
-      });
+      const response = await api.admin.updateOrderNotes(orderId, adminNotes);
       
-      setOrder(response.data.data);
+      setOrder(response.data.data || response.data);
       setEditingNotes(false);
+      // Don't call fetchResource here, as the API has already returned the updated data
       
     } catch (error) {
-      /* error removed */
+      // Handle error silently
     } finally {
       setNotesLoading(false);
     }
   };
   
   const getNextStatus = () => {
-    if (!order) return null;
+    if (!order || !order.status) return null;
     
     const currentIndex = orderStatusSteps.indexOf(order.status);
     
@@ -172,7 +229,7 @@ const OrderDetailPage = () => {
     return orderStatusSteps[currentIndex + 1];
   };
   
-  if (loading) {
+  if (loading || !order) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
         <CircularProgress />
@@ -275,12 +332,10 @@ const OrderDetailPage = () => {
         
         {orderStatusSteps.includes(order.status) && (
           <Box sx={{ mt: 3 }}>
-            <Stepper activeStep={orderStatusSteps.indexOf(order.status)} alternativeLabel>
-              {orderStatusSteps.map((label) => (
-                <Step key={label}>
-                  <StepLabel>{label.charAt(0).toUpperCase() + label.slice(1)}</StepLabel>
-                </Step>
-              ))}
+            <Stepper activeStep={0} alternativeLabel>
+              <Step key={order.status}>
+                <StepLabel>{order.status.charAt(0).toUpperCase() + order.status.slice(1)}</StepLabel>
+              </Step>
             </Stepper>
           </Box>
         )}
@@ -298,41 +353,49 @@ const OrderDetailPage = () => {
             <TableContainer>
               <Table>
                 <TableBody>
-                  <TableRow>
-                    <TableCell sx={{ width: '30%' }}>
-                      <Typography variant="subtitle2">Product</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        {order.product?.imageUrl && (
-                          <Box
-                            component="img"
-                            src={order.product.imageUrl}
-                            alt={order.product.name}
-                            sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain' }}
-                          />
-                        )}
-                        <Box>
-                          <Typography variant="body1">{order.product?.name || 'N/A'}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {formatCurrency(order.price)} × {order.quantity}
-                          </Typography>
+                  {order.items && order.items.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell sx={{ width: '30%' }}>
+                        <Typography variant="subtitle2">Product</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {item.imageUrl && (
+                            <Box
+                              component="img"
+                              src={item.imageUrl}
+                              alt={item.name}
+                              sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain' }}
+                            />
+                          )}
+                          <Box>
+                            <Typography variant="body1">{item.name || 'N/A'}</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatCurrency(item.price)} × {item.quantity}
+                            </Typography>
+                            {item.sku && (
+                              <Typography variant="caption" color="text.secondary">
+                                SKU: {item.sku}
+                              </Typography>
+                            )}
+                          </Box>
                         </Box>
-                      </Box>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   
-                  {order.specifications && Object.keys(order.specifications).length > 0 && (
+                  {order.customizations && order.customizations.length > 0 && (
                     <TableRow>
                       <TableCell>
-                        <Typography variant="subtitle2">Specifications</Typography>
+                        <Typography variant="subtitle2">Customizations</Typography>
                       </TableCell>
                       <TableCell>
                         <Grid container spacing={1}>
-                          {Object.entries(order.specifications).map(([key, value]) => (
-                            <Grid item xs={12} key={key}>
+                          {order.customizations.map((customization, index) => (
+                            <Grid item xs={12} key={index}>
                               <Typography variant="body2">
-                                <strong>{key}:</strong> {value}
+                                <strong>{customization.type}:</strong> {customization.position}
+                                {customization.price > 0 && ` - ${formatCurrency(customization.price)}`}
                               </Typography>
                             </Grid>
                           ))}
@@ -341,14 +404,14 @@ const OrderDetailPage = () => {
                     </TableRow>
                   )}
                   
-                  {order.additionalRequirements && (
+                  {order.notes && (
                     <TableRow>
                       <TableCell>
-                        <Typography variant="subtitle2">Additional Requirements</Typography>
+                        <Typography variant="subtitle2">Additional Notes</Typography>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
-                          {order.additionalRequirements}
+                          {order.notes}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -382,35 +445,34 @@ const OrderDetailPage = () => {
                 <TableBody>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Recipient</TableCell>
-                    <TableCell>{order.shipping?.recipientName || order.user?.companyName || 'N/A'}</TableCell>
+                    <TableCell>{order.shippingAddress?.recipientName || 'N/A'}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Address</TableCell>
                     <TableCell>
-                      {order.shipping?.address1}
-                      {order.shipping?.address2 && <Box>{order.shipping.address2}</Box>}
-                      {order.shipping?.city && order.shipping?.state && order.shipping?.postalCode && (
+                      {order.shippingAddress?.address}
+                      {order.shippingAddress?.city && order.shippingAddress?.state && (
                         <Box>
-                          {order.shipping.city}, {order.shipping.state} {order.shipping.postalCode}
+                          {order.shippingAddress.city}, {order.shippingAddress.state} {order.shippingAddress.postalCode}
                         </Box>
                       )}
-                      {order.shipping?.country && <Box>{order.shipping.country}</Box>}
+                      {order.shippingAddress?.country && <Box>{order.shippingAddress.country}</Box>}
                     </TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Phone</TableCell>
-                    <TableCell>{order.shipping?.phone || 'N/A'}</TableCell>
+                    <TableCell>{order.shippingAddress?.phone || 'N/A'}</TableCell>
                   </TableRow>
-                  {order.shipping?.email && (
+                  {order.shippingAddress?.email && (
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
-                      <TableCell>{order.shipping.email}</TableCell>
+                      <TableCell>{order.shippingAddress.email}</TableCell>
                     </TableRow>
                   )}
-                  {order.shipping?.shippingMethod && (
+                  {order.shippingAddress?.method && (
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>Shipping Method</TableCell>
-                      <TableCell>{order.shipping.shippingMethod}</TableCell>
+                      <TableCell>{order.shippingAddress.method}</TableCell>
                     </TableRow>
                   )}
                   {order.tracking?.carrier && order.tracking?.trackingNumber && (
@@ -427,33 +489,36 @@ const OrderDetailPage = () => {
           </Paper>
           
           {/* Customer Information */}
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Customer Information
-            </Typography>
-            
-            <TableContainer>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <TableContainer component={Paper} sx={{ mb: 3 }}>
               <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: 'background.light' }}>
+                    <TableCell colSpan={2}>
+                      <Typography variant="subtitle1">Customer Information</Typography>
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
                 <TableBody>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold', width: '30%' }}>Company</TableCell>
-                    <TableCell>{order.user?.companyName || 'N/A'}</TableCell>
+                    <TableCell>{userData?.companyName || order?.companyName || 'N/A'}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Contact Name</TableCell>
-                    <TableCell>{order.user?.contactName || 'N/A'}</TableCell>
+                    <TableCell>{userData?.displayName || userData?.name || order?.customerName || 'Unknown Customer'}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Email</TableCell>
-                    <TableCell>{order.user?.email || 'N/A'}</TableCell>
+                    <TableCell>{order?.email || userData?.email || 'No email provided'}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Phone</TableCell>
-                    <TableCell>{order.user?.phone || 'N/A'}</TableCell>
+                    <TableCell>{userData?.phone || order?.phone || 'No phone provided'}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Customer Since</TableCell>
-                    <TableCell>{formatDate(order.user?.createdAt) || 'N/A'}</TableCell>
+                    <TableCell>{formatDate(userData?.createdAt) || formatDate(order?.createdAt) || 'N/A'}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -475,33 +540,24 @@ const OrderDetailPage = () => {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Subtotal</TableCell>
                     <TableCell align="right">
-                      {formatCurrency(order.price * order.quantity)}
+                      {formatCurrency(order.subtotal)}
                     </TableCell>
                   </TableRow>
                   
-                  {order.shippingCost > 0 && (
+                  {order.customizationTotal > 0 && (
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Customizations</TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(order.customizationTotal)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  
+                  {order.shippingFee > 0 && (
                     <TableRow>
                       <TableCell sx={{ fontWeight: 'bold' }}>Shipping</TableCell>
                       <TableCell align="right">
-                        {formatCurrency(order.shippingCost)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  
-                  {order.additionalCosts > 0 && (
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Additional Costs</TableCell>
-                      <TableCell align="right">
-                        {formatCurrency(order.additionalCosts)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  
-                  {order.discount > 0 && (
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Discount</TableCell>
-                      <TableCell align="right" sx={{ color: 'success.main' }}>
-                        -{formatCurrency(order.discount)}
+                        {formatCurrency(order.shippingFee)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -509,7 +565,7 @@ const OrderDetailPage = () => {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Total</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                      {formatCurrency(order.totalPrice)}
+                      {formatCurrency(order.total)}
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -521,8 +577,8 @@ const OrderDetailPage = () => {
                 Payment Status
               </Typography>
               <Chip 
-                label={order.paid ? "Paid" : "Unpaid"} 
-                color={order.paid ? "success" : "error"} 
+                label={order.paymentStatus === "paid" ? "Paid" : "Unpaid"} 
+                color={order.paymentStatus === "paid" ? "success" : "error"} 
                 size="small"
                 variant="outlined"
                 sx={{ fontWeight: 'bold' }}

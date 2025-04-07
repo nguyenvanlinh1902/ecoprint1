@@ -534,6 +534,230 @@ export const getTransactionById = async (ctx) => {
   }
 };
 
+/**
+ * Add transaction admin note (admin only)
+ */
+export const updateAdminNotes = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    // Get note from body, or try to get from query
+    const note = ctx.req.body?.note || ctx.query?.note;
+    
+    console.log('Adding admin note:', { transactionId, note });
+    console.log('Headers:', ctx.headers);
+    console.log('Query:', ctx.query);
+    
+    // Set CORS headers
+    ctx.set('Access-Control-Allow-Origin', '*');
+    ctx.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    ctx.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Role');
+    ctx.set('Access-Control-Allow-Credentials', 'true');
+    
+    if (ctx.method === 'OPTIONS') {
+      ctx.status = 200;
+      return;
+    }
+    
+    if (!transactionId) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Transaction ID is required' 
+      };
+      return;
+    }
+    
+    if (note === undefined || note.trim() === '') {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Note content is required' 
+      };
+      return;
+    }
+    
+    // Get transaction
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        message: 'Transaction not found' 
+      };
+      return;
+    }
+    
+    // Add admin note
+    const updatedTransaction = await transactionRepository.addTransactionAdminNote(
+      transactionId, 
+      note
+    );
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: updatedTransaction,
+      message: 'Admin note added successfully'
+    };
+  } catch (error) {
+    console.error('Error adding admin note:', error);
+    ctx.status = 500;
+    ctx.body = { 
+      success: false,
+      message: 'Failed to add admin note', 
+      error: error.message 
+    };
+  }
+};
+
+/**
+ * Add transaction user note (user or admin)
+ */
+export const updateUserNotes = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    const { note } = ctx.req.body;
+    const { uid, role, displayName } = ctx.state.user;
+    
+    if (!transactionId) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Transaction ID is required' 
+      };
+      return;
+    }
+    
+    if (note === undefined || note.trim() === '') {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false,
+        message: 'Note content is required' 
+      };
+      return;
+    }
+    
+    // Get transaction
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      ctx.status = 404;
+      ctx.body = { 
+        success: false,
+        message: 'Transaction not found' 
+      };
+      return;
+    }
+    
+    // Check if user has access to this transaction (must be admin or transaction owner)
+    if (role !== 'admin' && transaction.userId !== uid) {
+      ctx.status = 403;
+      ctx.body = { 
+        success: false,
+        message: 'Not authorized to update notes for this transaction' 
+      };
+      return;
+    }
+    
+    // Get user details to include in the note
+    let userName = 'User';
+    try {
+      const user = await userRepository.getUserByEmail(ctx.state.user.email);
+      if (user) {
+        userName = user.displayName || user.firstName || ctx.state.user.email;
+      }
+    } catch (error) {
+      console.error('Error getting user details for note:', error);
+      // Continue with default name if user lookup fails
+    }
+    
+    // Add user note
+    const updatedTransaction = await transactionRepository.addTransactionUserNote(
+      transactionId, 
+      note,
+      userName
+    );
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: updatedTransaction,
+      message: 'User note added successfully'
+    };
+  } catch (error) {
+    console.error('Error adding transaction user note:', error);
+    ctx.status = 500;
+    ctx.body = { 
+      success: false,
+      message: 'Failed to add user note', 
+      error: error.message 
+    };
+  }
+};
+
+// Add user note to transaction
+export const addTransactionUserNote = async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    const { note } = ctx.req.body;
+    
+    // Validate input
+    if (!note || typeof note !== 'string' || !note.trim()) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false, 
+        message: 'Note content is required',
+        code: 'invalid_input'
+      };
+      return;
+    }
+    
+    // Get user info from headers or body
+    const userEmail = ctx.headers['x-user-email'] || ctx.req.body.email;
+    
+    if (!userEmail) {
+      ctx.status = 400;
+      ctx.body = { 
+        success: false, 
+        message: 'User email is required',
+        code: 'missing_user'
+      };
+      return;
+    }
+    
+    // Get user details to include in the note
+    let userName = 'User';
+    try {
+      const user = await userRepository.getUserByEmail(userEmail);
+      if (user) {
+        userName = user.displayName || user.firstName || userEmail;
+      }
+    } catch (error) {
+      console.error('Error getting user details for note:', error);
+      // Continue with default name if user lookup fails
+    }
+    
+    // Add the note
+    const updated = await transactionRepository.addTransactionUserNote(id, note, userName);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'Note added successfully',
+      data: updated
+    };
+  } catch (error) {
+    console.error('Error adding transaction user note:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Failed to add note',
+      code: 'server_error'
+    };
+  }
+};
+
 // Remove default export since we're using named exports
 // export default {
 //   requestDeposit,

@@ -600,54 +600,274 @@ export const getUserOrders = async (ctx) => {
  * Lấy chi tiết đơn hàng
  */
 export const getOrderDetails = async (ctx) => {
-  ctx.body = {
-    success: true,
-    data: {}
-  };
+  try {
+    const { orderId } = ctx.params;
+    
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Order ID is required'
+      };
+      return;
+    }
+    
+    const orderDoc = await firestore.collection('orders').doc(orderId).get();
+    
+    if (!orderDoc.exists) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'Order not found'
+      };
+      return;
+    }
+    
+    const orderData = orderDoc.data();
+    
+    // Format dates
+    const order = {
+      id: orderDoc.id,
+      ...orderData,
+      createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
+      updatedAt: orderData.updatedAt ? orderData.updatedAt.toDate() : null
+    };
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: order
+    };
+  } catch (error) {
+    console.error('Error getting order details:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Failed to fetch order details',
+      error: error.message
+    };
+  }
 };
 
 /**
- * Update the status of an order
+ * Update order status
+ * Route: PATCH /admin/orders/:orderId/status
  */
 export const updateOrderStatus = async (ctx) => {
   try {
     const { orderId } = ctx.params;
     const { status } = ctx.req.body;
     
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Order ID is required'
+      };
+      return;
+    }
+    
     if (!status) {
       ctx.status = 400;
-      ctx.body = { error: 'Status is required' };
+      ctx.body = {
+        success: false,
+        message: 'Status is required'
+      };
       return;
     }
     
-    // Validate status
-    const validStatuses = ['pending', 'confirmed', 'processing', 'shipping', 'delivered', 'cancelled'];
-    if (!validStatuses.includes(status)) {
-      ctx.status = 400;
-      ctx.body = { error: 'Invalid status' };
-      return;
-    }
-    
-    // Check if order exists
-    const orderDoc = await firestore.collection('orders').doc(orderId).get();
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
     
     if (!orderDoc.exists) {
       ctx.status = 404;
-      ctx.body = { error: 'Order not found' };
+      ctx.body = {
+        success: false,
+        message: 'Order not found'
+      };
       return;
     }
     
-    // Update order status
-    await firestore.collection('orders').doc(orderId).update({
+    // Update the order status
+    await orderRef.update({
       status,
       updatedAt: new Date()
     });
     
+    // Get the updated order
+    const updatedOrderDoc = await orderRef.get();
+    const updatedOrderData = updatedOrderDoc.data();
+    
+    const order = {
+      id: updatedOrderDoc.id,
+      ...updatedOrderData,
+      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
+      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
+    };
+    
     ctx.status = 200;
-    ctx.body = { message: 'Order status updated successfully' };
+    ctx.body = {
+      success: true,
+      data: order,
+      message: 'Order status updated successfully'
+    };
   } catch (error) {
+    console.error('Error updating order status:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = {
+      success: false,
+      message: 'Failed to update order status',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Update order tracking information
+ * Route: PATCH /admin/orders/:orderId/tracking
+ */
+export const updateOrderTracking = async (ctx) => {
+  try {
+    const { orderId } = ctx.params;
+    const { carrier, trackingNumber } = ctx.req.body;
+    
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Order ID is required'
+      };
+      return;
+    }
+    
+    if (!carrier || !trackingNumber) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Carrier and tracking number are required'
+      };
+      return;
+    }
+    
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
+    
+    if (!orderDoc.exists) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'Order not found'
+      };
+      return;
+    }
+    
+    // Update the order tracking info
+    await orderRef.update({
+      tracking: {
+        carrier,
+        trackingNumber
+      },
+      updatedAt: new Date()
+    });
+    
+    // Get the updated order
+    const updatedOrderDoc = await orderRef.get();
+    const updatedOrderData = updatedOrderDoc.data();
+    
+    const order = {
+      id: updatedOrderDoc.id,
+      ...updatedOrderData,
+      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
+      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
+    };
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: order,
+      message: 'Order tracking information updated successfully'
+    };
+  } catch (error) {
+    console.error('Error updating order tracking:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Failed to update order tracking information',
+      error: error.message
+    };
+  }
+};
+
+/**
+ * Update order admin notes
+ * Route: PATCH /admin/orders/:orderId/notes
+ */
+export const updateOrderNotes = async (ctx) => {
+  try {
+    const { orderId } = ctx.params;
+    const { adminNotes } = ctx.req.body;
+    
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Order ID is required'
+      };
+      return;
+    }
+    
+    if (adminNotes === undefined) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Admin notes are required'
+      };
+      return;
+    }
+    
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
+    
+    if (!orderDoc.exists) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'Order not found'
+      };
+      return;
+    }
+    
+    // Update the order notes
+    await orderRef.update({
+      adminNotes,
+      updatedAt: new Date()
+    });
+    
+    // Get the updated order
+    const updatedOrderDoc = await orderRef.get();
+    const updatedOrderData = updatedOrderDoc.data();
+    
+    const order = {
+      id: updatedOrderDoc.id,
+      ...updatedOrderData,
+      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
+      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
+    };
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: order,
+      message: 'Order notes updated successfully'
+    };
+  } catch (error) {
+    console.error('Error updating order notes:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Failed to update order notes',
+      error: error.message
+    };
   }
 };
 

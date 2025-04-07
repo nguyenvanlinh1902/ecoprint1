@@ -18,6 +18,7 @@ import {
 import { get, put } from '../../api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatDate } from '../../helpers/formatters';
+import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 // No-op logging function for production
 const devLog = () => {};
@@ -31,6 +32,7 @@ const UsersPage = () => {
   // Pagination
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const limit = 10; // Thêm biến limit ở đây với giá trị 10
   
   // Filtering
   const [search, setSearch] = useState('');
@@ -42,6 +44,82 @@ const UsersPage = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   
+  // Dùng admin context
+  const { 
+    users: contextUsers, 
+    usersLoading: contextLoading, 
+    refreshUsers, 
+    searchUsers,
+    updateUserInContext,
+    isContextAvailable
+  } = useSafeAdmin();
+  
+  // State để lưu trữ dữ liệu trang hiện tại
+  const [usersData, setUsersData] = useState([]);
+  
+  // Thêm state memoized search
+  const [lastSearchTerm, setLastSearchTerm] = useState('');
+  
+  // Lấy users từ context khi component mount hoặc khi params thay đổi
+  useEffect(() => {
+    const filterUsersFromContext = async () => {
+      // Nếu admin context có sẵn và không quá 10 phút, dùng data từ context
+      if (isContextAvailable) {
+        setLoading(true);
+        
+        try {
+          // Nếu cần refresh dữ liệu users
+          if (contextUsers.length === 0) {
+            await refreshUsers();
+          }
+          
+          // Sắp xếp và lọc users từ context theo search, status
+          let filteredUsers = [...contextUsers];
+          
+          // Áp dụng filter theo status nếu có
+          if (status) {
+            filteredUsers = filteredUsers.filter(user => user.status === status);
+          }
+          
+          // Áp dụng search nếu có
+          if (search) {
+            if (search !== lastSearchTerm) {
+              setLastSearchTerm(search);
+            }
+            
+            filteredUsers = searchUsers(search);
+          }
+          
+          // Tính toán phân trang client-side
+          const totalUsers = filteredUsers.length;
+          const totalPages = Math.ceil(totalUsers / parseInt(limit));
+          
+          // Lấy mảng con cho trang hiện tại
+          const startIndex = (page - 1) * parseInt(limit);
+          const endIndex = startIndex + parseInt(limit);
+          const paginatedUsers = filteredUsers.slice(startIndex, endIndex);
+          
+          setUsers(paginatedUsers);
+          setTotalPages(totalPages);
+          setError('');
+        } catch (err) {
+          console.error('Error filtering users from context:', err);
+          setError('Failed to process users data');
+          
+          // Fallback to API if context fails
+          fetchUsers();
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        // Nếu không có context, dùng API
+        fetchUsers();
+      }
+    };
+    
+    filterUsersFromContext();
+  }, [page, limit, status, search, isContextAvailable, contextUsers, refreshUsers, searchUsers]);
+  
   // Using useCallback to memoize fetchUsers
   const fetchUsers = useCallback(async () => {
     try {
@@ -51,7 +129,7 @@ const UsersPage = () => {
       // Build query parameters
       const params = {
         page,
-        limit: 10 // Users per page
+        limit // Sử dụng biến limit thay vì giá trị cố định 10
       };
       
       if (status) {
@@ -85,7 +163,7 @@ const UsersPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, status, search]); // Dependencies that affect fetching
+  }, [page, status, search, limit]); // Thêm limit vào dependencies
   
   useEffect(() => {
     fetchUsers();
@@ -118,64 +196,55 @@ const UsersPage = () => {
     setActionLoading(false);
   };
   
-  const handleUserAction = async () => {
-    if (!selectedUser) return;
-    
-    setActionLoading(true);
-    setError('');
-    
+  const handleUserAction = async (userId, action) => {
     try {
-      devLog(`Performing ${dialogAction} on user:`, selectedUser.id);
+      setActionLoading(true);
       
       let response;
       
-      switch (dialogAction) {
-        case 'approve':
-          response = await put(`admin/users/${selectedUser.id}/approve`);
-          break;
-        case 'reject':
-          response = await put(`admin/users/${selectedUser.id}/reject`);
-          break;
-        case 'activate':
-          response = await put(`admin/users/${selectedUser.id}/activate`);
-          break;
-        case 'deactivate':
-          response = await put(`admin/users/${selectedUser.id}/deactivate`);
-          break;
-        default:
-          break;
+      // Xác định API endpoint dựa vào action
+      if (action === 'approve') {
+        response = await put(`admin/users/${userId}/approve`);
+      } else if (action === 'reject') {
+        response = await put(`admin/users/${userId}/reject`);
+      } else if (action === 'activate') {
+        response = await put(`admin/users/${userId}/activate`);
+      } else if (action === 'deactivate') {
+        response = await put(`admin/users/${userId}/deactivate`);
       }
       
-      // Set success message
-      const actionText = dialogAction === 'approve' ? 'approved' : 
-                        dialogAction === 'reject' ? 'rejected' :
-                        dialogAction === 'activate' ? 'activated' : 'deactivated';
+      // Cập nhật context nếu có
+      if (isContextAvailable && response.data && response.data.data) {
+        updateUserInContext(userId, response.data.data);
+      }
       
-      devLog('Action response:', response.data);
+      // Cập nhật UI sau khi action thành công
+      setSuccess(`User ${action}d successfully.`);
       
-      // Refresh user list
-      await fetchUsers();
-      handleDialogClose();
-      
-      // Show success message
-      setSuccess(`User ${selectedUser.companyName || selectedUser.displayName || 'selected'} was successfully ${actionText}.`);
-      
-      // Clear success message after 3 seconds
+      // Xóa success message sau 3 giây
       setTimeout(() => {
         setSuccess('');
       }, 3000);
       
+      // Refresh dữ liệu users
+      if (isContextAvailable) {
+        // Nếu dùng context, chỉ cần reload trang hiện tại
+        const updatedUser = response.data.data;
+        setUsers(prevUsers => 
+          prevUsers.map(user => 
+            user.id === userId ? updatedUser : user
+          )
+        );
+      } else {
+        // Nếu không dùng context, gọi lại API
+        fetchUsers();
+      }
     } catch (error) {
-      console.error(`Error ${dialogAction} user:`, error);
-      
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.error || 
-                          error.message || 
-                          `Failed to ${dialogAction} user`;
-                          
-      setError(`Failed to ${dialogAction} user. ${errorMessage}`);
+      console.error(`Error ${action}ing user:`, error);
+      setError(`Failed to ${action} user. ${error.response?.data?.message || error.message}`);
     } finally {
       setActionLoading(false);
+      setDialogOpen(false);
     }
   };
   
@@ -477,7 +546,7 @@ const UsersPage = () => {
           </Button>
           
           <Button
-            onClick={handleUserAction}
+            onClick={() => handleUserAction(selectedUser.id, dialogAction)}
             variant="contained"
             color={dialogAction === 'reject' || dialogAction === 'deactivate' ? 'error' : 'primary'}
             disabled={actionLoading}

@@ -27,11 +27,8 @@ const useFetchApi = (endpoint, options = {}) => {
   });
   
   // Track last request to prevent duplicate calls
-  const lastRequestRef = useRef({
-    id: null,
-    url: null,
-    timestamp: 0
-  });
+  const lastRequestRef = useRef('');
+  const abortControllerRef = useRef(null);
   
   // Track if component is mounted
   const isMountedRef = useRef(true);
@@ -43,6 +40,11 @@ const useFetchApi = (endpoint, options = {}) => {
     // Set mounted false on unmount
     return () => {
       isMountedRef.current = false;
+      
+      // Cancel any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
@@ -72,23 +74,22 @@ const useFetchApi = (endpoint, options = {}) => {
     
     const requestKey = `${url}${JSON.stringify(enhancedParams)}`;
     
-    // Check if we've made this exact request recently (within last 500ms)
-    const now = Date.now();
-    if (
-      lastRequestRef.current.url === requestKey && 
-      now - lastRequestRef.current.timestamp < 500 &&
-      id === lastRequestRef.current.id
-    ) {
-      console.log('Skipping duplicate request to:', url);
-      return Promise.resolve(data);
+    // Skip if this is a duplicate request
+    if (lastRequestRef.current === requestKey && loading) {
+      console.log(`Skipping duplicate request to: ${url}`);
+      return data ? Promise.resolve({ data, isCachedResult: true }) : null;
     }
     
-    // Update last request info
-    lastRequestRef.current = {
-      id,
-      url: requestKey,
-      timestamp: now
-    };
+    // Cancel previous request if it exists
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Create a new abort controller
+    abortControllerRef.current = new AbortController();
+    
+    // Save the request key
+    lastRequestRef.current = requestKey;
     
     // Don't attempt to fetch if we're already loading
     if (loading) {
@@ -122,7 +123,7 @@ const useFetchApi = (endpoint, options = {}) => {
       // Add timeout to prevent hanging requests
       const response = await apiClient.get(url, { 
         params: enhancedParams,
-        timeout: 10000 // 10 seconds timeout
+        signal: abortControllerRef.current.signal
       });
       
       // Handle pagination if present
@@ -137,16 +138,7 @@ const useFetchApi = (endpoint, options = {}) => {
       if (responseData === undefined || responseData === null) {
         // For transactions endpoint, provide default structure with empty array
         if (url === 'transactions' || url.startsWith('transactions/')) {
-          setData({
-            transactions: [],
-            pagination: {
-              total: 0,
-              totalPages: 1,
-              currentPage: 1,
-              limit: params.limit || 10
-            }
-          });
-          return {
+          const defaultData = {
             transactions: [],
             pagination: {
               total: 0,
@@ -155,6 +147,8 @@ const useFetchApi = (endpoint, options = {}) => {
               limit: params.limit || 10
             }
           };
+          setData(defaultData);
+          return defaultData;
         }
       }
       

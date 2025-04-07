@@ -16,6 +16,8 @@ export function formatTransaction(doc) {
   return {
     id: doc.id,
     ...data,
+    adminNotes: data.adminNotes || [],
+    userNotes: data.userNotes || [],
     createdAt: data.createdAt ? data.createdAt.toDate() : null,
     updatedAt: data.updatedAt ? data.updatedAt.toDate() : null,
     transferDate: data.transferDate ? data.transferDate.toDate() : null
@@ -401,27 +403,68 @@ const approveTransaction = async (transactionId) => {
     
     // Sử dụng transaction Firestore để đảm bảo tính toàn vẹn dữ liệu
     await firestore.runTransaction(async (t) => {
-      // Lấy thông tin user
-      const userDoc = await t.get(firestore.collection('users').doc(transaction.userId));
+      // Lấy thông tin user theo email
+      const userEmail = transaction.email;
       
-      if (!userDoc.exists) {
-        throw new Error('User not found');
+      if (!userEmail) {
+        throw new Error('Transaction has no associated email');
       }
       
-      const userData = userDoc.data();
-      const newBalance = (userData.balance || 0) + transaction.amount;
+      // Query user by email
+      const usersRef = firestore.collection('users');
+      const userQuery = await t.get(usersRef.where('email', '==', userEmail).limit(1));
+      
+      let userId;
+      let userData;
+      
+      // Nếu user không tồn tại, tạo một user mới
+      if (userQuery.empty) {
+        console.log(`User with email ${userEmail} not found, creating new user`);
+        
+        // Tạo user mới
+        const newUserRef = usersRef.doc();
+        userId = newUserRef.id;
+        
+        // Dữ liệu cơ bản cho user mới
+        userData = {
+          email: userEmail,
+          displayName: userEmail.split('@')[0],
+          role: 'user',
+          status: 'active',
+          balance: 0,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        
+        // Set dữ liệu cho user mới
+        t.set(newUserRef, userData);
+        console.log(`Created new user with ID: ${userId}`);
+      } else {
+        // Lấy thông tin user đã tồn tại
+        const userDoc = userQuery.docs[0];
+        userId = userDoc.id;
+        userData = userDoc.data();
+      }
       
       // Cập nhật số dư của user
-      t.update(firestore.collection('users').doc(transaction.userId), {
+      const newBalance = (userData.balance || 0) + transaction.amount;
+      t.update(usersRef.doc(userId), {
         balance: newBalance,
         updatedAt: new Date()
       });
       
-      // Cập nhật trạng thái giao dịch
-      t.update(collection.doc(transactionId), {
+      // Cập nhật trạng thái giao dịch và userId nếu chưa có
+      const updateData = {
         status: 'approved',
         updatedAt: new Date()
-      });
+      };
+      
+      // Nếu chưa có userId thì thêm vào
+      if (!transaction.userId) {
+        updateData.userId = userId;
+      }
+      
+      t.update(collection.doc(transactionId), updateData);
     });
     
     return true;
@@ -514,6 +557,152 @@ const processOrderPayment = async (orderId, userId, amount) => {
   }
 };
 
+/**
+ * Update transaction admin notes
+ * @param {string} transactionId - Transaction ID
+ * @param {string} adminNotes - Admin notes
+ * @returns {Promise<Object>} Updated transaction data
+ */
+export async function updateTransactionAdminNotes(transactionId, adminNotes) {
+  try {
+    // Get transaction reference
+    const transactionRef = collection.doc(transactionId);
+    
+    // Update transaction
+    await transactionRef.update({
+      adminNotes,
+      updatedAt: new Date()
+    });
+    
+    // Get updated transaction
+    const updatedTransaction = await getTransactionById(transactionId);
+    
+    return updatedTransaction;
+  } catch (error) {
+    console.error('Error updating transaction admin notes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update transaction user notes
+ * @param {string} transactionId - Transaction ID
+ * @param {string} userNotes - User notes
+ * @returns {Promise<Object>} Updated transaction data
+ */
+export async function updateTransactionUserNotes(transactionId, userNotes) {
+  try {
+    // Get transaction reference
+    const transactionRef = collection.doc(transactionId);
+    
+    // Update transaction
+    await transactionRef.update({
+      userNotes,
+      updatedAt: new Date()
+    });
+    
+    // Get updated transaction
+    const updatedTransaction = await getTransactionById(transactionId);
+    
+    return updatedTransaction;
+  } catch (error) {
+    console.error('Error updating transaction user notes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add transaction admin note
+ * @param {string} transactionId - Transaction ID
+ * @param {string} note - Admin note to add
+ * @returns {Promise<Object>} Updated transaction data
+ */
+export async function addTransactionAdminNote(transactionId, note) {
+  try {
+    // Get transaction reference
+    const transactionRef = collection.doc(transactionId);
+    const transactionDoc = await transactionRef.get();
+    
+    if (!transactionDoc.exists) {
+      throw new Error('Transaction not found');
+    }
+    
+    const data = transactionDoc.data();
+    const adminNotes = data.adminNotes || [];
+    
+    // Create new note with timestamp
+    const newNote = {
+      text: note,
+      createdAt: new Date(),
+      id: `admin_note_${Date.now()}`
+    };
+    
+    // Add note to array
+    adminNotes.push(newNote);
+    
+    // Update transaction
+    await transactionRef.update({
+      adminNotes,
+      updatedAt: new Date()
+    });
+    
+    // Get updated transaction
+    const updatedTransaction = await getTransactionById(transactionId);
+    
+    return updatedTransaction;
+  } catch (error) {
+    console.error('Error adding transaction admin note:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add transaction user note
+ * @param {string} transactionId - Transaction ID
+ * @param {string} note - User note to add
+ * @param {string} userName - Name of the user adding the note
+ * @returns {Promise<Object>} Updated transaction data
+ */
+export async function addTransactionUserNote(transactionId, note, userName = '') {
+  try {
+    // Get transaction reference
+    const transactionRef = collection.doc(transactionId);
+    const transactionDoc = await transactionRef.get();
+    
+    if (!transactionDoc.exists) {
+      throw new Error('Transaction not found');
+    }
+    
+    const data = transactionDoc.data();
+    const userNotes = data.userNotes || [];
+    
+    // Create new note with timestamp
+    const newNote = {
+      text: note,
+      createdAt: new Date(),
+      userName: userName,
+      id: `user_note_${Date.now()}`
+    };
+    
+    // Add note to array
+    userNotes.push(newNote);
+    
+    // Update transaction
+    await transactionRef.update({
+      userNotes,
+      updatedAt: new Date()
+    });
+    
+    // Get updated transaction
+    const updatedTransaction = await getTransactionById(transactionId);
+    
+    return updatedTransaction;
+  } catch (error) {
+    console.error('Error adding transaction user note:', error);
+    throw error;
+  }
+}
+
 export default {
   createDepositRequest,
   updateTransactionReceipt,
@@ -522,5 +711,10 @@ export default {
   getUserTransactions,
   getAllTransactions,
   approveTransaction,
-  processOrderPayment
+  processOrderPayment,
+  updateTransactionAdminNotes,
+  updateTransactionUserNotes,
+  formatTransaction,
+  addTransactionAdminNote,
+  addTransactionUserNote
 }; 

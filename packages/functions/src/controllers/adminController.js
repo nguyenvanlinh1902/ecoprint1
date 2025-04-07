@@ -12,6 +12,22 @@ const firestore = admin.firestore();
  */
 export const getDashboard = async (ctx) => {
   try {
+    // Lấy thông tin user từ header hoặc body
+    const userEmail = ctx.req.headers['x-user-email'] || ctx.req.body?.email;
+    const userRole = ctx.req.headers['x-user-role'] || ctx.req.body?.role;
+    
+    // Kiểm tra quyền admin
+    if (!userEmail || userRole !== 'admin') {
+      ctx.status = 403;
+      ctx.body = {
+        success: false,
+        message: "Unauthorized access",
+        code: "unauthorized",
+        timestamp: new Date().toISOString()
+      };
+      return;
+    }
+    
     const usersSnapshot = await firestore.collection('users').count().get();
     const totalUsers = usersSnapshot.data().count;
     
@@ -23,6 +39,10 @@ export const getDashboard = async (ctx) => {
       .count()
       .get();
     const newUsers = newUsersSnapshot.data().count;
+    
+    // Get products count
+    const productsSnapshot = await firestore.collection('products').count().get();
+    const totalProducts = productsSnapshot.data().count;
     
     // Get orders count
     const ordersSnapshot = await firestore.collection('orders').count().get();
@@ -91,6 +111,7 @@ export const getDashboard = async (ctx) => {
     const dashboardData = {
       stats: {
         totalUsers,
+        totalProducts,
         totalOrders,
         pendingOrders,
         totalRevenue,
@@ -124,48 +145,22 @@ export const getDashboard = async (ctx) => {
  */
 export const getUsers = async (ctx) => {
   try {
-    console.log('Admin getUsers - Request query:', ctx.query);
+    console.log('Admin getUsers - Getting all users with role "user"');
     
-    const { page = 1, limit = 10, status, search, email, role } = ctx.query;
-    
-    // Parse to numbers
-    const pageNumber = parseInt(page, 10);
-    const limitNumber = parseInt(limit, 10);
-    
-    // Validate
-    if (isNaN(pageNumber) || isNaN(limitNumber) || pageNumber < 1 || limitNumber < 1) {
-      throw new CustomError('Invalid pagination parameters', 400);
-    }
-    
-    console.log('Admin getUsers - Parsed parameters:', {
-      page: pageNumber,
-      limit: limitNumber,
-      status,
-      search,
-      email,
-      role
-    });
-    
-    // Use the repository to get users
+    // Use the repository to get all users with role "user"
     const result = await userRepository.getUsers({
-      page: pageNumber,
-      limit: limitNumber,
-      status,
-      search,
-      email,
-      role
+      limit: 1000, // Lấy tối đa 1000 người dùng (thực tế là tất cả)
+      role: 'user'  // Chỉ lấy người dùng có role là "user"
     });
     
-    console.log(`Admin getUsers - Found ${result.users.length} users out of ${result.totalUsers} total`);
-    
-    // Return success response with users data and pagination
+    // Return success response with users data
     ctx.body = {
       success: true,
       data: {
         users: result.users,
         totalUsers: result.totalUsers,
-        totalPages: result.totalPages,
-        currentPage: pageNumber
+        totalPages: 1,
+        currentPage: 1
       }
     };
   } catch (error) {
@@ -584,38 +579,9 @@ export const approveTransaction = async (ctx) => {
       throw new CustomError('Only pending transactions can be approved', 400);
     }
     
-    // Use a transaction to update balance and transaction status
-    await admin.firestore().runTransaction(async (t) => {
-      // Chỉ cập nhật balance nếu là deposit
-      if (transaction.type === 'deposit') {
-        // Validate userId exists
-        if (!transaction.userId || typeof transaction.userId !== 'string' || transaction.userId.trim() === '') {
-          throw new Error('Transaction has invalid user ID');
-        }
-        
-        // Get user document
-        const userDoc = await t.get(firestore.collection('users').doc(transaction.userId));
-        
-        if (!userDoc.exists) {
-          throw new Error('User not found');
-        }
-        
-        const userData = userDoc.data();
-        const newBalance = (userData.balance || 0) + parseFloat(transaction.amount);
-        
-        // Update user balance
-        t.update(firestore.collection('users').doc(transaction.userId), {
-          balance: newBalance,
-          updatedAt: new Date()
-        });
-      }
-      
-      // Update transaction status
-      t.update(firestore.collection('transactions').doc(transactionId), {
-        status: 'approved',
-        updatedAt: new Date()
-      });
-    });
+    // Use transactionRepository to approve the transaction
+    // This will handle everything including finding the user by email
+    await transactionRepository.approveTransaction(transactionId);
     
     // Return success response
     ctx.status = 200;

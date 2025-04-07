@@ -5,7 +5,7 @@ import {
   FormControl, InputLabel, Select, MenuItem, TextField,
   InputAdornment, Button, Pagination, CircularProgress,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Stack, IconButton, Tooltip, Divider, Alert, Avatar
+  Stack, IconButton, Tooltip, Divider, Alert, Avatar, Chip, List, ListItem, ListItemAvatar, ListItemText
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -14,17 +14,26 @@ import {
   CloudUpload as UploadIcon,
   AccountBalance as AccountBalanceIcon,
   Receipt as ReceiptIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
+  Send as SendIcon,
+  AdminPanelSettings as AdminPanelSettingsIcon,
+  Person as PersonIcon,
+  ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
-import { formatCurrency, formatDateTime } from '../helpers/formatters';
+import { formatCurrency, formatDateTime, formatDate } from '../helpers/formatters';
 import { useApp } from '../context/AppContext';
 import useFetchApi from '../hooks/api/useFetchApi';
 import ReceiptUploader from '../components/ReceiptUploader';
+import { useParams, useNavigate } from 'react-router-dom';
 
 const TransactionsPage = () => {
   const { user } = useApp();
+  const { transactionId } = useParams();
+  const navigate = useNavigate();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,6 +56,25 @@ const TransactionsPage = () => {
     page: 1,
     limit: 10
   });
+  
+  // Transaction detail state
+  const [showDetail, setShowDetail] = useState(false);
+  const [transaction, setTransaction] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [userNotes, setUserNotes] = useState('');
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSuccess, setNotesSuccess] = useState('');
+  const [notesError, setNotesError] = useState('');
+
+  // Deposit dialog
+  const [openDepositDialog, setOpenDepositDialog] = useState(false);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositMethod, setDepositMethod] = useState('bank_transfer');
+  const [depositLoading, setDepositLoading] = useState(false);
+  const [depositError, setDepositError] = useState('');
+  const [depositSuccess, setDepositSuccess] = useState(false);
 
   // Use useFetchApi for transactions
   const { 
@@ -58,613 +86,820 @@ const TransactionsPage = () => {
     fetchOnMount: false,
     initialParams: queryParams
   });
-
-  // Update state when data is fetched
+  
+  // Decide if we should show transaction list or detail
+  const shouldShowDetail = Boolean(transactionId);
+  
+  // Fetch transaction detail if ID is provided
+  useEffect(() => {
+    if (transactionId) {
+      fetchTransactionDetail();
+    } else {
+      // If no transaction ID, fetch transactions list
+      if (!transactions.length && !loading) {
+        handleFetchTransactions();
+      }
+    }
+  }, [transactionId]);
+  
+  // Fetch transaction detail
+  const fetchTransactionDetail = async () => {
+    setDetailLoading(true);
+    setDetailError('');
+    
+    try {
+      const response = await api.transactions.getById(transactionId);
+      
+      let transactionData;
+      if (response.data && response.data.data) {
+        transactionData = response.data.data;
+      } else if (response.data) {
+        transactionData = response.data;
+      } else {
+        throw new Error('Invalid response format');
+      }
+      
+      setTransaction(transactionData);
+      setUserNotes(transactionData.userNotes || '');
+    } catch (error) {
+      /* error removed */
+      setDetailError('Failed to load transaction details. Please try again.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+  
+  // Update transactions when data changes
   useEffect(() => {
     if (transactionsData) {
-      // Ensure transactions is always an array
-      if (Array.isArray(transactionsData.transactions)) {
-        setTransactions(transactionsData.transactions);
-      } else if (transactionsData.transactions === null || transactionsData.transactions === undefined) {
-        // If null or undefined, set empty array
-        setTransactions([]);
+      // Update data and pagination
+      if (transactionsData.data) {
+        setTransactions(transactionsData.data);
       } else {
-        // Handle unexpected data by setting empty array
-        console.warn('Unexpected transactions data format:', transactionsData.transactions);
         setTransactions([]);
       }
       
-      // Handle pagination data
       if (transactionsData.pagination) {
-        setTotalPages(transactionsData.pagination.totalPages || transactionsData.pagination.pages || 1);
-      } else {
-        setTotalPages(1);
+        setTotalPages(transactionsData.pagination.totalPages || 1);
       }
-    } else {
-      // If no data at all, set empty array
-      setTransactions([]);
-      setTotalPages(1);
     }
-    
-    if (fetchError) {
-      setError('Failed to load transactions. Please try again later.');
-      // Ensure we still have empty transactions array on error
-      setTransactions([]);
-    }
-    
-    setLoading(fetchLoading);
-  }, [transactionsData, fetchError, fetchLoading]);
-
-  // Deposit Dialog
-  const [depositDialogOpen, setDepositDialogOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [depositMethod, setDepositMethod] = useState('bank_transfer');
-  const [depositNote, setDepositNote] = useState('');
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [depositLoading, setDepositLoading] = useState(false);
-  const [depositError, setDepositError] = useState('');
-  const [depositSuccess, setDepositSuccess] = useState(false);
+  }, [transactionsData]);
   
-  // Define receipt preview dialog state
-  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
-  const [previewImage, setPreviewImage] = useState('');
-  const [previewTitle, setPreviewTitle] = useState('');
-
-  // Add state for Firebase uploaded receipt URL
-  const [firebaseReceiptUrl, setFirebaseReceiptUrl] = useState('');
-
-  const fetchTransactions = () => {
-    // Build query parameters
+  // Handle fetching transactions with current filters
+  const handleFetchTransactions = () => {
+    setLoading(true);
+    
     const params = {
       page,
       limit: 10
     };
     
-    if (type) {
-      params.type = type;
-    }
+    if (type) params.type = type;
+    if (status) params.status = status;
+    if (search) params.search = search;
+    if (dateRange.startDate) params.startDate = dateRange.startDate;
+    if (dateRange.endDate) params.endDate = dateRange.endDate;
     
-    if (status) {
-      params.status = status;
-    }
-    
-    if (search) {
-      params.search = search;
-    }
-    
-    if (dateRange.startDate) {
-      params.startDate = dateRange.startDate;
-    }
-    
-    if (dateRange.endDate) {
-      params.endDate = dateRange.endDate;
-    }
-    
-    // Update params and trigger fetch
     setQueryParams(params);
-    refetchTransactions();
+    refetchTransactions(params);
+    setLoading(false);
   };
   
-  useEffect(() => {
-    fetchTransactions();
-  }, [page, type, status]);
-  
+  // Handle page change
   const handlePageChange = (event, value) => {
     setPage(value);
+    setQueryParams(prev => ({
+      ...prev,
+      page: value
+    }));
+    refetchTransactions({
+      ...queryParams,
+      page: value
+    });
   };
   
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    fetchTransactions();
+  // Handle filter changes
+  const handleTypeChange = (e) => {
+    setType(e.target.value);
   };
   
-  const handleFilterReset = () => {
+  const handleStatusChange = (e) => {
+    setStatus(e.target.value);
+  };
+  
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value);
+  };
+  
+  const handleDateChange = (e) => {
+    const { name, value } = e.target;
+    setDateRange({
+      ...dateRange,
+      [name]: value
+    });
+  };
+  
+  const handleApplyFilters = () => {
+    setPage(1);
+    handleFetchTransactions();
+  };
+  
+  const handleClearFilters = () => {
     setType('');
     setStatus('');
     setSearch('');
-    setDateRange({ startDate: '', endDate: '' });
+    setDateRange({
+      startDate: '',
+      endDate: ''
+    });
     setPage(1);
+    handleFetchTransactions();
   };
-
+  
+  // Handle deposit dialog
   const handleOpenDepositDialog = () => {
-    setDepositDialogOpen(true);
+    setOpenDepositDialog(true);
+    setDepositAmount('');
+    setDepositMethod('bank_transfer');
     setDepositError('');
     setDepositSuccess(false);
   };
-
+  
   const handleCloseDepositDialog = () => {
-    if (!depositLoading) {
-      setDepositDialogOpen(false);
-      // Reset form on close
-      setTimeout(() => {
-        setDepositAmount('');
-        setDepositMethod('bank_transfer');
-        setDepositNote('');
-        setReceiptFile(null);
-        setDepositError('');
-        setDepositSuccess(false);
-      }, 300);
-    }
-  };
-
-  // Replace handleFileChange with this handler for Firebase uploads
-  const handleReceiptUploadSuccess = (url) => {
-    console.log('Receipt uploaded successfully to Firebase:', url);
-    setFirebaseReceiptUrl(url);
-    setDepositError(''); // Clear any previous errors
+    setOpenDepositDialog(false);
   };
   
-  const handleReceiptUploadError = (error) => {
-    console.error('Receipt upload error:', error);
-    setDepositError(`Failed to upload receipt: ${error}`);
+  const handleDepositAmountChange = (e) => {
+    setDepositAmount(e.target.value);
   };
-
-  const handleCreateDeposit = async () => {
+  
+  const handleDepositMethodChange = (e) => {
+    setDepositMethod(e.target.value);
+  };
+  
+  const handleDepositSubmit = async () => {
+    if (!depositAmount) {
+      setDepositError('Please enter an amount');
+      return;
+    }
+    
+    setDepositLoading(true);
+    setDepositError('');
+    
     try {
-      // Validate form
-      if (!depositAmount || parseFloat(depositAmount) <= 0) {
-        setDepositError('Please enter a valid amount.');
-        return;
-      }
-
-      if (!depositMethod) {
-        setDepositError('Please select a payment method.');
-        return;
+      const amount = parseFloat(depositAmount);
+      
+      // Make sure amount is valid
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Please enter a valid amount');
       }
       
-      // Check if we have a receipt URL from Firebase upload
-      if (!firebaseReceiptUrl) {
-        setDepositError('Please upload a receipt image for your deposit.');
-        return;
-      }
-
-      setDepositLoading(true);
-      setDepositError('');
-
-      // 1. Create deposit transaction with Firebase receipt URL included
-      const depositData = {
-        amount: parseFloat(depositAmount),
-        bankName: depositMethod,
-        transferDate: new Date(),
-        reference: depositNote || '',
-        email: localStorage.getItem('user_email'),
-        receiptUrl: firebaseReceiptUrl // Include the Firebase URL directly
-      };
-
-      console.log('Creating deposit with data:', depositData);
-      const depositResponse = await api.transactions.requestDeposit(depositData);
+      const response = await api.transactions.requestDeposit({
+        amount,
+        method: depositMethod
+      });
       
-      console.log('Deposit response:', depositResponse);
-      
-      // Check if we have a valid response with transactionId
-      if (!depositResponse || !depositResponse.data) {
-        throw new Error('Invalid response from server');
-      }
-      
-      const transactionId = depositResponse.data.transactionId;
-      console.log(`Deposit transaction created with ID: ${transactionId}`);
-
-      // Hiển thị thông báo thành công ngay lập tức
       setDepositSuccess(true);
+      setDepositAmount('');
       
-      // Refresh transaction list để hiển thị giao dịch mới ngay lập tức
-      await refetchTransactions();
-
-      // Close dialog after success with delay
+      // Refresh transactions after a short delay
       setTimeout(() => {
-        handleCloseDepositDialog();
-        // Xóa trạng thái Firebase URL để tránh sử dụng lại
-        setFirebaseReceiptUrl('');
-      }, 3000);
-
+        setOpenDepositDialog(false);
+        handleFetchTransactions();
+      }, 1500);
+      
     } catch (error) {
-      console.error('Deposit error:', error);
-      setDepositError(
-        error.response?.data?.error || error.response?.data?.message || error.message || 
-        'Failed to create deposit request. Please try again later.'
-      );
+      /* error removed */
+      setDepositError('Failed to process deposit request. Please try again.');
     } finally {
       setDepositLoading(false);
     }
   };
-
-  // Function to handle showing receipt preview
-  const handleShowReceipt = (url, title) => {
-    setPreviewImage(url);
-    setPreviewTitle(title || 'Receipt');
-    setReceiptPreviewOpen(true);
+  
+  // Handle view transaction detail
+  const handleViewTransaction = (id) => {
+    navigate(`/transactions/${id}`);
   };
-
-  // Function to close receipt preview
-  const handleClosePreview = () => {
-    setReceiptPreviewOpen(false);
+  
+  // Handle back to transaction list
+  const handleBackToList = () => {
+    navigate('/transactions');
+  };
+  
+  // Handle save user notes
+  const handleSaveUserNotes = async () => {
+    if (!userNotes.trim()) return;
+    
+    setNotesError('');
+    setNotesSuccess('');
+    setSavingNotes(true);
+    
+    try {
+      await api.transaction.addUserNote(transaction.id, userNotes);
+      
+      // Update local state
+      setTransaction(prev => ({
+        ...prev,
+        userNotes: [
+          {
+            id: `temp-${Date.now()}`,
+            text: userNotes,
+            createdAt: new Date().toISOString(),
+            userName: 'You'
+          },
+          ...(prev.userNotes || [])
+        ]
+      }));
+      
+      setUserNotes(''); // Clear input
+      setNotesSuccess('Note added successfully');
+      setEditingNotes(false);
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      setNotesError(error.message || 'Failed to save your note. Please try again.');
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+  
+  // Get status color
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'completed':
+        return 'success';
+      case 'pending':
+        return 'warning';
+      case 'rejected':
+        return 'error';
+      default:
+        return 'default';
+    }
+  };
+  
+  // Render transaction details
+  const renderTransactionDetail = () => {
+    if (detailLoading) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+          <CircularProgress />
+        </Box>
+      );
+    }
+    
+    if (detailError) {
+      return (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {detailError}
+        </Alert>
+      );
+    }
+    
+    if (!transaction) {
+      return (
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          Transaction not found.
+        </Alert>
+      );
+    }
+    
+    // Sort notes by date (newest first)
+    const adminNotes = [...(transaction.adminNotes || [])].sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    
+    const userNotes = [...(transaction.userNotes || [])].sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    
+    // Combined notes for the timeline view
+    const allNotes = [...adminNotes.map(note => ({...note, type: 'admin'})), 
+                     ...userNotes.map(note => ({...note, type: 'user'}))]
+                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    return (
+      <>
+        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBackToList}
+            sx={{ mb: 2 }}
+          >
+            Back to Transactions
+          </Button>
+          
+          <Chip 
+            label={(transaction.status || 'unknown').toUpperCase()}
+            color={getStatusColor(transaction.status)}
+            variant="outlined"
+            sx={{ textTransform: 'uppercase' }}
+          />
+        </Box>
+        
+        {notesSuccess && (
+          <Alert severity="success" sx={{ mb: 3 }}>
+            {notesSuccess}
+          </Alert>
+        )}
+        
+        {notesError && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {notesError}
+          </Alert>
+        )}
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+              <Typography variant="h5" component="h1" gutterBottom>
+                Transaction #{transaction.id.substring(0, 8)}
+              </Typography>
+              
+              <Grid container spacing={3} sx={{ mt: 1 }}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Type
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {transaction.type || 'Deposit'}
+                  </Typography>
+                  
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Amount
+                  </Typography>
+                  <Typography variant="h6" sx={{ mb: 2, color: 'success.main' }}>
+                    {formatCurrency(transaction.amount)}
+                  </Typography>
+                  
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Date
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {formatDate(transaction.createdAt)}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Status
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {transaction.status}
+                  </Typography>
+                  
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Method
+                  </Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {transaction.bankName || 'Bank Transfer'}
+                  </Typography>
+                  
+                  {transaction.description && (
+                    <>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Description
+                      </Typography>
+                      <Typography variant="body1" sx={{ mb: 2 }}>
+                        {transaction.description}
+                      </Typography>
+                    </>
+                  )}
+                </Grid>
+              </Grid>
+              
+              {transaction.status === 'rejected' && (
+                <Box sx={{ mt: 2, p: 2, bgcolor: '#fff4f4', borderRadius: 1 }}>
+                  <Typography variant="subtitle2" color="error">
+                    Rejection Reason:
+                  </Typography>
+                  <Typography variant="body2">
+                    {transaction.rejectionReason || 'No reason provided'}
+                  </Typography>
+                </Box>
+              )}
+              
+              {/* Receipt Image */}
+              {transaction.receiptUrl && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                    <ReceiptIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+                    Receipt Image
+                  </Typography>
+                  <Box 
+                    component="img"
+                    src={transaction.receiptUrl}
+                    alt="Receipt"
+                    sx={{
+                      maxWidth: '100%',
+                      maxHeight: 400,
+                      objectFit: 'contain',
+                      border: '1px solid #eee',
+                      borderRadius: 1
+                    }}
+                  />
+                </Box>
+              )}
+              
+              {/* Transfer Details */}
+              {(transaction.transferDate || transaction.reference) && (
+                <Box sx={{ mt: 3 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Transfer Details
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {transaction.transferDate && (
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Transfer Date
+                        </Typography>
+                        <Typography variant="body1">
+                          {formatDate(transaction.transferDate)}
+                        </Typography>
+                      </Grid>
+                    )}
+                    {transaction.reference && (
+                      <Grid item xs={12} sm={6}>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Reference
+                        </Typography>
+                        <Typography variant="body1">
+                          {transaction.reference}
+                        </Typography>
+                      </Grid>
+                    )}
+                  </Grid>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+          
+          <Grid item xs={12} md={4}>
+            <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
+              <Typography variant="h6" gutterBottom>
+                Notes & Comments
+              </Typography>
+              
+              {/* Add Note Form */}
+              <Box sx={{ mb: 3 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  value={userNotes}
+                  onChange={(e) => setUserNotes(e.target.value)}
+                  placeholder="Add your note..."
+                  variant="outlined"
+                  disabled={savingNotes}
+                  InputProps={{
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton 
+                          edge="end" 
+                          color="primary" 
+                          onClick={handleSaveUserNotes}
+                          disabled={!userNotes.trim() || savingNotes}
+                        >
+                          <SendIcon />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+              
+              <Divider sx={{ mb: 2 }} />
+              
+              {/* Notes Timeline */}
+              {allNotes.length > 0 ? (
+                <List sx={{ width: '100%', bgcolor: 'background.paper', p: 0 }}>
+                  {allNotes.map((note, index) => (
+                    <React.Fragment key={note.id || index}>
+                      <ListItem alignItems="flex-start" sx={{ px: 0 }}>
+                        <ListItemAvatar>
+                          <Avatar sx={{ bgcolor: note.type === 'admin' ? 'primary.main' : 'secondary.main' }}>
+                            {note.type === 'admin' ? <AdminPanelSettingsIcon /> : <PersonIcon />}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={
+                            <Typography
+                              variant="subtitle2"
+                              color={note.type === 'admin' ? 'primary' : 'secondary'}
+                            >
+                              {note.type === 'admin' ? 'Admin' : (note.userName || 'You')}
+                            </Typography>
+                          }
+                          secondary={
+                            <>
+                              <Typography
+                                component="span"
+                                variant="body2"
+                                color="text.primary"
+                                sx={{ display: 'inline', whiteSpace: 'pre-wrap' }}
+                              >
+                                {note.text}
+                              </Typography>
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 0.5 }}
+                              >
+                                {formatDateTime(note.createdAt)}
+                              </Typography>
+                            </>
+                          }
+                        />
+                      </ListItem>
+                      {index < allNotes.length - 1 && <Divider variant="inset" component="li" />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', textAlign: 'center' }}>
+                  No notes yet
+                </Typography>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+      </>
+    );
+  };
+  
+  // Render transaction list
+  const renderTransactionsList = () => {
+    return (
+      <>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4">Transactions</Typography>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <Typography variant="subtitle1" sx={{ mr: 1 }}>
+              Current Balance:
+            </Typography>
+            <Typography variant="h6" color="primary" sx={{ mr: 2 }}>
+              {formatCurrency(user?.balance || 0)}
+            </Typography>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleOpenDepositDialog}
+            >
+              Deposit Funds
+            </Button>
+          </Box>
+        </Box>
+        
+        {/* Filters */}
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>Filters</Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={type}
+                  onChange={handleTypeChange}
+                  label="Type"
+                >
+                  <MenuItem value="">All Types</MenuItem>
+                  <MenuItem value="deposit">Deposit</MenuItem>
+                  <MenuItem value="withdrawal">Withdrawal</MenuItem>
+                  <MenuItem value="payment">Payment</MenuItem>
+                  <MenuItem value="refund">Refund</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={status}
+                  onChange={handleStatusChange}
+                  label="Status"
+                >
+                  <MenuItem value="">All Statuses</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
+                  <MenuItem value="completed">Completed</MenuItem>
+                  <MenuItem value="rejected">Rejected</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Search"
+                value={search}
+                onChange={handleSearchChange}
+                placeholder="Search by ID, reference, etc."
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="From Date"
+                type="date"
+                name="startDate"
+                value={dateRange.startDate}
+                onChange={handleDateChange}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="To Date"
+                type="date"
+                name="endDate"
+                value={dateRange.endDate}
+                onChange={handleDateChange}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6} sx={{ display: 'flex', alignItems: 'center' }}>
+              <Button
+                variant="contained"
+                onClick={handleApplyFilters}
+                sx={{ mr: 1 }}
+              >
+                Apply Filters
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleClearFilters}
+              >
+                Clear Filters
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+        
+        {/* Transactions Table */}
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>Transaction History</Typography>
+          
+          {loading || fetchLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : transactions.length > 0 ? (
+            <>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>ID</TableCell>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Amount</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {transactions.map((transaction) => (
+                      <TableRow key={transaction.id} hover>
+                        <TableCell>{transaction.id.substring(0, 8)}...</TableCell>
+                        <TableCell>{formatDate(transaction.createdAt)}</TableCell>
+                        <TableCell>
+                          {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                        </TableCell>
+                        <TableCell 
+                          sx={{ 
+                            color: transaction.type === 'deposit' || transaction.type === 'refund' 
+                              ? 'success.main' 
+                              : transaction.type === 'payment' || transaction.type === 'withdrawal'
+                                ? 'error.main' 
+                                : 'inherit',
+                            fontWeight: 'medium'
+                          }}
+                        >
+                          {transaction.type === 'deposit' || transaction.type === 'refund' ? '+' : '-'}
+                          {formatCurrency(transaction.amount)}
+                        </TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={transaction.status} 
+                            color={getStatusColor(transaction.status)}
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleViewTransaction(transaction.id)}
+                            aria-label="View transaction details"
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              
+              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+                <Pagination 
+                  count={totalPages}
+                  page={page}
+                  onChange={handlePageChange}
+                  color="primary"
+                />
+              </Box>
+            </>
+          ) : (
+            <Alert severity="info">No transactions found.</Alert>
+          )}
+        </Paper>
+        
+        {/* Deposit Dialog */}
+        <Dialog
+          open={openDepositDialog}
+          onClose={handleCloseDepositDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Deposit Funds</DialogTitle>
+          <DialogContent>
+            {depositError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {depositError}
+              </Alert>
+            )}
+            
+            {depositSuccess && (
+              <Alert severity="success" sx={{ mb: 2 }}>
+                Deposit request submitted successfully!
+              </Alert>
+            )}
+            
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Amount"
+                  type="number"
+                  value={depositAmount}
+                  onChange={handleDepositAmountChange}
+                  InputProps={{
+                    startAdornment: <Typography sx={{ mr: 1 }}>$</Typography>
+                  }}
+                  disabled={depositLoading || depositSuccess}
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Payment Method</InputLabel>
+                  <Select
+                    value={depositMethod}
+                    onChange={handleDepositMethodChange}
+                    label="Payment Method"
+                    disabled={depositLoading || depositSuccess}
+                  >
+                    <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={handleCloseDepositDialog} 
+              disabled={depositLoading}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleDepositSubmit} 
+              variant="contained"
+              color="primary"
+              disabled={!depositAmount || depositLoading || depositSuccess}
+            >
+              {depositLoading ? <CircularProgress size={24} /> : 'Submit Request'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </>
+    );
   };
   
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Transactions</Typography>
-        
-        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-          <Typography variant="subtitle1" sx={{ mr: 1 }}>
-            Current Balance:
-          </Typography>
-          <Typography variant="h6" color="primary" sx={{ mr: 2 }}>
-            {formatCurrency(user?.balance || 0)}
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={handleOpenDepositDialog}
-          >
-            Deposit Funds
-          </Button>
-        </Box>
-      </Box>
-      
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="flex-end">
-          <Grid item xs={12} sm={4} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Transaction Type</InputLabel>
-              <Select
-                value={type}
-                onChange={(e) => setType(e.target.value)}
-                label="Transaction Type"
-              >
-                <MenuItem value="">All Types</MenuItem>
-                <MenuItem value="deposit">Deposits</MenuItem>
-                <MenuItem value="payment">Payments</MenuItem>
-                <MenuItem value="refund">Refunds</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={4} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                label="Status"
-              >
-                <MenuItem value="">All Statuses</MenuItem>
-                <MenuItem value="completed">Completed</MenuItem>
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="failed">Failed</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={4} md={3}>
-            <form onSubmit={handleSearchSubmit}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Search transactions..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </form>
-          </Grid>
-          
-          <Grid item xs={12} sm={12} md={3}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
-              <Button 
-                variant="outlined" 
-                size="small"
-                onClick={handleFilterReset}
-              >
-                Reset
-              </Button>
-              
-              <Button 
-                variant="contained" 
-                startIcon={<FilterIcon />}
-                size="small"
-                onClick={fetchTransactions}
-              >
-                Filter
-              </Button>
-            </Box>
-          </Grid>
-        </Grid>
-      </Paper>
-      
-      {/* Transactions List */}
-      <Paper>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>ID</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Note</TableCell>
-                <TableCell align="right">Amount</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Receipt</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    <CircularProgress size={30} sx={{ my: 2 }} />
-                  </TableCell>
-                </TableRow>
-              ) : transactions.length > 0 ? (
-                transactions.map((transaction) => (
-                  <TableRow key={transaction.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" component="span" sx={{ fontFamily: 'monospace' }}>
-                        {transaction.id.substring(0, 8)}...
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ textTransform: 'capitalize' }}>
-                        {transaction.type}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{transaction.reference || transaction.note || transaction.description || '-'}</TableCell>
-                    <TableCell align="right" sx={{ 
-                      color: transaction.type === 'deposit' || transaction.type === 'refund' 
-                        ? 'success.main' 
-                        : transaction.type === 'payment' 
-                          ? 'error.main' 
-                          : 'inherit'
-                    }}>
-                      {transaction.type === 'deposit' || transaction.type === 'refund' ? '+' : '-'}
-                      {formatCurrency(transaction.amount)}
-                    </TableCell>
-                    <TableCell>{formatDateTime(transaction.createdAt)}</TableCell>
-                    <TableCell>
-                      <StatusBadge status={transaction.status} />
-                    </TableCell>
-                    <TableCell>
-                      {transaction.thumbnailUrl || transaction.receiptUrl ? (
-                        <Tooltip title="View Receipt">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleShowReceipt(
-                              transaction.receiptUrl,
-                              `Receipt for ${transaction.type} - ${formatCurrency(transaction.amount)}`
-                            )}
-                          >
-                            {transaction.thumbnailUrl ? (
-                              <Avatar 
-                                src={transaction.thumbnailUrl} 
-                                alt="Receipt" 
-                                variant="rounded"
-                                sx={{ width: 36, height: 36 }}
-                              />
-                            ) : (
-                              <ReceiptIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
-                      ) : transaction.type === 'deposit' ? (
-                        <Tooltip title="No receipt uploaded">
-                          <span>
-                            <IconButton size="small" disabled>
-                              <ReceiptIcon fontSize="small" color="disabled" />
-                            </IconButton>
-                          </span>
-                        </Tooltip>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} align="center">
-                    No transactions found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
-            <Pagination 
-              count={totalPages} 
-              page={page} 
-              onChange={handlePageChange} 
-              color="primary" 
-            />
-          </Box>
-        )}
-      </Paper>
-
-      {/* Deposit Dialog */}
-      <Dialog 
-        open={depositDialogOpen} 
-        onClose={handleCloseDepositDialog}
-        maxWidth="sm"
-        fullWidth
-        keepMounted={false}
-        disablePortal={false}
-        disableEnforceFocus={false}
-        disableAutoFocus={false}
-      >
-        <DialogTitle>
-          Deposit Funds
-        </DialogTitle>
-        <DialogContent>
-          {depositSuccess ? (
-            <Alert severity="success" sx={{ my: 2, fontSize: '1.1rem', fontWeight: 'bold' }}>
-              Deposit request submitted successfully! Your account balance will be updated after admin review.
-            </Alert>
-          ) : (
-            <>
-              {depositError && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  {depositError}
-                </Alert>
-              )}
-              
-              <Typography variant="body2" color="text.secondary" paragraph sx={{ mt: 1 }}>
-                Add funds to your account by filling in the form below. Your deposit will be processed after admin verification.
-              </Typography>
-              
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={12}>
-                  <TextField
-                    label="Amount"
-                    type="number"
-                    fullWidth
-                    required
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    disabled={depositLoading}
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Payment Method</InputLabel>
-                    <Select
-                      value={depositMethod}
-                      onChange={(e) => setDepositMethod(e.target.value)}
-                      label="Payment Method"
-                      disabled={depositLoading}
-                    >
-                      <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
-                      <MenuItem value="credit_card">Credit Card</MenuItem>
-                      <MenuItem value="paypal">PayPal</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    label="Notes"
-                    multiline
-                    rows={2}
-                    fullWidth
-                    value={depositNote}
-                    onChange={(e) => setDepositNote(e.target.value)}
-                    disabled={depositLoading}
-                    placeholder="Any additional information about this deposit"
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <ReceiptUploader
-                    onUploadSuccess={handleReceiptUploadSuccess}
-                    onUploadError={handleReceiptUploadError}
-                    transactionId={`temp_${Date.now()}`} // Create a temporary path until we have transaction ID
-                    disabled={depositLoading}
-                  />
-                </Grid>
-              </Grid>
-              
-              <Divider sx={{ my: 3 }} />
-              
-              <Typography variant="subtitle2" gutterBottom>
-                Payment Instructions:
-              </Typography>
-              
-              <Box sx={{ bgcolor: 'grey.100', p: 2, borderRadius: 1 }}>
-                <Stack spacing={1}>
-                  <Typography variant="body2">
-                    <strong>Bank Transfer Details:</strong>
-                  </Typography>
-                  <Typography variant="body2">
-                    Bank Name: Example Bank<br />
-                    Account Name: EcoPrint Inc.<br />
-                    Account Number: 1234567890<br />
-                    Routing/Swift Code: EXBKUS123
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Reference:</strong> Please include your email ({user?.email || 'your email'}) as the payment reference.
-                  </Typography>
-                </Stack>
-              </Box>
-            </>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseDepositDialog} disabled={depositLoading}>
-            {depositSuccess ? 'Close' : 'Cancel'}
-          </Button>
-          {!depositSuccess ? (
-            <Button 
-              onClick={handleCreateDeposit} 
-              variant="contained" 
-              disabled={depositLoading}
-              startIcon={depositLoading ? <CircularProgress size={20} /> : <AccountBalanceIcon />}
-              aria-busy={depositLoading}
-            >
-              {depositLoading ? 'Processing...' : 'Submit Deposit Request'}
-            </Button>
-          ) : (
-            <Button 
-              onClick={() => {
-                handleCloseDepositDialog();
-                fetchTransactions();
-              }}
-              variant="contained" 
-              color="success"
-              aria-live="polite"
-            >
-              Done
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
-
-      {/* Receipt Preview Dialog */}
-      <Dialog
-        open={receiptPreviewOpen}
-        onClose={handleClosePreview}
-        maxWidth="md"
-      >
-        <DialogTitle>{previewTitle}</DialogTitle>
-        <DialogContent>
-          {previewImage && (
-            <Box
-              component="img"
-              src={previewImage}
-              alt="Receipt"
-              sx={{
-                maxWidth: '100%',
-                maxHeight: '70vh',
-                display: 'block',
-                margin: '0 auto'
-              }}
-            />
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleClosePreview}>Close</Button>
-          <Button 
-            component="a" 
-            href={previewImage} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            startIcon={<VisibilityIcon />}
-            color="primary"
-          >
-            Open Full Size
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {shouldShowDetail ? renderTransactionDetail() : renderTransactionsList()}
     </Box>
   );
 };
