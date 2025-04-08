@@ -42,15 +42,12 @@ export const getOptionById = async (ctx) => {
 export const createOption = async (ctx) => {
   try {
     // Kiểm tra và lấy dữ liệu từ request
-    let data;
+    let data = {};
     
-    // Kiểm tra các cách khác nhau để lấy body
+    // Lấy body từ request
     if (ctx.req && ctx.req.body) {
       console.log('Using ctx.req.body');
       data = ctx.req.body;
-    } else if (ctx.request && ctx.request.body) {
-      console.log('Using ctx.request.body');
-      data = ctx.request.body;
     } else {
       console.log('No body found, trying to parse raw body');
       try {
@@ -104,15 +101,12 @@ export const updateOption = async (ctx) => {
     const { id } = ctx.params;
     
     // Kiểm tra và lấy dữ liệu từ request
-    let data;
+    let data = {};
     
-    // Kiểm tra các cách khác nhau để lấy body
+    // Lấy body từ request
     if (ctx.req && ctx.req.body) {
       console.log('Update - Using ctx.req.body');
       data = ctx.req.body;
-    } else if (ctx.request && ctx.request.body) {
-      console.log('Update - Using ctx.request.body');
-      data = ctx.request.body;
     } else {
       console.log('Update - No body found, trying to parse raw body');
       try {
@@ -191,15 +185,12 @@ export const addPosition = async (ctx) => {
     const { id } = ctx.params;
     
     // Kiểm tra và lấy dữ liệu từ request
-    let positionData;
+    let positionData = {};
     
-    // Kiểm tra các cách khác nhau để lấy body
+    // Lấy body từ request
     if (ctx.req && ctx.req.body) {
       console.log('AddPosition - Using ctx.req.body');
       positionData = ctx.req.body;
-    } else if (ctx.request && ctx.request.body) {
-      console.log('AddPosition - Using ctx.request.body');
-      positionData = ctx.request.body;
     } else {
       console.log('AddPosition - No body found, trying to parse raw body');
       try {

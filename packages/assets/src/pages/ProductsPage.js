@@ -44,7 +44,7 @@ const ProductsPage = () => {
         
         if (response.data && response.data.success) {
           // Lấy sản phẩm từ response, đảm bảo đúng cấu trúc dữ liệu
-          const products = response.data.data?.products || [];
+          const products = response.data.products || [];
           console.log('Products fetched successfully:', products.length);
           
           // Lưu trữ tất cả sản phẩm
@@ -144,6 +144,28 @@ const ProductsPage = () => {
     setSearch('');
     setCategory('');
     setPage(1);
+  };
+
+  // Helper function to display product options
+  const getPrintPositionsText = (product) => {
+    if (!product.printOptions) return 'Standard print';
+    
+    const options = [];
+    if (product.printOptions.basePosition) {
+      options.push(`Base: ${product.printOptions.basePosition.replace('_', ' ')}`);
+    }
+    
+    if (product.printOptions.additionalPositions) {
+      const additionalPositions = Object.keys(product.printOptions.additionalPositions)
+        .filter(key => product.printOptions.additionalPositions[key].available)
+        .map(key => key.replace('_', ' '));
+      
+      if (additionalPositions.length > 0) {
+        options.push(`+${additionalPositions.join(', ')}`);
+      }
+    }
+    
+    return options.join(' ');
   };
 
   return (
@@ -248,30 +270,47 @@ const ProductsPage = () => {
                   {product.name}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1, minHeight: '40px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                  {product.description || 'No description available'}
+                  {product.description}
                 </Typography>
-                <Typography variant="h6" color="primary" gutterBottom>
-                  {formatCurrency(product.price)}
-                </Typography>
-                
-                {product.categoryId && (
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="h6" color="primary">
+                    {formatCurrency(product.price)}
+                  </Typography>
                   <Chip 
-                    label={categories.find(c => c.id === product.categoryId)?.name || 'Unknown Category'} 
+                    label={product.status || 'Active'} 
+                    color={product.status === 'active' ? 'success' : 'default'} 
                     size="small" 
-                    sx={{ mt: 1 }}
                   />
+                </Box>
+                {product.printOptions && (
+                  <Typography variant="body2" color="text.secondary">
+                    {getPrintPositionsText(product)}
+                  </Typography>
+                )}
+                {product.stock !== undefined && (
+                  <Typography variant="body2" color={product.stock > 0 ? 'success.main' : 'error.main'}>
+                    {product.stock > 0 ? `In stock: ${product.stock}` : 'Out of stock'}
+                  </Typography>
                 )}
               </CardContent>
               <CardActions>
                 <Button 
                   size="small" 
-                  variant="contained" 
-                  fullWidth
-                  startIcon={<ShoppingCartIcon />}
-                  component={Link}
+                  component={Link} 
                   to={`/products/${product.id}`}
                 >
                   View Details
+                </Button>
+                <Button
+                  size="small"
+                  component={Link}
+                  to={`/create-order?productId=${product.id}`}
+                  startIcon={<ShoppingCartIcon />}
+                  variant="contained"
+                  color="primary"
+                  disabled={product.stock <= 0}
+                >
+                  Order
                 </Button>
               </CardActions>
             </Card>
@@ -287,7 +326,8 @@ const ProductsPage = () => {
             page={page} 
             onChange={handlePageChange} 
             color="primary" 
-            size="large"
+            showFirstButton 
+            showLastButton
           />
         </Box>
       )}

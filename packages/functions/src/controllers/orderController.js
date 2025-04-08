@@ -44,54 +44,53 @@ export const createOrder = async (ctx) => {
     
     // Start a Firestore transaction
     const result = await firestore.runTransaction(async (transaction) => {
-      // Calculate order details and validate items
+      // Phase 1: Read all product data first
+      const productData = [];
+      
+      for (const item of items) {
+        const productRef = firestore.collection('products').doc(item.productId);
+        const productDoc = await transaction.get(productRef);
+        
+        if (!productDoc.exists) {
+          throw new Error(`Product with ID ${item.productId} not found`);
+        }
+        
+        const product = productDoc.data();
+        productData.push({
+          productRef,
+          product,
+          item
+        });
+      }
+      
+      // Phase 2: Process data and prepare updates (no transaction writes yet)
       let subtotal = 0;
       let totalQuantity = 0;
       const orderItems = [];
       
       // Process each item
-      for (const item of items) {
-        try {
-          // Get product from database within transaction
-          const productRef = firestore.collection('products').doc(item.productId);
-          const productDoc = await transaction.get(productRef);
-          
-          if (!productDoc.exists) {
-            throw new Error(`Product with ID ${item.productId} not found`);
-          }
-          
-          const product = productDoc.data();
-          
-          // Check stock availability
-          // if (product.stock < item.quantity) {
-          //   throw new Error(`Not enough stock for product: ${product.name}`);
-          // }
-          
-          // Calculate item price
-          const itemPrice = product.price * item.quantity;
-          subtotal += itemPrice;
-          totalQuantity += item.quantity;
-          
-          // Prepare order item
-          orderItems.push({
-            productId: item.productId,
-            name: product.name,
-            sku: product.sku,
-            quantity: item.quantity,
-            unitPrice: product.price,
-            totalPrice: itemPrice,
-            customizationOptions: item.customizationOptions || []
-          });
-          
-          // Update product stock within transaction
-          transaction.update(productRef, {
-            stock: FieldValue.increment(-item.quantity),
-            updatedAt: new Date()
-          });
-        } catch (error) {
-          console.error('Error processing product:', error);
-          throw error;
-        }
+      for (const { product, item } of productData) {
+        // Check stock availability if needed
+        // if (product.stock < item.quantity) {
+        //   throw new Error(`Not enough stock for product: ${product.name}`);
+        // }
+        
+        // Calculate item price
+        const itemPrice = product.price * item.quantity;
+        subtotal += itemPrice;
+        totalQuantity += item.quantity;
+        
+        // Prepare order item
+        orderItems.push({
+          productId: item.productId,
+          name: product.name,
+          sku: product.sku || '',
+          quantity: item.quantity,
+          unitPrice: product.price,
+          totalPrice: itemPrice,
+          customizationOptions: item.customizationOptions || [],
+          printOptions: product.printOptions || null
+        });
       }
       
       // Process customizations (printing, embroidery)
@@ -99,21 +98,27 @@ export const createOrder = async (ctx) => {
       const processedCustomizations = [];
       
       for (const customization of customizations) {
+        // Check if this is a valid print position
+        let customizationPrice = 0;
+        if (customization.type === 'PRINT' && customization.position && customization.price !== undefined) {
+          customizationPrice = Number(customization.price) || 0;
+        }
+        
         processedCustomizations.push({
-          type: customization.type, // 'PRINT' or 'EMBROIDERY'
+          type: customization.type || 'PRINT', // Default to 'PRINT'
           position: customization.position,
-          price: customization.price,
-          designUrl: customization.designUrl
+          price: customizationPrice,
+          designUrl: customization.designUrl || ''
         });
         
-        customizationTotal += customization.price;
+        customizationTotal += customizationPrice;
       }
       
       // Calculate totals
       const shippingFee = 0; // Free shipping for phase 1
       const total = subtotal + customizationTotal + shippingFee;
       
-      // Create order in database within transaction
+      // Prepare order data
       const orderRef = firestore.collection('orders').doc();
       const orderData = {
         email: email,
@@ -133,6 +138,16 @@ export const createOrder = async (ctx) => {
         updatedAt: new Date()
       };
       
+      // Phase 3: Execute all writes
+      // Update stock for all products
+      for (const { productRef, item } of productData) {
+        transaction.update(productRef, {
+          stock: FieldValue.increment(-item.quantity),
+          updatedAt: new Date()
+        });
+      }
+      
+      // Create the order
       transaction.set(orderRef, orderData);
       
       return {

@@ -18,15 +18,72 @@ export const apiClient = axios.create({
   withCredentials: true // Enable sending cookies with cross-origin requests
 });
 
+// Add request/response logging functionality
+const addLogging = (axiosInstance) => {
+  axiosInstance.interceptors.request.use(request => {
+    console.log('API Request:', {
+      method: request.method,
+      url: request.url,
+      params: request.params,
+      headers: request.headers,
+      data: request.data
+    });
+    return request;
+  });
+  
+  axiosInstance.interceptors.response.use(
+    response => {
+      console.log('API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        url: response.config.url,
+        data: response.data ? (typeof response.data === 'object' ? 'data object present' : response.data) : null
+      });
+      return response;
+    },
+    error => {
+      console.error('API Error:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        response: error.response?.data
+      });
+      return Promise.reject(error);
+    }
+  );
+  
+  return axiosInstance;
+};
+
+// Add logging to the API client
+addLogging(apiClient);
+
 // Request interceptor for adding auth token
 apiClient.interceptors.request.use(
   (config) => {
     // Get token from localStorage
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+    console.log('[API Client] Request interceptor - token exists:', !!token);
     
     // If token exists, add to headers
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
+      console.log('[API Client] Added authorization header');
+    } else {
+      console.log('[API Client] No token found in localStorage');
+    }
+    
+    // Add user email and role if available
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    if (userEmail) {
+      config.headers['X-User-Email'] = userEmail;
+    }
+    
+    if (userRole) {
+      config.headers['X-User-Role'] = userRole;
     }
     
     return config;
@@ -303,6 +360,10 @@ export const ordersApi = {
     const enhancedData = addAuthData(data);
     return put(`/orders/${id}`, enhancedData);
   },
+  updateStatus: (id, status) => {
+    const enhancedData = addAuthData({ status });
+    return patch(`/orders/${id}/status`, enhancedData);
+  },
   cancel: (id) => {
     const enhancedData = addAuthData();
     return post(`/orders/${id}/cancel`, enhancedData);
@@ -364,6 +425,18 @@ export const transactions = {
     const userRole = localStorage.getItem('user_role');
     
     return post('/transactions', enhancedData, {
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    });
+  },
+  payOrder: (orderId) => {
+    const enhancedData = addAuthData();
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    
+    return post(`/orders/${orderId}/pay`, enhancedData, {
       headers: {
         'X-User-Email': userEmail || '',
         'X-User-Role': userRole || 'user'
@@ -594,4 +667,4 @@ export default {
   
   // Include productOptions
   productOptions
-}; 
+};

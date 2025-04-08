@@ -45,8 +45,7 @@ const ProductDetailPage = () => {
   // State để quản lý các vị trí in/thêu được chọn
   const [selectedPrintPositions, setSelectedPrintPositions] = useState({
     base: true,
-    sleeve_left: false,
-    sleeve_right: false,
+    sleeve: false,
     back: false,
     special: false
   });
@@ -57,23 +56,31 @@ const ProductDetailPage = () => {
     const fetchProduct = async () => {
       try {
         setLoading(true);
-        const response = await api.get(`/api/products/${productId}`);
-        const productData = response.data.data;
-        setProduct(productData);
+        const response = await api.products.getById(productId);
         
-        // Nếu là sản phẩm cấu hình, tải thêm thông tin về các sản phẩm con
-        if (productData.productType === 'configurable' && productData.childProducts?.length > 0) {
-          const firstChildId = productData.childProducts[0];
-          const childResponse = await api.get(`/api/products/${firstChildId}`);
-          setSelectedChildProduct(childResponse.data.data);
-        }
-        
-        // Khởi tạo giá ban đầu
-        if (productData.price) {
-          setCalculatedPrice(productData.price);
+        if (response.data && response.data.success) {
+          const productData = response.data.product;
+          setProduct(productData);
+          
+          // Nếu là sản phẩm cấu hình, tải thêm thông tin về các sản phẩm con
+          if (productData.productType === 'configurable' && productData.childProducts?.length > 0) {
+            const firstChildId = productData.childProducts[0];
+            const childResponse = await api.products.getById(firstChildId);
+            
+            if (childResponse.data && childResponse.data.success) {
+              setSelectedChildProduct(childResponse.data.product);
+            }
+          }
+          
+          // Khởi tạo giá ban đầu
+          if (productData.price) {
+            setCalculatedPrice(productData.price);
+          }
+        } else {
+          setError('Product not found or not available.');
         }
       } catch (error) {
-        /* error removed */
+        console.error('Error loading product details:', error);
         setError('Failed to load product details. Please try again later.');
       } finally {
         setLoading(false);
@@ -91,28 +98,25 @@ const ProductDetailPage = () => {
     let additionalCost = 0;
     
     const printOptions = product.printOptions || {
+      basePosition: 'chest_left',
       additionalPositions: {
-        sleeve: { price: 2 },
-        back: { price: 4 },
-        special: { price: 4 }
+        sleeve: { price: 2, available: true },
+        back: { price: 4, available: true },
+        special: { price: 4, available: true }
       }
     };
     
     // Giá cơ bản đã bao gồm 1 vị trí in chính
-    if (selectedPrintPositions.sleeve_left) {
-      additionalCost += printOptions.additionalPositions.sleeve.price;
+    if (selectedPrintPositions.sleeve && printOptions.additionalPositions.sleeve) {
+      additionalCost += printOptions.additionalPositions.sleeve.price || 0;
     }
     
-    if (selectedPrintPositions.sleeve_right) {
-      additionalCost += printOptions.additionalPositions.sleeve.price;
+    if (selectedPrintPositions.back && printOptions.additionalPositions.back) {
+      additionalCost += printOptions.additionalPositions.back.price || 0;
     }
     
-    if (selectedPrintPositions.back) {
-      additionalCost += printOptions.additionalPositions.back.price;
-    }
-    
-    if (selectedPrintPositions.special) {
-      additionalCost += printOptions.additionalPositions.special.price;
+    if (selectedPrintPositions.special && printOptions.additionalPositions.special) {
+      additionalCost += printOptions.additionalPositions.special.price || 0;
     }
     
     setCalculatedPrice(basePrice + additionalCost);
@@ -125,8 +129,13 @@ const ProductDetailPage = () => {
   // Xử lý khi chọn sản phẩm con
   const handleChildProductChange = async (childId) => {
     try {
-      const response = await api.get(`/api/products/${childId}`);
-      setSelectedChildProduct(response.data.data);
+      const response = await api.products.getById(childId);
+      
+      if (response.data && response.data.success) {
+        setSelectedChildProduct(response.data.product);
+      } else {
+        console.error('Error fetching child product: Invalid response format');
+      }
     } catch (error) {
       console.error('Error fetching child product:', error);
     }
@@ -200,7 +209,9 @@ const ProductDetailPage = () => {
             <CardMedia
               component="img"
               height="400"
-              image={product.imageUrl || 'https://via.placeholder.com/600x400?text=No+Image'}
+              image={product.images && product.images.length > 0 
+                ? product.images[0] 
+                : (product.imageUrl || 'https://via.placeholder.com/600x400?text=No+Image')}
               alt={product.name}
               sx={{ objectFit: 'contain', bgcolor: '#f5f5f5' }}
             />
@@ -259,49 +270,42 @@ const ProductDetailPage = () => {
             </Typography>
             <FormGroup>
               <FormControlLabel
-                control={<Checkbox checked={selectedPrintPositions.base} disabled />}
-                label={`Base position (included in price)`}
+                control={<Checkbox checked={true} disabled />}
+                label={`Base position (${product.printOptions?.basePosition?.replace('_', ' ') || 'chest left'}) (included in price)`}
               />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={selectedPrintPositions.sleeve_left} 
-                    onChange={() => handlePrintPositionChange('sleeve_left')}
-                    disabled={!product.printOptions?.additionalPositions?.sleeve?.available}
-                  />
-                }
-                label={`Left sleeve (+$${product.printOptions?.additionalPositions?.sleeve?.price || 2})`}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={selectedPrintPositions.sleeve_right} 
-                    onChange={() => handlePrintPositionChange('sleeve_right')}
-                    disabled={!product.printOptions?.additionalPositions?.sleeve?.available}
-                  />
-                }
-                label={`Right sleeve (+$${product.printOptions?.additionalPositions?.sleeve?.price || 2})`}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={selectedPrintPositions.back} 
-                    onChange={() => handlePrintPositionChange('back')}
-                    disabled={!product.printOptions?.additionalPositions?.back?.available}
-                  />
-                }
-                label={`Back (+$${product.printOptions?.additionalPositions?.back?.price || 4})`}
-              />
-              <FormControlLabel
-                control={
-                  <Checkbox 
-                    checked={selectedPrintPositions.special} 
-                    onChange={() => handlePrintPositionChange('special')}
-                    disabled={!product.printOptions?.additionalPositions?.special?.available}
-                  />
-                }
-                label={`Special position (collar, hem, etc.) (+$${product.printOptions?.additionalPositions?.special?.price || 4})`}
-              />
+              {product.printOptions?.additionalPositions?.sleeve?.available && (
+                <FormControlLabel
+                  control={
+                    <Checkbox 
+                      checked={selectedPrintPositions.sleeve} 
+                      onChange={() => handlePrintPositionChange('sleeve')}
+                    />
+                  }
+                  label={`Sleeve (+${formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)})`}
+                />
+              )}
+              {product.printOptions?.additionalPositions?.back?.available && (
+                <FormControlLabel
+                  control={
+                    <Checkbox 
+                      checked={selectedPrintPositions.back} 
+                      onChange={() => handlePrintPositionChange('back')}
+                    />
+                  }
+                  label={`Back (+${formatCurrency(product.printOptions?.additionalPositions?.back?.price || 4)})`}
+                />
+              )}
+              {product.printOptions?.additionalPositions?.special?.available && (
+                <FormControlLabel
+                  control={
+                    <Checkbox 
+                      checked={selectedPrintPositions.special} 
+                      onChange={() => handlePrintPositionChange('special')}
+                    />
+                  }
+                  label={`Special position (collar, hem, etc.) (+${formatCurrency(product.printOptions?.additionalPositions?.special?.price || 4)})`}
+                />
+              )}
             </FormGroup>
           </Box>
           
@@ -310,7 +314,7 @@ const ProductDetailPage = () => {
               variant="contained"
               size="large"
               component={Link}
-              to={`/orders/create?product=${product.id}${selectedChildProduct ? `&childProduct=${selectedChildProduct.id}` : ''}&printPositions=${encodeURIComponent(JSON.stringify(selectedPrintPositions))}`}
+              to={`/create-order?productId=${product.id}`}
               startIcon={<ShoppingCartIcon />}
               sx={{ mr: 2 }}
             >
@@ -419,15 +423,9 @@ const ProductDetailPage = () => {
                         Base product: {formatCurrency(selectedChildProduct?.price || product.price || 0)}
                       </Box>
                       
-                      {selectedPrintPositions.sleeve_left && (
+                      {selectedPrintPositions.sleeve && (
                         <Box sx={{ mb: 1 }}>
-                          Left sleeve: +{formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)}
-                        </Box>
-                      )}
-                      
-                      {selectedPrintPositions.sleeve_right && (
-                        <Box sx={{ mb: 1 }}>
-                          Right sleeve: +{formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)}
+                          Sleeve: +{formatCurrency(product.printOptions?.additionalPositions?.sleeve?.price || 2)}
                         </Box>
                       )}
                       

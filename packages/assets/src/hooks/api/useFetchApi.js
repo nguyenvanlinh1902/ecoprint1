@@ -15,16 +15,55 @@ const useFetchApi = (endpoint, options = {}) => {
     transformResponse = null,
   } = options;
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [data, setData] = useState(initialData);
-  const [params, setParams] = useState(initialParams);
-  const [pagination, setPagination] = useState({
+  // Sử dụng useRef để lưu trữ state mà không gây re-render khi cập nhật
+  const dataRef = useRef(initialData);
+  const loadingRef = useRef(false);
+  const errorRef = useRef(null);
+  const paramsRef = useRef(initialParams);
+  const paginationRef = useRef({
     page: 1,
     limit: 20,
     total: 0,
     totalPages: 0
   });
+
+  // State để trigger re-render khi cần thiết
+  const [loadingState, setLoadingState] = useState(false);
+  const [errorState, setErrorState] = useState(null);
+  const [dataState, setDataState] = useState(initialData);
+  
+  // Hàm để cập nhật state an toàn
+  const updateState = useCallback((stateUpdates) => {
+    let shouldRerender = false;
+    
+    if (stateUpdates.loading !== undefined && loadingRef.current !== stateUpdates.loading) {
+      loadingRef.current = stateUpdates.loading;
+      setLoadingState(stateUpdates.loading);
+      shouldRerender = true;
+    }
+    
+    if (stateUpdates.error !== undefined && errorRef.current !== stateUpdates.error) {
+      errorRef.current = stateUpdates.error;
+      setErrorState(stateUpdates.error);
+      shouldRerender = true;
+    }
+    
+    if (stateUpdates.data !== undefined && JSON.stringify(dataRef.current) !== JSON.stringify(stateUpdates.data)) {
+      dataRef.current = stateUpdates.data;
+      setDataState(stateUpdates.data);
+      shouldRerender = true;
+    }
+    
+    if (stateUpdates.params !== undefined) {
+      paramsRef.current = {...paramsRef.current, ...stateUpdates.params};
+    }
+    
+    if (stateUpdates.pagination !== undefined) {
+      paginationRef.current = {...paginationRef.current, ...stateUpdates.pagination};
+    }
+    
+    return shouldRerender;
+  }, []);
   
   // Track last request to prevent duplicate calls
   const lastRequestRef = useRef('');
@@ -61,23 +100,29 @@ const useFetchApi = (endpoint, options = {}) => {
       (id.toString().startsWith('/') ? id : `${endpoint}/${id}`) : 
       endpoint;
     
+    console.log(`[useFetchApi] Fetching resource from ${url}`);
+    
     // Tự động thêm email và role vào tất cả các request
     const userEmail = localStorage.getItem('user_email');
     const userRole = localStorage.getItem('user_role');
+    const authToken = localStorage.getItem('auth_token');
+    
+    console.log(`[useFetchApi] Using auth: email=${userEmail}, role=${userRole}, token exists=${!!authToken}`);
     
     const enhancedParams = {
-      ...params,
+      ...paramsRef.current,
       ...queryParams,
       email: userEmail || '',
       role: userRole || 'user'
     };
     
     const requestKey = `${url}${JSON.stringify(enhancedParams)}`;
+    console.log(`[useFetchApi] Request key: ${requestKey}`);
     
     // Skip if this is a duplicate request
-    if (lastRequestRef.current === requestKey && loading) {
-      console.log(`Skipping duplicate request to: ${url}`);
-      return data ? Promise.resolve({ data, isCachedResult: true }) : null;
+    if (lastRequestRef.current === requestKey && loadingRef.current) {
+      console.log(`[useFetchApi] Skipping duplicate request to: ${url}`);
+      return dataRef.current ? Promise.resolve({ data: dataRef.current, isCachedResult: true }) : null;
     }
     
     // Cancel previous request if it exists
@@ -92,12 +137,12 @@ const useFetchApi = (endpoint, options = {}) => {
     lastRequestRef.current = requestKey;
     
     // Don't attempt to fetch if we're already loading
-    if (loading) {
+    if (loadingRef.current) {
       // For duplicate requests, return a Promise that resolves with existing data if available
       // instead of rejecting with an error (which causes cascading error handlers to fire)
-      if (data) {
+      if (dataRef.current) {
         return Promise.resolve({
-          data: data,
+          data: dataRef.current,
           isCachedResult: true,
           message: 'Using cached data from in-flight request'
         });
@@ -109,8 +154,7 @@ const useFetchApi = (endpoint, options = {}) => {
       return Promise.reject(duplicateError);
     }
     
-    setLoading(true);
-    setError(null);
+    updateState({ loading: true, error: null });
 
     try {
       // Check if navigator is online before making the request
@@ -128,7 +172,7 @@ const useFetchApi = (endpoint, options = {}) => {
       
       // Handle pagination if present
       if (response.data && response.data.pagination) {
-        setPagination(response.data.pagination);
+        updateState({ pagination: response.data.pagination });
       }
       
       // Transform response if needed
@@ -144,66 +188,35 @@ const useFetchApi = (endpoint, options = {}) => {
               total: 0,
               totalPages: 1,
               currentPage: 1,
-              limit: params.limit || 10
+              limit: paramsRef.current.limit || 10
             }
           };
-          setData(defaultData);
+          updateState({ data: defaultData });
           return defaultData;
         }
       }
       
       const formattedData = transformResponse ? transformResponse(responseData) : responseData;
       
-      // Check if component is still mounted before updating state
+      // Only update state and trigger re-render if the component is still mounted
       if (isMountedRef.current) {
-        setData(formattedData);
+        updateState({ data: formattedData });
       }
-      return response.data;
+      
+      // Return the data regardless of whether we updated state
+      return { data: formattedData };
+      
     } catch (err) {
-      let errorMessage = 'Failed to fetch data';
+      console.error('[useFetchApi] Error fetching resource:', err);
       
-      // Handle different error scenarios
-      if (err.response) {
-        // The server responded with an error status
-        const status = err.response.status;
-        errorMessage = err.response.data?.message || `Server error (${status}): Failed to fetch data`;
-        
-        // Special handling for common status codes
-        if (status === 401) {
-          errorMessage = 'Authentication required. Please log in.';
-        } else if (status === 403) {
-          errorMessage = err.response.data?.message || 'You do not have permission to access this resource.';
-        } else if (status === 404) {
-          errorMessage = `The requested resource was not found at ${url}.`;
-        } else if (status >= 500) {
-          errorMessage = 'Server error. Please try again later.';
-        }
-      } else if (err.request) {
-        // Request was made but no response received
-        errorMessage = 'No response from server. Please check your internet connection.';
-      } else {
-        // Something else caused the error
-        errorMessage = err.message || errorMessage;
-      }
+      // Create a clean error object
+      const error = new Error(
+        err.response?.data?.message || 
+        err.message || 
+        'An error occurred while fetching data'
+      );
       
-      // Check if component is still mounted before updating state
-      if (isMountedRef.current) {
-        setError(errorMessage);
-      }
-      
-      // Create a more detailed error object
-      const error = new Error(errorMessage);
-      
-      // Preserve original response data if available
-      if (err.response && err.response.data) {
-        error.originalResponse = err.response.data;
-        // Copy the error code if available
-        if (err.response.data.code) {
-          error.code = err.response.data.code;
-        }
-      }
-      
-      // Copy any additional properties from the original axios error
+      // Add useful properties from original error
       if (err.isAxiosError) {
         error.isAxiosError = true;
         error.response = err.response;
@@ -217,22 +230,27 @@ const useFetchApi = (endpoint, options = {}) => {
         error.isConnectionIssue = true;
       }
       
+      // Only update state if the component is still mounted
+      if (isMountedRef.current) {
+        updateState({ error });
+      }
+      
       // Return a rejected promise with the enhanced error
       return Promise.reject(error);
     } finally {
-      // Check if component is still mounted before updating state
+      // Check if component is still mounted before updating loading state
       if (isMountedRef.current) {
-        setLoading(false);
+        updateState({ loading: false });
       }
     }
-  }, [endpoint, params, transformResponse, loading, data]);
+  }, [endpoint, updateState, transformResponse]);
 
   /**
    * Refetch data with current params
    */
   const refetch = useCallback(() => {
-    return fetchResource(null, params);
-  }, [fetchResource, params]);
+    return fetchResource(null, paramsRef.current);
+  }, [fetchResource]);
 
   /**
    * Update params and fetch data
@@ -240,16 +258,16 @@ const useFetchApi = (endpoint, options = {}) => {
    */
   const updateParams = useCallback((newParams) => {
     if (isMountedRef.current) {
-      setParams(prev => ({ ...prev, ...newParams }));
+      updateState({ params: newParams });
     }
-  }, []);
+  }, [updateState]);
 
   // Memoize getById function to prevent unnecessary re-renders
   const getById = useCallback((id) => {
     // If already loading this ID, don't fetch again
-    if (loading) return Promise.resolve(data);
+    if (loadingRef.current) return Promise.resolve(dataRef.current);
     return fetchResource(id);
-  }, [fetchResource, loading, data]);
+  }, [fetchResource]);
 
   // Fetch data on mount if requested
   useEffect(() => {
@@ -259,15 +277,15 @@ const useFetchApi = (endpoint, options = {}) => {
   }, [fetchOnMount, fetchResource]);
 
   return {
-    loading,
-    error: error ? { message: error } : null,
-    data: data,
-    params,
-    pagination,
+    loading: loadingState,
+    error: errorState ? { message: errorState } : null,
+    data: dataState,
+    params: paramsRef.current,
+    pagination: paginationRef.current,
     fetchResource,
-    getById,
     refetch,
-    updateParams
+    updateParams,
+    getById
   };
 };
 

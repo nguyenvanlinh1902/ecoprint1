@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Button, Chip, Divider,
@@ -18,28 +18,233 @@ import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
 import useFetchApi from '../hooks/api/useFetchApi';
+import axios from 'axios';
 
 const OrderDetailPage = ({ admin = false }) => {
   const { orderId } = useParams();
   const navigate = useNavigate();
-  const { userProfile } = useAuth();
+  const auth = useAuth() || {};
+  const userProfile = auth.userProfile;
+  const { token } = auth;
   
-  // Sử dụng useFetchApi thay vì gọi API trực tiếp
+  // Theo dõi số lượng request để tránh các lần gọi trùng lặp
+  const requestCountRef = useRef(0);
+  
+  // Theo dõi lần render đầu tiên
+  const isFirstRenderRef = useRef(true);
+  
+  // Tham chiếu để lưu AbortController
+  const abortControllerRef = useRef(null);
+  
+  // Khai báo orderStatusSteps trước khi sử dụng trong useMemo
+  const orderStatusSteps = ['pending'];
+  
+  // Sử dụng useFetchApi với cách thiết lập đúng
   const { 
-    data: order, 
-    loading, 
-    error, 
-    refetch: refreshOrder 
-  } = useFetchApi('orders', {
-    fetchOnMount: false
+    data: orderFromHook, 
+    loading: hookLoading, 
+    error: hookError,
+    fetchResource
+  } = useFetchApi('/orders', {
+    fetchOnMount: false  // Disable automatic fetch on mount
   });
+
+  // Add direct API calling approach as fallback
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   
-  // Fetch order data when orderId changes
+  // Direct API call approach - memoized để tránh tạo lại function khi re-render
+  const fetchOrderDirectly = useCallback(async () => {
+    // Add more debugging to check what values are available
+    console.log('Debug token values:', { 
+      orderId, 
+      authToken: token,
+      hasToken: !!token,
+      localStorageToken: localStorage.getItem('token'),
+      userEmail: localStorage.getItem('user_email')
+    });
+    
+    const actualToken = token || localStorage.getItem('token');
+    
+    if (!orderId) {
+      console.log('Missing orderId, cannot fetch order');
+      setLoading(false);
+      setError('Missing order ID');
+      return;
+    }
+    
+    if (!actualToken) {
+      console.log('Missing authentication token, cannot fetch order');
+      setLoading(false);
+      setError('Missing authentication token. Please try logging in again.');
+      return;
+    }
+    
+    // Hủy request cũ nếu có
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    // Tạo AbortController mới
+    abortControllerRef.current = new AbortController();
+    
+    // Kiểm tra nếu đã có request đang chạy, tránh gọi API nhiều lần
+    const currentRequestId = ++requestCountRef.current;
+    
+    // Thiết lập timeout cho request
+    const timeoutId = setTimeout(() => {
+      if (abortControllerRef.current) {
+        console.log('[OrderDetailPage] Request timeout - aborting');
+        abortControllerRef.current.abort();
+      }
+    }, 15000); // 15 seconds timeout
+    
+    try {
+      setLoading(true);
+      console.log('Directly fetching order with ID:', orderId, 'RequestID:', currentRequestId);
+      
+      // Try using Axios directly for more control
+      const API_URL = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
+      
+      console.log('[OrderDetailPage] Sending API request with axios');
+      const response = await axios.get(`${API_URL}/orders/${orderId}`, {
+        headers: {
+          'Authorization': `Bearer ${actualToken}`,
+          'X-User-Email': localStorage.getItem('user_email') || '',
+          'X-User-Role': localStorage.getItem('user_role') || 'user'
+        },
+        signal: abortControllerRef.current.signal
+      });
+      
+      // Xóa timeout khi đã nhận response
+      clearTimeout(timeoutId);
+      
+      // Kiểm tra xem request này có phải là request gần nhất không
+      if (currentRequestId !== requestCountRef.current) {
+        console.log('Ignoring outdated response for request', currentRequestId);
+        return;
+      }
+      
+      console.log('[OrderDetailPage] API response:', response);
+      
+      if (response.data) {
+        let orderData;
+        if (response.data.data) {
+          orderData = response.data.data;
+        } else {
+          orderData = response.data;
+        }
+        
+        console.log('Successfully got order data, setting state:', orderData);
+        setOrder(orderData);
+        setError('');
+      } else {
+        console.error('No data in response');
+        setError('No data returned from server');
+      }
+    } catch (err) {
+      // Xóa timeout khi có lỗi
+      clearTimeout(timeoutId);
+      
+      // Kiểm tra nếu lỗi do hủy request
+      if (err.name === 'AbortError' || err.message === 'canceled') {
+        console.log('Request was canceled due to component unmount, timeout or new request');
+        setError('Request was canceled. Please try again.');
+        return;
+      }
+      
+      // Kiểm tra xem request này có phải là request gần nhất không
+      if (currentRequestId !== requestCountRef.current) {
+        console.log('Ignoring outdated error for request', currentRequestId);
+        return;
+      }
+      
+      console.error('Error in direct order fetch:', err);
+      
+      // Hiển thị thông tin chi tiết hơn về lỗi
+      let errorMessage = 'Failed to fetch order details';
+      
+      if (err.response) {
+        const status = err.response.status;
+        
+        if (status === 401 || status === 403) {
+          // Unauthorized error - refresh auth token
+          console.log('Authentication error. Refreshing token required.');
+          errorMessage = 'Your session may have expired. Please try logging in again.';
+          
+          // Potentially redirect to login page here
+          // navigate('/auth/login');
+        } else {
+          errorMessage = `Server error: ${status} ${err.response.statusText || ''}`;
+        }
+        
+        console.error('Error response:', err.response.data);
+      } else if (err.request) {
+        errorMessage = 'No response received from server. Please check your connection.';
+      } else {
+        errorMessage = err.message || errorMessage;
+      }
+      
+      setError(errorMessage);
+    } finally {
+      // Chỉ cập nhật trạng thái loading nếu là request gần nhất
+      if (currentRequestId === requestCountRef.current) {
+        console.log('Setting loading to false for request', currentRequestId);
+        setLoading(false);
+      }
+    }
+  }, [orderId, token]);
+  
+  // Try direct API approach only if orderId exists - chỉ chạy khi dependency thay đổi
   useEffect(() => {
     if (orderId) {
-      refreshOrder(orderId);
+      // Đặt lại trạng thái để fetch mới khi orderId thay đổi
+      isFirstRenderRef.current = true;
+      console.log('Fetching order details for ID:', orderId);
+      
+      // Gọi trực tiếp fetchOrderDirectly ngay lập tức
+      fetchOrderDirectly();
     }
-  }, [orderId, refreshOrder]);
+    
+    // Cleanup function để hủy request khi component unmount
+    return () => {
+      if (abortControllerRef.current) {
+        console.log('Aborting any in-flight requests');
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [orderId, fetchOrderDirectly]);
+  
+  // Memoize các giá trị phức tạp được tính toán từ order để tránh re-render không cần thiết
+  const orderStatusInfo = useMemo(() => {
+    if (!order) return { activeStep: -1, isPending: false, canUpdateStatus: false, canPayForOrder: false };
+    
+    const activeStep = orderStatusSteps.indexOf(order.status);
+    const isPending = order.status === 'pending';
+    const canUpdateStatus = admin && order.status !== 'cancelled' && order.status !== 'delivered';
+    const canPayForOrder = !admin && isPending && !order.paid;
+    
+    return { activeStep, isPending, canUpdateStatus, canPayForOrder };
+  }, [order, admin, orderStatusSteps]);
+  
+  // Add debugging of order structure
+  useEffect(() => {
+    if (order) {
+      console.log('Order structure:', order);
+    }
+  }, [order]);
+  
+  // Helper function to safely format dates - memoized to avoid re-rendering
+  const safeFormatDateTime = useCallback((dateValue) => {
+    try {
+      if (!dateValue) return 'N/A';
+      return formatDateTime(dateValue);
+    } catch (err) {
+      console.error('Error formatting date:', err, dateValue);
+      return 'Invalid date';
+    }
+  }, []);
   
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState('');
@@ -51,9 +256,7 @@ const OrderDetailPage = ({ admin = false }) => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
   
-  const orderStatusSteps = ['pending', 'processing', 'shipped', 'delivered'];
-
-  const handlePayForOrder = async () => {
+  const handlePayForOrder = useCallback(async () => {
     try {
       setPaymentLoading(true);
       setPaymentError('');
@@ -63,26 +266,26 @@ const OrderDetailPage = ({ admin = false }) => {
       setPaymentSuccess(true);
       
       // Làm mới dữ liệu đơn hàng sau khi thanh toán
-      refreshOrder();
+      fetchOrderDirectly();
       
     } catch (error) {
-      /* error removed */
+      console.error('Payment error:', error);
       setPaymentError(error.response?.data?.message || 'Payment failed. Please try again later.');
     } finally {
       setPaymentLoading(false);
     }
-  };
+  }, [orderId, fetchOrderDirectly]);
   
-  const handleOpenStatusDialog = (status) => {
+  const handleOpenStatusDialog = useCallback((status) => {
     setNewStatus(status);
     setStatusDialogOpen(true);
-  };
+  }, []);
   
-  const handleCloseStatusDialog = () => {
+  const handleCloseStatusDialog = useCallback(() => {
     setStatusDialogOpen(false);
-  };
+  }, []);
   
-  const handleUpdateStatus = async () => {
+  const handleUpdateStatus = useCallback(async () => {
     try {
       setStatusLoading(true);
       setStatusError('');
@@ -90,21 +293,22 @@ const OrderDetailPage = ({ admin = false }) => {
       await api.orders.updateStatus(orderId, newStatus);
       
       // Làm mới dữ liệu đơn hàng sau khi cập nhật trạng thái
-      refreshOrder();
+      fetchOrderDirectly();
       
       handleCloseStatusDialog();
     } catch (error) {
-      /* error removed */
+      console.error('Status update error:', error);
       setStatusError(error.response?.data?.message || 'Failed to update status. Please try again.');
     } finally {
       setStatusLoading(false);
     }
-  };
+  }, [orderId, newStatus, fetchOrderDirectly, handleCloseStatusDialog]);
 
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
         <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Loading order details...</Typography>
       </Box>
     );
   }
@@ -112,9 +316,18 @@ const OrderDetailPage = ({ admin = false }) => {
   if (error) {
     return (
       <Box>
-        <Typography color="error" variant="h6" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+        <Typography variant="body1" sx={{ mb: 2 }}>
+          Unable to load order details. This might be due to:
         </Typography>
+        <ul>
+          <li>Network connection issues</li>
+          <li>The order ID might be invalid</li>
+          <li>You may not have permission to view this order</li>
+          <li>The server may be experiencing issues</li>
+        </ul>
         <Button 
           variant="outlined" 
           startIcon={<ArrowBackIcon />}
@@ -129,8 +342,11 @@ const OrderDetailPage = ({ admin = false }) => {
   if (!order) {
     return (
       <Box>
-        <Typography variant="h6" sx={{ mb: 2 }}>
+        <Alert severity="warning" sx={{ mb: 2 }}>
           Order not found.
+        </Alert>
+        <Typography variant="body1" sx={{ mb: 2 }}>
+          We couldn't find an order with ID: {orderId}
         </Typography>
         <Button 
           variant="outlined" 
@@ -143,10 +359,8 @@ const OrderDetailPage = ({ admin = false }) => {
     );
   }
   
-  const activeStep = orderStatusSteps.indexOf(order.status);
-  const canUpdateStatus = admin && order.status !== 'cancelled' && order.status !== 'delivered';
-  const isPending = order.status === 'pending';
-  const canPayForOrder = !admin && isPending && !order.paid;
+  // Dùng destructuring để lấy các giá trị từ orderStatusInfo
+  const { activeStep, isPending, canUpdateStatus, canPayForOrder } = orderStatusInfo;
 
   return (
     <Box>
@@ -169,21 +383,6 @@ const OrderDetailPage = ({ admin = false }) => {
           <Typography variant="h6">Order Status</Typography>
           <StatusBadge status={order.status} />
         </Box>
-        
-        <Stepper activeStep={activeStep} alternativeLabel>
-          <Step>
-            <StepLabel>Pending</StepLabel>
-          </Step>
-          <Step>
-            <StepLabel>Processing</StepLabel>
-          </Step>
-          <Step>
-            <StepLabel>Shipped</StepLabel>
-          </Step>
-          <Step>
-            <StepLabel>Delivered</StepLabel>
-          </Step>
-        </Stepper>
         
         {order.status === 'cancelled' && (
           <Alert severity="error" sx={{ mt: 2 }}>
@@ -268,7 +467,7 @@ const OrderDetailPage = ({ admin = false }) => {
                     <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>
                       Date Placed
                     </TableCell>
-                    <TableCell>{formatDateTime(order.createdAt)}</TableCell>
+                    <TableCell>{safeFormatDateTime(order.createdAt)}</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell component="th" scope="row" sx={{ fontWeight: 'bold' }}>
@@ -305,59 +504,197 @@ const OrderDetailPage = ({ admin = false }) => {
               Product Information
             </Typography>
             
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} sm={4}>
-                <img 
-                  src={order.product?.imageUrl || 'https://via.placeholder.com/150'} 
-                  alt={order.product?.name} 
-                  style={{ 
-                    width: '100%', 
-                    height: 'auto', 
-                    maxHeight: '150px', 
-                    objectFit: 'contain'
-                  }} 
-                />
-              </Grid>
-              <Grid item xs={12} sm={8}>
-                <Typography variant="h6">{order.product?.name}</Typography>
-                <Typography variant="body2" color="text.secondary" paragraph>
-                  {order.product?.description}
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Unit Price:
-                    </Typography>
-                    <Typography>
-                      {formatCurrency(order.product?.basePrice)}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Quantity:
-                    </Typography>
-                    <Typography>
-                      {order.quantity}
-                    </Typography>
+            {/* Handle for single product model */}
+            {order.product && (
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={4}>
+                  <img 
+                    src={order.product?.imageUrl || 'https://via.placeholder.com/150'} 
+                    alt={order.product?.name} 
+                    style={{ 
+                      width: '100%', 
+                      height: 'auto', 
+                      maxHeight: '150px', 
+                      objectFit: 'contain'
+                    }} 
+                  /> 
+                </Grid>
+                <Grid item xs={12} sm={8}>
+                  <Typography variant="h6">{order.product?.name}</Typography>
+                  <Typography variant="body2" color="text.secondary" paragraph>
+                    {order.product?.description}
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        Unit Price:
+                      </Typography>
+                      <Typography>
+                        {formatCurrency(order.product?.basePrice)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        Quantity:
+                      </Typography>
+                      <Typography>
+                        {order.quantity}
+                      </Typography>
+                    </Grid>
                   </Grid>
                 </Grid>
               </Grid>
-            </Grid>
+            )}
             
+            {/* Handle for items array (multiple products) */}
+            {order.items && order.items.length > 0 && (
+              <TableContainer sx={{ mb: 2 }}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Product</TableCell>
+                      <TableCell align="center">Quantity</TableCell>
+                      <TableCell align="right">Price</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {order.items.map((item, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            {item.imageUrl && (
+                              <Box
+                                component="img"
+                                src={item.imageUrl}
+                                alt={item.name}
+                                sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain' }}
+                              />
+                            )}
+                            <Box>
+                              <Typography variant="body1">{item.name || 'N/A'}</Typography>
+                              {item.sku && (
+                                <Typography variant="caption" color="text.secondary">
+                                  SKU: {item.sku}
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                        </TableCell>
+                        <TableCell align="center">{item.quantity}</TableCell>
+                        <TableCell align="right">{formatCurrency(item.price)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+            
+            {/* If neither product nor items exist, show empty state */}
+            {(!order.product && (!order.items || order.items.length === 0)) && (
+              <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+                No product information available for this order.
+              </Typography>
+            )}
+            
+            {/* Handle product options in a better format */}
             {order.options && Object.keys(order.options).length > 0 && (
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>
+              <Box sx={{ mt: 3, border: '1px solid #eee', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
                   Selected Options
                 </Typography>
-                <List dense>
+                <Grid container spacing={2}>
                   {Object.entries(order.options).map(([key, value]) => (
-                    <ListItem key={key} disablePadding>
-                      <ListItemText 
-                        primary={`${key}: ${value}`}
-                      />
-                    </ListItem>
+                    <Grid item xs={12} sm={6} key={key}>
+                      <Typography variant="body2" color="text.secondary" component="span">
+                        {key}:
+                      </Typography>{' '}
+                      <Typography variant="body2" component="span" sx={{ fontWeight: 'medium' }}>
+                        {typeof value === 'object' 
+                          ? JSON.stringify(value) 
+                          : String(value)}
+                      </Typography>
+                    </Grid>
                   ))}
-                </List>
+                </Grid>
+              </Box>
+            )}
+            
+            {/* Display Print Options if available */}
+            {order.items && order.items.some(item => item.printOptions) && (
+              <Box sx={{ mt: 3, border: '1px solid #eee', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Print Options
+                </Typography>
+                {order.items.map((item, idx) => 
+                  item.printOptions && (
+                    <Box key={`print-options-${idx}`} sx={{ mb: idx < order.items.length - 1 ? 2 : 0 }}>
+                      {item.name && (
+                        <Typography variant="body2" sx={{ fontWeight: 'medium', mb: 1 }}>
+                          {item.name} ({item.quantity}x)
+                        </Typography>
+                      )}
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6}>
+                          <Typography variant="body2" color="text.secondary" component="span">
+                            Base Position:
+                          </Typography>{' '}
+                          <Typography variant="body2" component="span" sx={{ fontWeight: 'medium' }}>
+                            {item.printOptions.basePosition.replace('_', ' ')}
+                          </Typography>
+                        </Grid>
+                        
+                        {item.printOptions.additionalPositions && Object.entries(item.printOptions.additionalPositions)
+                          .filter(([_, value]) => value.available)
+                          .map(([position, details]) => (
+                            <Grid item xs={12} sm={6} key={position}>
+                              <Typography variant="body2" color="text.secondary" component="span">
+                                {position.replace('_', ' ')}:
+                              </Typography>{' '}
+                              <Typography variant="body2" component="span" sx={{ fontWeight: 'medium' }}>
+                                {formatCurrency(details.price)} additional
+                              </Typography>
+                            </Grid>
+                          ))
+                        }
+                      </Grid>
+                    </Box>
+                  )
+                )}
+              </Box>
+            )}
+            
+            {/* Display Customizations if available */}
+            {order.customizations && order.customizations.length > 0 && (
+              <Box sx={{ mt: 3, border: '1px solid #eee', borderRadius: 1, p: 2 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 'bold' }}>
+                  Customizations
+                </Typography>
+                <Grid container spacing={2}>
+                  {order.customizations.map((customization, index) => (
+                    <Grid item xs={12} key={index}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                            {customization.type} - {customization.position.replace('_', ' ')}
+                          </Typography>
+                          {customization.designUrl && (
+                            <Typography variant="body2" color="text.secondary">
+                              <Link href={customization.designUrl} target="_blank" rel="noopener">
+                                View Design
+                              </Link>
+                            </Typography>
+                          )}
+                        </Box>
+                        <Chip 
+                          label={formatCurrency(customization.price)} 
+                          color={customization.price > 0 ? 'primary' : 'default'}
+                          variant="outlined" 
+                          size="small"
+                        />
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
               </Box>
             )}
             
@@ -376,33 +713,48 @@ const OrderDetailPage = ({ admin = false }) => {
         
         <Grid item xs={12} md={5}>
           <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Shipping Information
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+              <ShippingIcon sx={{ mr: 1 }} /> Shipping Information
             </Typography>
             
-            <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
-              {order.shipping?.recipientName}
-            </Typography>
-            <Typography variant="body2">
-              {order.shipping?.address}
-            </Typography>
-            <Typography variant="body2">
-              {order.shipping?.city}, {order.shipping?.state} {order.shipping?.zipCode}
-            </Typography>
-            <Typography variant="body2" sx={{ mb: 2 }}>
-              Phone: {order.shipping?.phone}
-            </Typography>
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+              <Typography variant="body1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                {order.shippingAddress?.recipientName || order.shipping?.recipientName || 'Not specified'}
+              </Typography>
+              <Typography variant="body2">
+                {order.shippingAddress?.address || order.shipping?.address || 'Address not provided'}
+              </Typography>
+              <Typography variant="body2">
+                {[
+                  order.shippingAddress?.city || order.shipping?.city, 
+                  order.shippingAddress?.state || order.shipping?.state, 
+                  order.shippingAddress?.zipCode || order.shipping?.zipCode
+                ].filter(Boolean).join(', ') || 'Location details not provided'}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                Phone: {order.shippingAddress?.phone || order.shipping?.phone || 'Not provided'}
+              </Typography>
+            </Box>
             
             <Divider sx={{ my: 2 }} />
             
-            <Typography variant="subtitle1">
-              Shipping Method
-            </Typography>
-            <Typography variant="body2">
-              {order.shipping?.shippingMethod === 'express' 
-                ? 'Express Shipping (1-2 business days)' 
-                : 'Standard Shipping (3-5 business days)'}
-            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                  Shipping Method
+                </Typography>
+                <Typography variant="body2">
+                  {(order.shippingAddress?.shippingMethod || order.shipping?.shippingMethod) === 'express' 
+                    ? 'Express Shipping (1-2 business days)' 
+                    : 'Standard Shipping (3-5 business days)'}
+                </Typography>
+              </Box>
+              <Chip 
+                label={(order.shippingAddress?.shippingMethod || order.shipping?.shippingMethod) === 'express' ? 'Express' : 'Standard'} 
+                color={(order.shippingAddress?.shippingMethod || order.shipping?.shippingMethod) === 'express' ? 'primary' : 'default'}
+                variant="outlined"
+              />
+            </Box>
           </Paper>
           
           <Paper sx={{ p: 3 }}>
@@ -416,11 +768,16 @@ const OrderDetailPage = ({ admin = false }) => {
                   <TableRow>
                     <TableCell>Subtotal</TableCell>
                     <TableCell align="right">
-                      {formatCurrency(order.product?.basePrice * order.quantity)}
+                      {formatCurrency(
+                        // Handle different order structures
+                        order.subtotal ||  // Use subtotal if available 
+                        (order.items ? order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) : 0) || // Calculate from items
+                        (order.product ? order.product.basePrice * order.quantity : 0) // Legacy structure
+                      )}
                     </TableCell>
                   </TableRow>
                   
-                  {order.discounts && order.discounts > 0 && (
+                  {(order.discounts && order.discounts > 0) && (
                     <TableRow>
                       <TableCell>Discounts</TableCell>
                       <TableCell align="right" sx={{ color: 'success.main' }}>
@@ -429,17 +786,35 @@ const OrderDetailPage = ({ admin = false }) => {
                     </TableRow>
                   )}
                   
+                  {(order.customizationTotal && order.customizationTotal > 0) && (
+                    <TableRow>
+                      <TableCell>Customizations</TableCell>
+                      <TableCell align="right">
+                        {formatCurrency(order.customizationTotal)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  
                   <TableRow>
                     <TableCell>Shipping</TableCell>
                     <TableCell align="right">
-                      {formatCurrency(order.shipping?.cost || 0)}
+                      {formatCurrency(
+                        order.shipping?.cost || 
+                        order.shippingFee || 
+                        (order.shipping?.shippingMethod === 'express' ? 15 : 5) || 
+                        0
+                      )}
                     </TableCell>
                   </TableRow>
                   
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Total</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                      {formatCurrency(order.totalPrice)}
+                      {formatCurrency(
+                        order.total || 
+                        order.totalPrice || 
+                        (order.subtotal + (order.shipping?.cost || order.shippingFee || 0))
+                      )}
                     </TableCell>
                   </TableRow>
                 </TableBody>
