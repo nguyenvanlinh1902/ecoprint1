@@ -3,8 +3,8 @@ import { CircularProgress, Box } from '@mui/material';
 
 /**
  * DefaultLoadable HOC
- * Wraps a lazily loaded component with Suspense and a loading indicator
- * @param {React.LazyExoticComponent} Component - The lazy-loaded component to wrap
+ * Wraps a component with Suspense and a loading indicator
+ * @param {React.ComponentType} Component - The component to wrap
  * @returns {React.FC} - The wrapped component with loading indicator
  */
 const DefaultLoadable = (Component) => (props) => {

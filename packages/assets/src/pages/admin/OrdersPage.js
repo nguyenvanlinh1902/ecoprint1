@@ -71,34 +71,49 @@ const OrdersPage = () => {
       // Sử dụng endpoint admin đã được cấu hình
       const response = await api.admin.getAllOrders(params);
       
-      // Kiểm tra cấu trúc dữ liệu trả về
-      if (response.data && response.data.data) {
-        setOrders(response.data.data.orders || []);
-        setTotalPages(response.data.data.totalPages || 1);
+      // Log response to debug
+      console.log('Admin orders API response:', response.data);
+      
+      // Handle the updated API response format with better error handling
+      if (response.data && response.data.success) {
+        // New format with success flag
+        const responseData = response.data.data;
+        setOrders(responseData.orders || []);
         
-        // Update stats if provided
-        if (response.data.data.stats) {
-          setStats(response.data.data.stats);
+        if (responseData.pagination) {
+          setTotalPages(responseData.pagination.totalPages || 1);
+          
+          // Update stats if available
+          if (responseData.stats) {
+            setStats(responseData.stats);
+          }
         }
       } else if (response.data) {
-        // Cấu trúc dữ liệu đơn giản hơn
-        setOrders(response.data.orders || []);
-        setTotalPages(response.data.totalPages || 1);
-        
-        // Update stats if provided
-        if (response.data.stats) {
-          setStats(response.data.stats);
+        // Legacy format (direct data)
+        if (response.data.orders) {
+          setOrders(response.data.orders || []);
+          setTotalPages(response.data.pagination?.totalPages || 1);
+          
+          // Update stats if provided
+          if (response.data.stats) {
+            setStats(response.data.stats);
+          }
+        } else {
+          console.error('Unexpected API response structure:', response.data);
+          setOrders([]);
+          setTotalPages(1);
         }
       } else {
         // Fallback
         setOrders([]);
         setTotalPages(1);
-        console.error('Unexpected API response structure:', response);
+        console.error('Unexpected API response format:', response);
       }
-      
     } catch (error) {
       console.error('Error fetching orders:', error);
-      setError('Không thể tải danh sách đơn hàng. Vui lòng thử lại sau.');
+      setError('Could not load the orders list. Please try again later.');
+      setOrders([]);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }

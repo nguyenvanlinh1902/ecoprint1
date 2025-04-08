@@ -113,7 +113,8 @@ export default defineConfig(({ mode }) => {
         '@mui/icons-material',
         '@mui/system',
         '@emotion/react',
-        '@emotion/styled'
+        '@emotion/styled',
+        'prop-types'
       ],
       esbuildOptions: {
         loader: {

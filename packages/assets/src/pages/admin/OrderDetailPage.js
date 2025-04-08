@@ -69,6 +69,7 @@ const OrderDetailPage = () => {
         setLoading(true);
         setError(null);
         
+        // Use the admin API endpoint to get the order
         const response = await api.admin.getOrderById(orderId);
         const orderData = response.data.data || response.data;
         

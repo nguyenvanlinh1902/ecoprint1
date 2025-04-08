@@ -1,12 +1,10 @@
-import React, { lazy } from 'react';
-import DefaultLoadable from '../DefaultLoadable';
+import React from 'react';
+import AuthLayout from '../../layouts/AuthLayout';
 
 /**
  * AuthLayout Loadable Component
- * This is a specialized loadable component for the AuthLayout
+ * Using direct import instead of lazy loading to avoid dynamic import errors
  */
-const AuthLayoutLoadable = DefaultLoadable(
-  lazy(() => import('../../layouts/AuthLayout'))
-);
+const AuthLayoutLoadable = (props) => <AuthLayout {...props} />;
 
 export default AuthLayoutLoadable; 

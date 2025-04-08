@@ -496,64 +496,52 @@ export const confirmBatchImport = async (ctx) => {
  */
 export const getAllOrders = async (ctx) => {
   try {
-    const { status, email, startDate, endDate, limit = 20, page = 1 } = ctx.query;
+    const { status, email, startDate, endDate, limit = 20, page = 1, search } = ctx.query;
     
-    let query = firestore.collection('orders');
+    // Get user role from request header or body
+    const userRole = ctx.req.headers['x-user-role'] || ctx.req.body?.role;
     
-    // Apply filters
-    if (status) {
-      query = query.where('status', '==', status);
+    // Ensure this endpoint is only accessible by admins
+    if (userRole !== 'admin') {
+      ctx.status = 403;
+      ctx.body = { 
+        success: false,
+        message: 'Access denied. Admin role required.'
+      };
+      return;
     }
     
-    if (email) {
-      query = query.where('email', '==', email);
-    }
+    console.log(`[Admin getAllOrders] Fetching orders with params:`, { status, email, page, limit });
     
-    // Apply date range if both start and end dates are provided
-    if (startDate && endDate) {
-      const startTimestamp = firestore.Timestamp.fromDate(new Date(startDate));
-      const endTimestamp = firestore.Timestamp.fromDate(new Date(endDate));
-      
-      query = query.where('createdAt', '>=', startTimestamp)
-                   .where('createdAt', '<=', endTimestamp);
-    }
-    
-    // Count total for pagination
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
-    
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    query = query.orderBy('createdAt', 'desc')
-                .limit(parseInt(limit))
-                .offset(offset);
-                
-    const ordersSnapshot = await query.get();
-    const orders = [];
-    
-    ordersSnapshot.forEach(doc => {
-      const orderData = doc.data();
-      orders.push({
-        id: doc.id,
-        ...orderData,
-        createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
-        updatedAt: orderData.updatedAt ? orderData.updatedAt.toDate() : null
-      });
+    // Use the repository instead of direct Firestore access
+    const result = await orderRepository.getAllOrders({
+      status,
+      email,
+      startDate,
+      endDate,
+      limit: parseInt(limit, 10),
+      page: parseInt(page, 10),
+      search
     });
+    
+    console.log(`[Admin getAllOrders] Found ${result.orders.length} orders`);
     
     ctx.status = 200;
     ctx.body = { 
-      orders,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+      success: true,
+      data: {
+        orders: result.orders,
+        pagination: result.pagination
       }
     };
   } catch (error) {
+    console.error('[Admin getAllOrders] Error:', error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      message: 'Failed to fetch orders',
+      error: error.message 
+    };
   }
 };
 
@@ -565,44 +553,19 @@ export const getUserOrders = async (ctx) => {
     const { email } = ctx.state.user;
     const { status, limit = 20, page = 1 } = ctx.query;
     
-    let query = firestore.collection('orders').where('email', '==', email);
+    console.log(`[getUserOrders] Fetching orders for user ${email} with params:`, { status, page, limit });
     
-    if (status) {
-      query = query.where('status', '==', status);
-    }
-    
-    // Count total for pagination
-    const countSnapshot = await query.count().get();
-    const total = countSnapshot.data().count;
-    
-    // Apply pagination
-    const offset = (page - 1) * limit;
-    query = query.orderBy('createdAt', 'desc')
-                .limit(parseInt(limit))
-                .offset(offset);
-                
-    const ordersSnapshot = await query.get();
-    const orders = [];
-    
-    ordersSnapshot.forEach(doc => {
-      const orderData = doc.data();
-      orders.push({
-        id: doc.id,
-        ...orderData,
-        createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
-        updatedAt: orderData.updatedAt ? orderData.updatedAt.toDate() : null
-      });
+    // Use the repository instead of direct Firestore access
+    const result = await orderRepository.getOrdersByEmail(email, {
+      status,
+      limit: parseInt(limit, 10),
+      page: parseInt(page, 10)
     });
     
     ctx.status = 200;
     ctx.body = { 
-      orders,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+      orders: result.orders,
+      pagination: result.pagination
     };
   } catch (error) {
     console.error('Error getting user orders:', error);
@@ -618,6 +581,12 @@ export const getOrderDetails = async (ctx) => {
   try {
     const { orderId } = ctx.params;
     
+    // Get information about the requesting user
+    const userEmail = ctx.req.headers['x-user-email'] || ctx.req.body?.email || ctx.state.user?.email;
+    const userRole = ctx.req.headers['x-user-role'] || ctx.req.body?.role || ctx.state.user?.role;
+    
+    console.log(`[getOrderDetails] Request from ${userEmail} with role ${userRole} for order ${orderId}`);
+    
     if (!orderId) {
       ctx.status = 400;
       ctx.body = {
@@ -627,9 +596,10 @@ export const getOrderDetails = async (ctx) => {
       return;
     }
     
-    const orderDoc = await firestore.collection('orders').doc(orderId).get();
+    // Use repository to get order
+    const order = await orderRepository.getOrderById(orderId);
     
-    if (!orderDoc.exists) {
+    if (!order) {
       ctx.status = 404;
       ctx.body = {
         success: false,
@@ -638,15 +608,22 @@ export const getOrderDetails = async (ctx) => {
       return;
     }
     
-    const orderData = orderDoc.data();
+    // Check if the user has permission to view this order
+    // Admins can view any order, regular users can only view their own orders
+    const isAdmin = userRole === 'admin';
+    const isOrderOwner = order.email === userEmail;
     
-    // Format dates
-    const order = {
-      id: orderDoc.id,
-      ...orderData,
-      createdAt: orderData.createdAt ? orderData.createdAt.toDate() : null,
-      updatedAt: orderData.updatedAt ? orderData.updatedAt.toDate() : null
-    };
+    if (!isAdmin && !isOrderOwner) {
+      console.log(`[getOrderDetails] Access denied: ${userEmail} (${userRole}) attempted to view order for ${order.email}`);
+      ctx.status = 403;
+      ctx.body = {
+        success: false,
+        message: 'You do not have permission to view this order'
+      };
+      return;
+    }
+    
+    console.log(`[getOrderDetails] Successfully fetched order ${orderId}`);
     
     ctx.status = 200;
     ctx.body = {
@@ -691,47 +668,21 @@ export const updateOrderStatus = async (ctx) => {
       return;
     }
     
-    const orderRef = firestore.collection('orders').doc(orderId);
-    const orderDoc = await orderRef.get();
-    
-    if (!orderDoc.exists) {
-      ctx.status = 404;
-      ctx.body = {
-        success: false,
-        message: 'Order not found'
-      };
-      return;
-    }
-    
-    // Update the order status
-    await orderRef.update({
-      status,
-      updatedAt: new Date()
-    });
-    
-    // Get the updated order
-    const updatedOrderDoc = await orderRef.get();
-    const updatedOrderData = updatedOrderDoc.data();
-    
-    const order = {
-      id: updatedOrderDoc.id,
-      ...updatedOrderData,
-      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
-      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
-    };
+    // Use repository to update order status
+    const updatedOrder = await orderRepository.updateOrderStatus(orderId, status);
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      data: order,
+      data: updatedOrder,
       message: 'Order status updated successfully'
     };
   } catch (error) {
     console.error('Error updating order status:', error);
-    ctx.status = 500;
+    ctx.status = error.message === 'Order not found' ? 404 : 500;
     ctx.body = {
       success: false,
-      message: 'Failed to update order status',
+      message: error.message === 'Order not found' ? 'Order not found' : 'Failed to update order status',
       error: error.message
     };
   }
@@ -744,7 +695,7 @@ export const updateOrderStatus = async (ctx) => {
 export const updateOrderTracking = async (ctx) => {
   try {
     const { orderId } = ctx.params;
-    const { carrier, trackingNumber } = ctx.req.body;
+    const { carrier, trackingNumber, trackingUrl } = ctx.req.body;
     
     if (!orderId) {
       ctx.status = 400;
@@ -764,50 +715,25 @@ export const updateOrderTracking = async (ctx) => {
       return;
     }
     
-    const orderRef = firestore.collection('orders').doc(orderId);
-    const orderDoc = await orderRef.get();
-    
-    if (!orderDoc.exists) {
-      ctx.status = 404;
-      ctx.body = {
-        success: false,
-        message: 'Order not found'
-      };
-      return;
-    }
-    
-    // Update the order tracking info
-    await orderRef.update({
-      tracking: {
-        carrier,
-        trackingNumber
-      },
-      updatedAt: new Date()
+    // Use repository to update tracking
+    const updatedOrder = await orderRepository.updateOrderTracking(orderId, {
+      carrier,
+      trackingNumber,
+      trackingUrl
     });
-    
-    // Get the updated order
-    const updatedOrderDoc = await orderRef.get();
-    const updatedOrderData = updatedOrderDoc.data();
-    
-    const order = {
-      id: updatedOrderDoc.id,
-      ...updatedOrderData,
-      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
-      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
-    };
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      data: order,
+      data: updatedOrder,
       message: 'Order tracking information updated successfully'
     };
   } catch (error) {
     console.error('Error updating order tracking:', error);
-    ctx.status = 500;
+    ctx.status = error.message === 'Order not found' ? 404 : 500;
     ctx.body = {
       success: false,
-      message: 'Failed to update order tracking information',
+      message: error.message === 'Order not found' ? 'Order not found' : 'Failed to update order tracking information',
       error: error.message
     };
   }
@@ -840,47 +766,21 @@ export const updateOrderNotes = async (ctx) => {
       return;
     }
     
-    const orderRef = firestore.collection('orders').doc(orderId);
-    const orderDoc = await orderRef.get();
-    
-    if (!orderDoc.exists) {
-      ctx.status = 404;
-      ctx.body = {
-        success: false,
-        message: 'Order not found'
-      };
-      return;
-    }
-    
-    // Update the order notes
-    await orderRef.update({
-      adminNotes,
-      updatedAt: new Date()
-    });
-    
-    // Get the updated order
-    const updatedOrderDoc = await orderRef.get();
-    const updatedOrderData = updatedOrderDoc.data();
-    
-    const order = {
-      id: updatedOrderDoc.id,
-      ...updatedOrderData,
-      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
-      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
-    };
+    // Use repository to update notes
+    const updatedOrder = await orderRepository.updateOrderNotes(orderId, adminNotes);
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      data: order,
+      data: updatedOrder,
       message: 'Order notes updated successfully'
     };
   } catch (error) {
     console.error('Error updating order notes:', error);
-    ctx.status = 500;
+    ctx.status = error.message === 'Order not found' ? 404 : 500;
     ctx.body = {
       success: false,
-      message: 'Failed to update order notes',
+      message: error.message === 'Order not found' ? 'Order not found' : 'Failed to update order notes',
       error: error.message
     };
   }
@@ -924,10 +824,10 @@ export const updateUserOrderComments = async (ctx) => {
       return;
     }
     
-    const orderRef = firestore.collection('orders').doc(orderId);
-    const orderDoc = await orderRef.get();
+    // First verify the order exists and user has access
+    const existingOrder = await orderRepository.getOrderById(orderId);
     
-    if (!orderDoc.exists) {
+    if (!existingOrder) {
       ctx.status = 404;
       ctx.body = {
         success: false,
@@ -936,10 +836,8 @@ export const updateUserOrderComments = async (ctx) => {
       return;
     }
     
-    const orderData = orderDoc.data();
-    
     // Ensure the user has permission to add comments to this order
-    if (orderData.email !== email && orderData.userId !== uid) {
+    if (existingOrder.email !== email && existingOrder.userId !== uid) {
       ctx.status = 403;
       ctx.body = {
         success: false,
@@ -948,46 +846,21 @@ export const updateUserOrderComments = async (ctx) => {
       return;
     }
     
-    // Get existing comments or initialize empty array
-    const userComments = orderData.userComments || [];
-    
-    // Add new comment with timestamp and user info
-    userComments.push({
-      text: comment,
-      createdAt: new Date(),
-      userEmail: email,
-      id: `comment_${Date.now()}`
-    });
-    
-    // Update the order with new comments
-    await orderRef.update({
-      userComments,
-      updatedAt: new Date()
-    });
-    
-    // Get the updated order
-    const updatedOrderDoc = await orderRef.get();
-    const updatedOrderData = updatedOrderDoc.data();
-    
-    const order = {
-      id: updatedOrderDoc.id,
-      ...updatedOrderData,
-      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
-      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
-    };
+    // Use repository to add comment
+    const updatedOrder = await orderRepository.addOrderComment(orderId, comment, email);
     
     ctx.status = 200;
     ctx.body = {
       success: true,
-      data: order,
+      data: updatedOrder,
       message: 'Order comment added successfully'
     };
   } catch (error) {
     console.error('Error adding order comment:', error);
-    ctx.status = 500;
+    ctx.status = error.message === 'Order not found' ? 404 : 500;
     ctx.body = {
       success: false,
-      message: 'Failed to add order comment',
+      message: error.message === 'Order not found' ? 'Order not found' : 'Failed to add order comment',
       error: error.message
     };
   }
