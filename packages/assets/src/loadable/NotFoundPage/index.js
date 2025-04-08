@@ -6,7 +6,7 @@ import DefaultLoadable from '../DefaultLoadable';
  * This is a specialized loadable component for the NotFoundPage
  */
 const NotFoundPageLoadable = DefaultLoadable(
-  lazy(() => import('@pages/NotFoundPage'))
+  lazy(() => import('../../pages/NotFoundPage'))
 );
 
 export default NotFoundPageLoadable; 

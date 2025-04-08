@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Typography, Box, Paper, Grid, Button, Chip, Divider,
   Table, TableBody, TableCell, TableContainer, TableRow,
   Stepper, Step, StepLabel, CircularProgress, Alert, Dialog,
   DialogActions, DialogContent, DialogContentText, DialogTitle,
-  TextField, IconButton, TableHead
+  TextField, IconButton, TableHead, List, ListItem, ListItemText
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -15,29 +15,37 @@ import {
   LocalShipping as ShippingIcon,
   Receipt as ReceiptIcon,
   CheckCircle as CheckCircleIcon,
-  Assignment as TrackingIcon
+  Assignment as TrackingIcon,
+  Send as SendIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
-import useFetchApi from '../../hooks/api/useFetchApi';
+import { useAuth } from '../../hooks/useAuth';
 import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 const OrderDetailPage = () => {
   const { orderId } = useParams();
   const navigate = useNavigate();
+  const { getUserByEmail } = useSafeAdmin();
   
+  // Order data state
   const [order, setOrder] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
-  // Update status state
+  // UI state
+  const [adminNotes, setAdminNotes] = useState('');
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  
+  // Status dialog state
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [statusLoading, setStatusLoading] = useState(false);
   const [statusError, setStatusError] = useState('');
   
-  // Tracking info state
+  // Tracking dialog state
   const [trackingDialogOpen, setTrackingDialogOpen] = useState(false);
   const [trackingInfo, setTrackingInfo] = useState({
     carrier: '',
@@ -47,92 +55,75 @@ const OrderDetailPage = () => {
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState('');
   
-  // Notes state
-  const [editingNotes, setEditingNotes] = useState(false);
-  const [adminNotes, setAdminNotes] = useState('');
-  const [notesLoading, setNotesLoading] = useState(false);
+  // Comments state
+  const [adminReply, setAdminReply] = useState('');
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState('');
   
   const orderStatusSteps = ['pending', 'processing', 'shipped', 'delivered'];
   
-  // Add a ref for tracking the fetch timeout
-  const fetchTimeoutRef = useRef(null);
-  
-  // Sửa lại cách sử dụng API hook
-  const {
-    data: orderData,
-    loading: orderLoading,
-    error: orderError,
-    fetchResource
-  } = useFetchApi('/admin/orders/' + orderId);
-  
-  // Use safe admin hook to access users data
-  const { getUserByEmail, isContextAvailable } = useSafeAdmin();
-  
-  // Safe fetch with debounce
-  const safeFetch = useCallback(() => {
-    // Clear any existing timeout
-    if (fetchTimeoutRef.current) {
-      clearTimeout(fetchTimeoutRef.current);
-    }
-    
-    // Set a new timeout to prevent multiple concurrent requests
-    fetchTimeoutRef.current = setTimeout(() => {
-      fetchResource();
-      fetchTimeoutRef.current = null;
-    }, 500);
-  }, [fetchResource]);
-  
-  // Clean up timeout on unmount
+  // Fetch order data once on component mount
   useEffect(() => {
-    return () => {
-      if (fetchTimeoutRef.current) {
-        clearTimeout(fetchTimeoutRef.current);
+    const fetchOrderData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await api.admin.getOrderById(orderId);
+        const orderData = response.data.data || response.data;
+        
+        setOrder(orderData);
+        
+        // Initialize admin notes if available
+        if (orderData.adminNotes) {
+          setAdminNotes(orderData.adminNotes);
+        }
+        
+        // Initialize tracking info if available
+        if (orderData.tracking) {
+          setTrackingInfo({
+            trackingNumber: orderData.tracking.trackingNumber || '',
+            carrier: orderData.tracking.carrier || '',
+            trackingUrl: orderData.tracking.trackingUrl || ''
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching order:', err);
+        setError(err.response?.data?.message || 'Failed to load order details');
+      } finally {
+        setLoading(false);
       }
     };
-  }, []);
-  
-  // Process order data only when it changes - avoid infinite loop
-  useEffect(() => {
-    if (!orderData) return;
     
-    try {
-      const orderDataObj = orderData.data || orderData;
-      if (!orderDataObj) return;
-      
-      setOrder(orderDataObj);
-      setAdminNotes(orderDataObj.adminNotes || '');
-      
-      // Pre-fill tracking info if available - fix the undefined error
-      if (orderDataObj.tracking) {
-        setTrackingInfo({
-          trackingNumber: orderDataObj.tracking.trackingNumber || '',
-          carrier: orderDataObj.tracking.carrier || '',
-          trackingUrl: orderDataObj.tracking.trackingUrl || ''
-        });
-      }
-    } catch (err) {
-      console.error("Error processing order data:", err);
-      setError("Error processing order data. Please try refreshing the page.");
-    }
-  }, [orderData]);
+    fetchOrderData();
+  }, [orderId]); // Only depends on orderId, will run once on mount
   
-  // Update loading and error state separately to avoid re-renders
-  useEffect(() => {
-    setLoading(orderLoading);
-  }, [orderLoading]);
-  
-  useEffect(() => {
-    if (orderError) {
-      setError(orderError);
-    }
-  }, [orderError]);
-  
-  // Calculate userData separately to prevent re-renders
+  // Handle user data with memoization to prevent unnecessary recalculations
   const userEmail = order?.email;
   const userData = useMemo(() => {
     return userEmail && getUserByEmail ? getUserByEmail(userEmail) : null;
   }, [userEmail, getUserByEmail]);
   
+  // Refresh order data after updates
+  const refreshOrder = async () => {
+    try {
+      setLoading(true);
+      const response = await api.admin.getOrderById(orderId);
+      const orderData = response.data.data || response.data;
+      setOrder(orderData);
+      
+      // Refresh admin notes if they weren't being edited
+      if (!editingNotes && orderData.adminNotes) {
+        setAdminNotes(orderData.adminNotes);
+      }
+    } catch (err) {
+      console.error('Error refreshing order:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle status updates
   const handleStatusDialogOpen = (status) => {
     setNewStatus(status);
     setStatusDialogOpen(true);
@@ -151,12 +142,9 @@ const OrderDetailPage = () => {
     setStatusError('');
     
     try {
-      const response = await api.admin.updateOrderStatus(orderId, newStatus);
-      
-      setOrder(response.data.data || response.data);
+      await api.admin.updateOrderStatus(orderId, newStatus);
       handleStatusDialogClose();
-      // Don't call fetchResource here, as the API has already returned the updated data
-      
+      await refreshOrder();
     } catch (error) {
       setStatusError(error.response?.data?.message || 'Failed to update status. Please try again.');
     } finally {
@@ -164,6 +152,7 @@ const OrderDetailPage = () => {
     }
   };
   
+  // Handle tracking updates
   const handleTrackingDialogOpen = () => {
     setTrackingDialogOpen(true);
   };
@@ -187,33 +176,51 @@ const OrderDetailPage = () => {
     setTrackingError('');
     
     try {
-      const response = await api.admin.updateOrderTracking(orderId, trackingInfo);
-      
-      setOrder(response.data.data || response.data);
+      await api.admin.updateOrderTracking(orderId, trackingInfo);
       handleTrackingDialogClose();
-      // Don't call fetchResource here, as the API has already returned the updated data
-      
+      await refreshOrder();
     } catch (error) {
-      setTrackingError(error.response?.data?.message || 'Failed to update tracking information. Please try again.');
+      setTrackingError(error.response?.data?.message || 'Failed to update tracking information.');
     } finally {
       setTrackingLoading(false);
     }
   };
   
+  // Handle admin notes
   const handleSaveNotes = async () => {
     setNotesLoading(true);
     
     try {
-      const response = await api.admin.updateOrderNotes(orderId, adminNotes);
-      
-      setOrder(response.data.data || response.data);
+      await api.admin.updateOrderNotes(orderId, adminNotes);
       setEditingNotes(false);
-      // Don't call fetchResource here, as the API has already returned the updated data
-      
+      await refreshOrder();
     } catch (error) {
-      // Handle error silently
+      console.error('Error saving notes:', error);
     } finally {
       setNotesLoading(false);
+    }
+  };
+  
+  // Handle sending replies to customer
+  const handleSendReply = async () => {
+    if (!adminReply.trim()) return;
+    
+    try {
+      setReplySending(true);
+      setReplyError('');
+      
+      await api.orders.addComment(orderId, adminReply.trim());
+      
+      // Clear the reply field after successful submission
+      setAdminReply('');
+      
+      // Refresh order data
+      await refreshOrder();
+    } catch (err) {
+      console.error('Error sending reply:', err);
+      setReplyError('Failed to send your reply. Please try again.');
+    } finally {
+      setReplySending(false);
     }
   };
   
@@ -229,7 +236,7 @@ const OrderDetailPage = () => {
     return orderStatusSteps[currentIndex + 1];
   };
   
-  if (loading || !order) {
+  if (loading && !order) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
         <CircularProgress />
@@ -237,7 +244,7 @@ const OrderDetailPage = () => {
     );
   }
   
-  if (error) {
+  if (error && !order) {
     return (
       <Box>
         <Button 
@@ -306,6 +313,12 @@ const OrderDetailPage = () => {
         </Box>
       </Box>
       
+      {loading && (
+        <Box sx={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 9999 }}>
+          <CircularProgress />
+        </Box>
+      )}
+      
       <Typography variant="h4" gutterBottom>
         Order #{order.id.substring(0, 8)}
       </Typography>
@@ -329,16 +342,6 @@ const OrderDetailPage = () => {
             </Box>
           </Grid>
         </Grid>
-        
-        {orderStatusSteps.includes(order.status) && (
-          <Box sx={{ mt: 3 }}>
-            <Stepper activeStep={0} alternativeLabel>
-              <Step key={order.status}>
-                <StepLabel>{order.status.charAt(0).toUpperCase() + order.status.slice(1)}</StepLabel>
-              </Step>
-            </Stepper>
-          </Box>
-        )}
       </Paper>
       
       <Grid container spacing={3}>
@@ -656,6 +659,72 @@ const OrderDetailPage = () => {
                 </Typography>
               )
             )}
+          </Paper>
+          
+          {/* User Comments */}
+          <Paper sx={{ p: 3, mt: 3 }}>
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="h6">
+                Customer Communication
+              </Typography>
+            </Box>
+            
+            {order.userComments && order.userComments.length > 0 ? (
+              <List sx={{ bgcolor: 'background.paper', borderRadius: 1, mb: 3 }}>
+                {order.userComments.map((userComment) => (
+                  <ListItem key={userComment.id} divider alignItems="flex-start">
+                    <ListItemText
+                      primary={userComment.text}
+                      secondary={
+                        <React.Fragment>
+                          <Typography variant="caption" color="text.secondary">
+                            {userComment.createdAt ? new Date(userComment.createdAt).toLocaleString() : 'Unknown date'} by {userComment.userEmail || 'Customer'}
+                          </Typography>
+                        </React.Fragment>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <Typography variant="body2" color="text.secondary" fontStyle="italic" sx={{ mb: 3 }}>
+                No messages from the customer yet.
+              </Typography>
+            )}
+            
+            {/* Admin reply form */}
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Reply to Customer
+              </Typography>
+              
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  placeholder="Type your reply here..."
+                  value={adminReply}
+                  onChange={(e) => setAdminReply(e.target.value)}
+                  disabled={replySending}
+                  error={!!replyError}
+                  helperText={replyError}
+                  size="small"
+                  sx={{ flexGrow: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  endIcon={<SendIcon />}
+                  onClick={handleSendReply}
+                  disabled={replySending || !adminReply.trim()}
+                  size="small"
+                  sx={{ mt: 0.5 }}
+                >
+                  Send
+                </Button>
+              </Box>
+            </Box>
           </Paper>
         </Grid>
       </Grid>

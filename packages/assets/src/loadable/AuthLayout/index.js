@@ -6,7 +6,7 @@ import DefaultLoadable from '../DefaultLoadable';
  * This is a specialized loadable component for the AuthLayout
  */
 const AuthLayoutLoadable = DefaultLoadable(
-  lazy(() => import('@layouts/AuthLayout'))
+  lazy(() => import('../../layouts/AuthLayout'))
 );
 
 export default AuthLayoutLoadable; 

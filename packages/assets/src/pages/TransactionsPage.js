@@ -11,7 +11,7 @@ import {
   Search as SearchIcon,
   FilterList as FilterIcon,
   Add as AddIcon,
-  CloudUpload as UploadIcon,
+  CloudUpload as CloudUploadIcon,
   AccountBalance as AccountBalanceIcon,
   Receipt as ReceiptIcon,
   Visibility as VisibilityIcon,
@@ -20,7 +20,8 @@ import {
   Send as SendIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   Person as PersonIcon,
-  ArrowBack as ArrowBackIcon
+  ArrowBack as ArrowBackIcon,
+  MoreVert as MoreVertIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
@@ -29,6 +30,11 @@ import { useApp } from '../context/AppContext';
 import useFetchApi from '../hooks/api/useFetchApi';
 import ReceiptUploader from '../components/ReceiptUploader';
 import { useParams, useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+
+// Initialize dayjs plugins
+dayjs.extend(relativeTime);
 
 const TransactionsPage = () => {
   const { user } = useApp();
@@ -75,6 +81,8 @@ const TransactionsPage = () => {
   const [depositLoading, setDepositLoading] = useState(false);
   const [depositError, setDepositError] = useState('');
   const [depositSuccess, setDepositSuccess] = useState(false);
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState(null);
 
   // Use useFetchApi for transactions
   const { 
@@ -223,10 +231,17 @@ const TransactionsPage = () => {
     setDepositMethod('bank_transfer');
     setDepositError('');
     setDepositSuccess(false);
+    setReceiptFile(null);
+    setReceiptPreview(null);
   };
   
   const handleCloseDepositDialog = () => {
     setOpenDepositDialog(false);
+    setDepositAmount('');
+    setDepositError('');
+    setDepositSuccess(false);
+    setReceiptFile(null);
+    setReceiptPreview(null);
   };
   
   const handleDepositAmountChange = (e) => {
@@ -237,9 +252,33 @@ const TransactionsPage = () => {
     setDepositMethod(e.target.value);
   };
   
+  const handleFileChange = (e) => {
+    if (e.target.files[0]) {
+      const file = e.target.files[0];
+      setReceiptFile(file);
+      
+      // Create preview for image files
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          setReceiptPreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        // Reset preview if not an image
+        setReceiptPreview(null);
+      }
+    }
+  };
+  
   const handleDepositSubmit = async () => {
     if (!depositAmount) {
       setDepositError('Please enter an amount');
+      return;
+    }
+    
+    if (!receiptFile) {
+      setDepositError('Please upload a receipt image');
       return;
     }
     
@@ -254,10 +293,23 @@ const TransactionsPage = () => {
         throw new Error('Please enter a valid amount');
       }
       
+      // Create deposit request
       const response = await api.transactions.requestDeposit({
         amount,
-        method: depositMethod
+        method: depositMethod,
+        bankName: 'bank_transfer', // Default for the simple form
+        transferDate: new Date()
       });
+      
+      const transactionId = response.data.transactionId;
+      
+      // Upload receipt if we have transactionId
+      if (transactionId && receiptFile) {
+        const formData = new FormData();
+        formData.append('receipt', receiptFile);
+        
+        await api.transactions.uploadReceipt(transactionId, formData);
+      }
       
       setDepositSuccess(true);
       setDepositAmount('');
@@ -269,7 +321,7 @@ const TransactionsPage = () => {
       }, 1500);
       
     } catch (error) {
-      /* error removed */
+      console.error("Deposit error:", error);
       setDepositError('Failed to process deposit request. Please try again.');
     } finally {
       setDepositLoading(false);
@@ -874,6 +926,58 @@ const TransactionsPage = () => {
                   </Select>
                 </FormControl>
               </Grid>
+
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  border: '1px dashed #ccc', 
+                  borderRadius: 1, 
+                  p: 2, 
+                  textAlign: 'center',
+                  backgroundColor: '#f9f9f9'
+                }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Receipt Image (Required)
+                  </Typography>
+                  
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    disabled={depositLoading || depositSuccess}
+                    startIcon={<CloudUploadIcon />}
+                  >
+                    Upload Receipt
+                    <input
+                      type="file"
+                      hidden
+                      onChange={handleFileChange}
+                      accept="image/png, image/jpeg, image/jpg, application/pdf"
+                    />
+                  </Button>
+                  
+                  {receiptFile && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="primary">
+                        {receiptFile.name}
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  {receiptPreview && (
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                      <img 
+                        src={receiptPreview} 
+                        alt="Receipt preview" 
+                        style={{ 
+                          maxWidth: '100%', 
+                          maxHeight: '150px', 
+                          border: '1px solid #ddd',
+                          borderRadius: '4px'
+                        }} 
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
             </Grid>
           </DialogContent>
           <DialogActions>
@@ -887,7 +991,7 @@ const TransactionsPage = () => {
               onClick={handleDepositSubmit} 
               variant="contained"
               color="primary"
-              disabled={!depositAmount || depositLoading || depositSuccess}
+              disabled={!depositAmount || !receiptFile || depositLoading || depositSuccess}
             >
               {depositLoading ? <CircularProgress size={24} /> : 'Submit Request'}
             </Button>

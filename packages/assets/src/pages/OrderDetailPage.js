@@ -5,13 +5,14 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Stepper, Step, StepLabel, CircularProgress, Alert, Dialog,
   DialogActions, DialogContent, DialogContentText, DialogTitle,
-  List, ListItem, ListItemText
+  List, ListItem, ListItemText, TextField
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
   LocalShipping as ShippingIcon,
   Receipt as ReceiptIcon,
-  CheckCircle as CheckCircleIcon
+  CheckCircle as CheckCircleIcon,
+  Send as SendIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import StatusBadge from '../components/StatusBadge';
@@ -304,6 +305,34 @@ const OrderDetailPage = ({ admin = false }) => {
     }
   }, [orderId, newStatus, fetchOrderDirectly, handleCloseStatusDialog]);
 
+  // Additional state for the user comments feature
+  const [comment, setComment] = useState('');
+  const [commentSending, setCommentSending] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  
+  const handleSendComment = async () => {
+    if (!comment.trim()) return;
+    
+    try {
+      setCommentSending(true);
+      setCommentError('');
+      
+      await api.orders.addComment(orderId, comment.trim());
+      
+      // Clear the comment field after successful submission
+      setComment('');
+      
+      // Refresh order data to show the new comment
+      fetchOrderDirectly();
+      
+    } catch (err) {
+      console.error('Error sending comment:', err);
+      setCommentError('Failed to send your comment. Please try again.');
+    } finally {
+      setCommentSending(false);
+    }
+  };
+  
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
@@ -708,6 +737,63 @@ const OrderDetailPage = ({ admin = false }) => {
                 </Typography>
               </Box>
             )}
+            
+            {/* User Comments Section */}
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Communication with Admin
+              </Typography>
+              
+              {/* Existing comments display */}
+              {order.userComments && order.userComments.length > 0 ? (
+                <List sx={{ bgcolor: 'background.paper', mb: 2, borderRadius: 1, border: '1px solid #eee' }}>
+                  {order.userComments.map((userComment) => (
+                    <ListItem key={userComment.id} divider alignItems="flex-start">
+                      <ListItemText
+                        primary={userComment.text}
+                        secondary={
+                          <React.Fragment>
+                            <Typography variant="caption" color="text.secondary">
+                              {userComment.createdAt ? new Date(userComment.createdAt).toLocaleString() : 'Unknown date'}
+                            </Typography>
+                          </React.Fragment>
+                        }
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
+                  No communication yet. Use the form below to send a message to admin.
+                </Typography>
+              )}
+              
+              {/* Comment input form */}
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  placeholder="Type your message here..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  disabled={commentSending}
+                  error={!!commentError}
+                  helperText={commentError}
+                  sx={{ flexGrow: 1 }}
+                />
+                <Button
+                  variant="contained"
+                  color="primary"
+                  endIcon={<SendIcon />}
+                  onClick={handleSendComment}
+                  disabled={commentSending || !comment.trim()}
+                  sx={{ mt: 0.5 }}
+                >
+                  Send
+                </Button>
+              </Box>
+            </Box>
           </Paper>
         </Grid>
         

@@ -4,6 +4,7 @@ import AdminLayout from '../layouts/AdminLayout';
 
 // Import the AdminProvider
 import { AdminProvider } from '../context/AdminContext';
+import AdminContextWrapper from '../components/AdminContextWrapper';
 
 // Loadable components
 import AdminDashboardPage from '../loadable/AdminDashboardPage';
@@ -12,7 +13,7 @@ import AdminUserDetailPage from '../loadable/AdminUserDetailPage';
 import AdminProductsPage from '../loadable/AdminProductsPage';
 import AdminProductFormPage from '../loadable/AdminProductFormPage';
 import AdminOrdersPage from '../loadable/AdminOrdersPage';
-import AdminOrderDetailPage from '../loadable/AdminOrderDetailPage';
+import AdminOrderDetailPage from '../pages/admin/OrderDetailPage';
 import AdminTransactionsPage from '../loadable/AdminTransactionsPage';
 import AdminTransactionDetailPage from '../loadable/AdminTransactionDetailPage';
 import AdminSettingsPage from '../loadable/AdminSettingsPage';
@@ -46,7 +47,11 @@ const AdminRouter = () => {
           
           {/* Orders management */}
           <Route path="orders" element={<AdminOrdersPage />} />
-          <Route path="orders/:orderId" element={<AdminOrderDetailPage />} />
+          <Route path="orders/:orderId" element={
+            <AdminContextWrapper>
+              <AdminOrderDetailPage />
+            </AdminContextWrapper>
+          } />
           
           {/* Transactions management */}
           <Route path="transactions" element={<AdminTransactionsPage />} />

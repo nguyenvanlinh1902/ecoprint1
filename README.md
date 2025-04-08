@@ -58,6 +58,20 @@ yarn dev
 - Upload middleware is in `simpleUploadMiddleware.js`
 - File handling logic should be centralized in appropriate controllers
 
+### Order Comments Feature
+The application includes a comments feature for communication between customers and admins:
+
+#### Customer Side
+- Customers can add comments to their orders from the OrderDetailPage
+- The comments are visible to both customers and administrators
+- This provides a channel for inquiries, special requests, or other communication
+
+#### Admin Side
+- Admins can view all customer comments in the admin OrderDetailPage
+- Admins can reply to customer comments directly from the admin interface
+- Comments are displayed chronologically with timestamps and user information
+- Private admin notes are also available for internal use only
+
 ## Troubleshooting
 
 ### Common Issues

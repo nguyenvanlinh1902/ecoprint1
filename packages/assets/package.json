@@ -33,6 +33,7 @@
     "@shopify/polaris": "^13.9.4",
     "axios": "^1.4.0",
     "date-fns": "^2.30.0",
+    "dayjs": "^1.11.13",
     "firebase": "^11.6.0",
     "form-data": "^4.0.2",
     "formik": "^2.2.9",

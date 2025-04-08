@@ -266,6 +266,7 @@ export default function apiRouter(withPrefix = true) {
   router.get('/orders', authMiddleware, orderController.getUserOrders);
   router.get('/orders/:orderId', authMiddleware, orderController.getOrderById);
   router.post('/orders/:orderId/pay', authMiddleware, transactionController.payOrder);
+  router.put('/orders/:orderId/comments', authMiddleware, orderController.updateUserOrderComments);
 
   // Transaction routes
   router.post('/transactions/deposit', authMiddleware, transactionController.requestDeposit);
@@ -575,6 +576,7 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.get('/orders', authMiddleware, orderController.getUserOrders);
     apiRouter.get('/orders/:orderId', authMiddleware, orderController.getOrderById);
     apiRouter.post('/orders/:orderId/pay', authMiddleware, transactionController.payOrder);
+    apiRouter.put('/orders/:orderId/comments', authMiddleware, orderController.updateUserOrderComments);
 
     // Transaction routes
     apiRouter.post('/transactions/deposit', authMiddleware, transactionController.requestDeposit);

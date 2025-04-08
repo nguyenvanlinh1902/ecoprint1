@@ -94,7 +94,12 @@ export const useOrdersApi = () => {
 
     importOrders: (file) => useUploadFile({
       url: '/orders/import'
-    }).handleUpload(file)
+    }).handleUpload(file),
+    
+    addNote: (id, note) => useCreateApi({
+      url: `/orders/${id}/notes`,
+      method: 'PATCH'
+    }).handleCreate({ note })
   };
 };
 

@@ -50,12 +50,7 @@ export const requestDeposit = async (ctx) => {
       return;
     }
     
-    // Validate receipt URL
-    if (!receiptUrl) {
-      ctx.status = 400;
-      ctx.body = { error: 'Receipt image is required' };
-      return;
-    }
+    // Remove receipt URL validation - will be uploaded in the second step
     
     // Use repository to create the deposit request
     const result = await transactionRepository.createDepositRequest({
@@ -64,8 +59,8 @@ export const requestDeposit = async (ctx) => {
       transferDate, 
       reference,
       email,
-      receiptUrl, // Pass the receipt URL from Firebase
-      thumbnailUrl: receiptUrl // Use the same URL for thumbnail
+      receiptUrl: receiptUrl || '', // Make receipt URL optional
+      thumbnailUrl: receiptUrl || '' // Make thumbnail URL optional
     });
     
     ctx.status = 201;
@@ -181,7 +176,7 @@ export const uploadReceipt = async (ctx) => {
       console.error('No file data found in request after all attempts');
       ctx.status = 400;
       ctx.body = { 
-        error: 'No receipt file found. Please upload a valid image file.',
+        error: 'Receipt image is required. Please upload a valid image file (JPG, PNG) or PDF of your payment confirmation.',
         debug: {
           filesExist: !!ctx.req.files,
           fileExists: !!ctx.req.file,

@@ -105,6 +105,16 @@ export default defineConfig(({ mode }) => {
     
     // Optimization configuration
     optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        '@mui/material',
+        '@mui/icons-material',
+        '@mui/system',
+        '@emotion/react',
+        '@emotion/styled'
+      ],
       esbuildOptions: {
         loader: {
           '.js': 'jsx'
@@ -114,6 +124,7 @@ export default defineConfig(({ mode }) => {
     
     // Path aliases
     resolve: {
+      extensions: ['.js', '.jsx', '.json'],
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@components': path.resolve(__dirname, './src/components'),
@@ -151,6 +162,10 @@ export default defineConfig(({ mode }) => {
       watch: {
         usePolling: true,
         interval: 1000,
+      },
+      fs: {
+        strict: false,
+        allow: ['..']
       },
       // Add middleware to handle preflight OPTIONS requests
       middlewares: [

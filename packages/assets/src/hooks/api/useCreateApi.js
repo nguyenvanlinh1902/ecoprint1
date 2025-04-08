@@ -6,6 +6,7 @@ import {handleError} from '../../services/errorService';
 
 /**
  * @param url
+ * @param method
  * @param fullResp
  * @param successMsg
  * @param errorMsg
@@ -13,6 +14,7 @@ import {handleError} from '../../services/errorService';
  */
 export default function useCreateApi({
   url,
+  method = 'POST',
   fullResp = false,
   successMsg = 'Saved successfully',
   errorMsg = 'Failed to save'
@@ -27,7 +29,7 @@ export default function useCreateApi({
   const handleCreate = useCallback(async data => {
     try {
       setCreating(true);
-      const resp = await api(url, {body: data, method: 'POST'});
+      const resp = await api(url, {body: data, method});
       if (resp.success) {
         setToast(dispatch, resp.message || successMsg);
       }
@@ -42,7 +44,7 @@ export default function useCreateApi({
     } finally {
       setCreating(false);
     }
-  }, [url, dispatch, fullResp, successMsg, errorMsg]);
+  }, [url, method, dispatch, fullResp, successMsg, errorMsg]);
 
   return {creating, handleCreate};
 }

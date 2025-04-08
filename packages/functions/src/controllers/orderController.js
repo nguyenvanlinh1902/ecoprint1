@@ -887,6 +887,113 @@ export const updateOrderNotes = async (ctx) => {
 };
 
 /**
+ * Update order user comments
+ * Route: PATCH /orders/:orderId/comments
+ */
+export const updateUserOrderComments = async (ctx) => {
+  try {
+    const { orderId } = ctx.params;
+    
+    // Debug what's in the request body
+    console.log('Request body ctx.req.body:', ctx.req.body);
+    
+    // Get comment from ctx.req.body
+    // Support both 'comment' and 'note' parameters for compatibility
+    const requestBody = ctx.req.body || {};
+    const comment = requestBody.comment || requestBody.note;
+    
+    console.log('Extracted comment:', comment);
+    
+    const { email, uid } = ctx.state.user;
+    
+    if (!orderId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Order ID is required'
+      };
+      return;
+    }
+    
+    if (!comment || comment.trim() === '') {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'Comment content is required'
+      };
+      return;
+    }
+    
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderDoc = await orderRef.get();
+    
+    if (!orderDoc.exists) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'Order not found'
+      };
+      return;
+    }
+    
+    const orderData = orderDoc.data();
+    
+    // Ensure the user has permission to add comments to this order
+    if (orderData.email !== email && orderData.userId !== uid) {
+      ctx.status = 403;
+      ctx.body = {
+        success: false,
+        message: 'You do not have permission to add comments to this order'
+      };
+      return;
+    }
+    
+    // Get existing comments or initialize empty array
+    const userComments = orderData.userComments || [];
+    
+    // Add new comment with timestamp and user info
+    userComments.push({
+      text: comment,
+      createdAt: new Date(),
+      userEmail: email,
+      id: `comment_${Date.now()}`
+    });
+    
+    // Update the order with new comments
+    await orderRef.update({
+      userComments,
+      updatedAt: new Date()
+    });
+    
+    // Get the updated order
+    const updatedOrderDoc = await orderRef.get();
+    const updatedOrderData = updatedOrderDoc.data();
+    
+    const order = {
+      id: updatedOrderDoc.id,
+      ...updatedOrderData,
+      createdAt: updatedOrderData.createdAt ? updatedOrderData.createdAt.toDate() : null,
+      updatedAt: updatedOrderData.updatedAt ? updatedOrderData.updatedAt.toDate() : null
+    };
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: order,
+      message: 'Order comment added successfully'
+    };
+  } catch (error) {
+    console.error('Error adding order comment:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: 'Failed to add order comment',
+      error: error.message
+    };
+  }
+};
+
+/**
  * Cancel an order
  */
 export const cancelOrder = async (ctx) => {

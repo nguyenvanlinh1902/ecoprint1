@@ -140,7 +140,10 @@ export const get = (url, config) => apiClient.get(url, config);
 export const post = (url, data, config) => apiClient.post(url, data, config);
 export const put = (url, data, config) => apiClient.put(url, data, config);
 export const del = (url, config) => apiClient.delete(url, config);
-export const patch = (url, data, config) => apiClient.patch(url, data, config);
+export const patch = (url, data, config) => {
+  console.log('PATCH request to:', url, 'with data:', data);
+  return apiClient.patch(url, data, config);
+};
 
 // Upload progress tracking helper
 export const uploadWithProgress = async (url, formData, onProgress, config = {}) => {
@@ -363,6 +366,25 @@ export const ordersApi = {
   updateStatus: (id, status) => {
     const enhancedData = addAuthData({ status });
     return patch(`/orders/${id}/status`, enhancedData);
+  },
+  addComment: (id, comment) => {
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+    
+    // Debug log
+    console.log('Adding comment to order:', id, 'comment:', comment);
+    console.log('User info:', { userEmail, userRole, hasToken: !!token });
+    
+    const config = {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'user'
+      }
+    };
+    
+    return put(`/orders/${id}/comments`, { comment }, config);
   },
   cancel: (id) => {
     const enhancedData = addAuthData();
