@@ -1,4 +1,4 @@
-import { admin, adminStorage } from '../config/firebaseAdmin.js';
+import { admin, storage } from '../config/firebase.js';
 import * as xlsx from 'xlsx';
 import multer from '@koa/multer';
 import categoryRepository from '../repositories/categoryRepository.js';

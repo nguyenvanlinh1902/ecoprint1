@@ -1,7 +1,9 @@
 /**
  * Repository for user profile operations
  */
-import { admin } from '../config/firebaseAdmin.js';
+import { CustomError } from '../exceptions/customError.js';
+import { generateRandomHexColor } from '../utils/helper.js';
+import { admin } from '../config/firebase.js';
 
 const firestore = admin.firestore();
 const collection = firestore.collection('userProfiles');

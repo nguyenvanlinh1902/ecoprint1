@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import userRepository from '../repositories/userRepository.js';
 import userProfileRepository from '../repositories/userProfileRepository.js';
 import { CustomError } from '../exceptions/customError.js';
-import { admin, adminAuth } from '../config/firebaseAdmin.js';
+import { admin, auth } from '../config/firebase.js';
 import * as functions from 'firebase-functions';
 import { log } from 'firebase-functions/logger';
 
@@ -50,7 +50,7 @@ export const register = async (ctx) => {
     
     try {
       // First create the user in Firebase Authentication
-      const userRecord = await adminAuth.createUser({
+      const userRecord = await auth.createUser({
         email,
         password,
         displayName,
@@ -90,7 +90,7 @@ export const register = async (ctx) => {
       // If there was an error after creating the Auth user, try to clean up
       if (error.auth_user_created && error.auth_user_uid) {
         try {
-          await adminAuth.deleteUser(error.auth_user_uid);
+          await auth.deleteUser(error.auth_user_uid);
           console.log(`Cleaned up Auth user ${error.auth_user_uid} after Firestore error`);
         } catch (cleanupError) {
           console.error('Error cleaning up Auth user:', cleanupError);
@@ -177,7 +177,7 @@ export const login = async (ctx) => {
       let firebaseUser;
       try {
         // Tìm user bằng email
-        const userRecord = await adminAuth.getUserByEmail(email);
+        const userRecord = await auth.getUserByEmail(email);
         if (userRecord) {
           firebaseUser = userRecord;
         }
@@ -350,7 +350,7 @@ export const resetPassword = async (ctx) => {
       }
       
       // Reset password in Firebase Auth
-      await adminAuth.updateUser(userProfile.uid, {
+      await auth.updateUser(userProfile.uid, {
         password: newPassword
       });
       

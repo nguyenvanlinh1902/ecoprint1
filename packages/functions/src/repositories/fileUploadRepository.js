@@ -2,7 +2,7 @@
  * Repository for file uploads
  */
 import { v4 as uuidv4 } from 'uuid';
-import { admin, adminStorage } from '../config/firebaseAdmin.js';
+import { admin, storage } from '../config/firebase.js';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -17,16 +17,15 @@ const MAX_HEIGHT = 1200;
 const THUMB_WIDTH = 300;
 const QUALITY = 80;
 
-// Initiate Firebase Storage
-const storage = getStorage(admin.app());
-const bucket = adminStorage;
+// Create temp directory for uploads
+const tempLocalDir = path.join(os.tmpdir(), 'eco-uploads');
 
 // Ensure bucket is properly initialized
-if (!bucket) {
+if (!storage) {
   console.error('[FileUploadRepository] ERROR: Firebase Storage bucket not initialized');
   throw new Error('Firebase Storage bucket not initialized');
 } else {
-  console.log(`[FileUploadRepository] Firebase Storage bucket initialized: ${bucket.name}`);
+  console.log(`[FileUploadRepository] Firebase Storage bucket initialized: ${storage.name}`);
 }
 
 /**
@@ -112,7 +111,7 @@ const uploadFile = async (file, destinationPath) => {
     });
     
     // Create a file in the bucket
-    const fileRef = bucket.file(destinationPath);
+    const fileRef = storage.file(destinationPath);
     
     // Determine how to upload the file based on what data we have
     if (file.path && fs.existsSync(file.path)) {
@@ -146,7 +145,7 @@ const uploadFile = async (file, destinationPath) => {
     await fileRef.makePublic();
     
     // Get the file's public URL
-    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destinationPath}`;
+    const publicUrl = `https://storage.googleapis.com/${storage.name}/${destinationPath}`;
     console.log(`[FileUploadRepository] File uploaded successfully. Public URL: ${publicUrl}`);
     
     return publicUrl;

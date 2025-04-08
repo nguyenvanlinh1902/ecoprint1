@@ -10,11 +10,11 @@
     "dev:assets": "npm run dev --workspace=packages/assets",
     "dev:assets:staging": "npm run dev:staging --workspace=packages/assets",
     "dev:assets:prod": "npm run dev:production --workspace=packages/assets",
-    "dev:functions": "GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev --workspace=packages/functions",
-    "dev:functions:win": "set GOOGLE_APPLICATION_CREDENTIALS=.\\serviceAccount.json && npm run dev --workspace=packages/functions",
-    "dev": "concurrently \"npm run dev:assets\" \"GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev:functions\"",
+    "dev:functions": "GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev --workspace=packages/functions",
+    "dev:functions:win": "set GOOGLE_APPLICATION_CREDENTIALS=.\\packages\\functions\\serviceAccount.json && npm run dev --workspace=packages/functions",
+    "dev": "concurrently \"npm run dev:assets\" \"GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev:functions\"",
     "dev:win": "concurrently \"npm run dev:assets\" \"npm run dev:functions:win\"",
-    "dev:staging": "concurrently \"npm run dev:assets:staging\" \"GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json npm run dev:functions\"",
+    "dev:staging": "concurrently \"npm run dev:assets:staging\" \"GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev:functions\"",
     "dev:prod": "concurrently \"npm run dev:assets:prod\" \"npm run dev:functions\"",
     "build:assets": "npm run build --workspace=packages/assets",
     "build:assets:staging": "npm run build:staging --workspace=packages/assets",
@@ -29,11 +29,7 @@
     "deploy:staging": "npm run build:staging && firebase deploy -P default",
     "deploy:prod": "npm run build:prod && firebase deploy -P default",
     "lint": "npm run lint --workspaces",
-    "emulators": "firebase emulators:start",
-    "test:connectivity": "node scripts/test-connectivity.js",
-    "test:storage": "GOOGLE_APPLICATION_CREDENTIALS=./serviceAccount.json node scripts/test-storage.js",
-    "validate:config": "node scripts/validate-firebase-config.js",
-    "postinstall": "npm run validate:config"
+    "emulators": "firebase emulators:start"
   },
   "devDependencies": {
     "chalk": "^4.1.2",

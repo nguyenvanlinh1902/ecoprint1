@@ -1,4 +1,4 @@
-import { admin } from '../config/firebaseAdmin.js';
+import { admin } from '../config/firebase.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import orderRepository from '../repositories/orderRepository.js';
 import requestParserRepository from '../repositories/requestParserRepository.js';

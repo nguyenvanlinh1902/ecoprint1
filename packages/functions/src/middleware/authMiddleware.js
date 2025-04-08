@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Firestore } from '@google-cloud/firestore';
-import { adminAuth } from '../config/firebaseAdmin.js';
+import { auth } from '../config/firebase.js';
 import * as functions from 'firebase-functions';
 
 const firestore = new Firestore();
@@ -211,7 +211,7 @@ export const verifyFirebaseToken = async (ctx, next) => {
     
     try {
       // Verify token with Firebase
-      const decodedToken = await adminAuth.verifyIdToken(token);
+      const decodedToken = await auth.verifyIdToken(token);
       
       // Get user from Firestore userProfiles collection
       const userDoc = await userProfilesCollection.doc(decodedToken.uid).get();

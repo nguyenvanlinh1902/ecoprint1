@@ -2,6 +2,7 @@ import admin from 'firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { getAuth } from 'firebase-admin/auth';
+import { getFunctions } from 'firebase-admin/functions';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,68 +11,55 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Determine environment
 const isProd = process.env.NODE_ENV === 'production';
+const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
 
-if (process.env.FIRESTORE_EMULATOR_HOST) {
-  console.log("Disabling Firestore emulator to use Cloud Firestore instead");
-  delete process.env.FIRESTORE_EMULATOR_HOST;
-}
-
-// Vô hiệu hóa Auth emulator để kết nối trực tiếp với Firebase Authentication
-if (process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-  console.log("Disabling Auth emulator to use Firebase Authentication instead");
-  delete process.env.FIREBASE_AUTH_EMULATOR_HOST;
-}
-
-// Vô hiệu hóa Storage emulator để kết nối trực tiếp với Cloud Storage
-if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
-  console.log("Disabling Storage emulator to use Cloud Storage instead");
-  delete process.env.FIREBASE_STORAGE_EMULATOR_HOST;
-}
-
-// Lấy project ID
+// Get project ID
 const projectId = process.env.GCLOUD_PROJECT || 'ecoprint1-3cd5c';
+const bucketName = `${projectId}.firebasestorage.app`;
 
-// Khởi tạo Firebase Admin
+// Initialize Firebase Admin
 let firebaseApp;
 let db;
 let storage;
 let auth;
+let functions;
 
 function initializeFirebase() {
-  // Nếu đã khởi tạo, return các instance đã tạo
+  // If already initialized, return existing instances
   if (admin.apps.length) {
-    return { 
-      app: admin.app(), 
-      db: getFirestore(), 
-      storage: getStorage().bucket(),
-      auth: getAuth()
+    console.log('Firebase Admin SDK already initialized, returning existing instance');
+    const existingApp = admin.app();
+    return {
+      app: existingApp,
+      db: getFirestore(existingApp),
+      storage: getStorage(existingApp).bucket(bucketName),
+      auth: getAuth(existingApp),
+      functions: getFunctions(existingApp)
     };
   }
 
   console.log("Initializing Firebase Admin SDK");
   
-  // Kiểm tra nếu đã có GOOGLE_APPLICATION_CREDENTIALS
+  // Check if GOOGLE_APPLICATION_CREDENTIALS is set
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
     console.log(`Using credentials from environment variable: ${process.env.GOOGLE_APPLICATION_CREDENTIALS}`);
-    
-    // Trong trường hợp này, Firebase Admin SDK sẽ tự động sử dụng file này
     const app = admin.initializeApp({
       projectId: projectId,
-      storageBucket: `${projectId}.firebasestorage.app`
+      storageBucket: bucketName
     });
-    
     return {
       app,
       db: getFirestore(app),
-      storage: getStorage(app).bucket(),
-      auth: getAuth(app)
+      storage: getStorage(app).bucket(bucketName),
+      auth: getAuth(app),
+      functions: getFunctions(app)
     };
   }
   
-  // Tải service account
+  // Load service account
   let serviceAccount;
-  // Try different paths for serviceAccount.json
   const paths = [
     path.resolve(__dirname, '../../../../serviceAccount.json'),  // Root of the project
     path.resolve(__dirname, '../../../serviceAccount.json'),     // Inside packages
@@ -80,9 +68,7 @@ function initializeFirebase() {
   ];
   
   let serviceAccountPath = null;
-  
   for (const p of paths) {
-    console.log(`Checking for service account at: ${p}`);
     if (fs.existsSync(p)) {
       serviceAccountPath = p;
       console.log(`Found service account at: ${p}`);
@@ -97,56 +83,64 @@ function initializeFirebase() {
     } catch (error) {
       console.error("Error loading service account:", error);
     }
-  } else {
-    console.error("Service account file not found in any of the checked paths");
   }
   
-  // Cấu hình Firebase
+  // Configure Firebase
   const config = {
     projectId: projectId,
-    storageBucket: `${projectId}.firebasestorage.app`
+    storageBucket: bucketName
   };
   
-  // Thêm credential từ serviceAccount nếu có
+  // Add credential from serviceAccount if available
   if (serviceAccount) {
     config.credential = admin.credential.cert(serviceAccount);
   }
   
-  // Khởi tạo app
+  // Initialize app
   const app = admin.initializeApp(config);
   
-  return { 
-    app, 
+  return {
+    app,
     db: getFirestore(app),
-    storage: getStorage(app).bucket(),
-    auth: getAuth(app)
+    storage: getStorage(app).bucket(bucketName),
+    auth: getAuth(app),
+    functions: getFunctions(app)
   };
 }
 
-// Khởi tạo các dịch vụ Firebase
+// Initialize Firebase services
 const services = initializeFirebase();
 firebaseApp = services.app;
 db = services.db;
 storage = services.storage;
 auth = services.auth;
+functions = services.functions;
 
-// Force sử dụng Firebase Authentication cloud thay vì emulator
-console.log("Using Firebase Authentication from cloud");
-
-// Đảm bảo không kết nối đến emulator trong môi trường sản xuất
-const isEmulator = process.env.FUNCTIONS_EMULATOR === 'true';
+// Configure emulators if needed
 if (isEmulator && !isProd) {
-  // Cấu hình Firestore emulator
   if (process.env.FIRESTORE_EMULATOR_HOST) {
     console.log(`Firestore Emulator enabled at ${process.env.FIRESTORE_EMULATOR_HOST}`);
   }
   
-  // Cấu hình Storage emulator
   if (process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
     console.log(`Firebase Storage Emulator enabled at ${process.env.FIREBASE_STORAGE_EMULATOR_HOST}`);
   }
 }
 
-// Export cả app, admin và object admin để đảm bảo tính tương thích với mã hiện có
-export { firebaseApp as app, admin, db, storage, auth };
+// Cache configuration
+const cacheConfig = {
+  ttl: 60 * 5, // 5 minutes
+};
+
+// Export all services and configurations
+export {
+  firebaseApp as app,
+  admin,
+  db,
+  storage,
+  auth,
+  functions,
+  cacheConfig
+};
+
 export default firebaseApp; 

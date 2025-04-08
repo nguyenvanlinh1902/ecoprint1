@@ -1,5 +1,5 @@
 import { CustomError } from '../exceptions/customError.js';
-import { admin, adminAuth } from '../config/firebaseAdmin.js';
+import { admin, auth } from '../config/firebase.js';
 import * as userRepository from '../repositories/userRepository.js';
 import * as userProfileRepository from '../repositories/userProfileRepository.js';
 import orderRepository from '../repositories/orderRepository.js';
@@ -24,7 +24,7 @@ export const createUser = async (ctx) => {
       throw new CustomError('Email đã được sử dụng', 409);
     }
     
-    const userRecord = await adminAuth.createUser({
+    const userRecord = await auth.createUser({
       email,
       password,
       displayName,
@@ -108,7 +108,7 @@ export const updateProfile = async (ctx) => {
     
     // Nếu displayName được cập nhật, cũng cập nhật trong Firebase Auth
     if (displayName) {
-      await adminAuth.updateUser(userId, {
+      await auth.updateUser(userId, {
         displayName
       });
     }

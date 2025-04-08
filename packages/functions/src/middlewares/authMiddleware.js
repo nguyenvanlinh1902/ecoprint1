@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import * as functions from 'firebase-functions';
-import { admin } from '../config/firebaseAdmin.js';
+import { admin } from '../config/firebase.js';
 import userProfileRepository from '../repositories/userProfileRepository.js';
 
 // Lấy JWT secret từ config hoặc dùng giá trị mặc định

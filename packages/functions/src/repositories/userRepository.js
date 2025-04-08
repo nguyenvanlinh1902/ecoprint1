@@ -1,19 +1,13 @@
-/**
- * Repository for user operations
- */
-import { admin, adminAuth } from '../config/firebaseAdmin.js';
-import bcrypt from 'bcrypt';
+import { admin, auth } from '../config/firebase.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const firestore = admin.firestore();
 const userProfilesCollection = firestore.collection('userProfiles');
-const usersCollection = firestore.collection('users');
-
 /**
- * Verify user credentials
- * @param {string} email - User email
- * @param {string} password - Plain text password to verify
- * @returns {Promise<Object>} User record object
+ *
+ * @param email
+ * @param password
+ * @returns {Promise<*|UserRecord>}
  */
 const verifyUserCredentials = async (email, password) => {
   try {
@@ -25,10 +19,10 @@ const verifyUserCredentials = async (email, password) => {
     const firebaseUid = userProfile.uid || userProfile.id;
 
     try {
-      const userRecord = await adminAuth.getUser(firebaseUid);
+      const userRecord = await auth.getUser(firebaseUid);
       
       if (userRecord.disabled && userProfile.status === 'active') {
-        await adminAuth.updateUser(firebaseUid, { disabled: false });
+        await auth.updateUser(firebaseUid, { disabled: false });
       }
       
       return userRecord;
@@ -36,7 +30,7 @@ const verifyUserCredentials = async (email, password) => {
       if (error.code === 'auth/user-not-found') {
         const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).toUpperCase().slice(-4) + "!1";
         
-        const newUserRecord = await adminAuth.createUser({
+        const newUserRecord = await auth.createUser({
           uid: firebaseUid,
           email: userProfile.email,
           emailVerified: true,
@@ -321,9 +315,9 @@ const updateUserStatus = async (email, status) => {
     
     if (user.uid) {
       if (status === 'inactive') {
-        await adminAuth.updateUser(user.uid, { disabled: true });
+        await auth.updateUser(user.uid, { disabled: true });
       } else if (status === 'active') {
-        await adminAuth.updateUser(user.uid, { disabled: false });
+        await auth.updateUser(user.uid, { disabled: false });
       }
     }
     
@@ -371,10 +365,10 @@ const updateUserStatusById = async (userId, status) => {
       try {
         if (status === 'inactive') {
           console.log(`Disabling Firebase account for UID ${userData.uid}`);
-          await adminAuth.updateUser(userData.uid, { disabled: true });
+          await auth.updateUser(userData.uid, { disabled: true });
         } else if (status === 'active') {
           console.log(`Enabling Firebase account for UID ${userData.uid}`);
-          await adminAuth.updateUser(userData.uid, { disabled: false });
+          await auth.updateUser(userData.uid, { disabled: false });
         }
       } catch (authError) {
         console.error('Error updating Firebase Auth user:', authError);
@@ -423,7 +417,7 @@ const updateUserProfile = async (email, data) => {
     await userProfilesCollection.doc(user.id).update(safeData);
     
     if (safeData.displayName && user.uid) {
-      await adminAuth.updateUser(user.uid, { displayName: safeData.displayName });
+      await auth.updateUser(user.uid, { displayName: safeData.displayName });
     }
     
     return await getUserByEmail(email);

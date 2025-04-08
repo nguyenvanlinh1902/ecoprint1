@@ -1,4 +1,4 @@
-import { admin } from '../config/firebaseAdmin.js';
+import { admin } from '../config/firebase.js';
 
 const firestore = admin.firestore();
 const collection = firestore.collection('products');

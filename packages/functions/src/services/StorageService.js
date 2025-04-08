@@ -1,1 +1,0 @@
-const BUCKET_NAME = 'ecoprint1-3cd5c.firebasestorage.app'; 
