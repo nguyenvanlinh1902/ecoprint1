@@ -7,8 +7,8 @@ import * as transactionController from '../controllers/transactionController.js'
 import * as adminController from '../controllers/adminController.js';
 import { getAllOptions, getOptionById, createOption, updateOption, deleteOption, addPosition, removePosition } from '../controllers/productOptionController.js';
 import { authMiddleware, adminMiddleware } from '../middlewares/authMiddleware.js';
-import * as simpleUploadMiddleware from '../middleware/simpleUploadMiddleware.js';
-import { imageUploadMiddleware, receiptUploadMiddleware } from '../middleware/simpleUploadMiddleware.js';
+import * as simpleUploadMiddleware from '../middlewares/simpleUploadMiddleware.js';
+import { imageUploadMiddleware, receiptUploadMiddleware } from '../middlewares/simpleUploadMiddleware.js';
 import { uploadProductImage, uploadReceiptFile } from '../controllers/simpleUploadController.js';
 
 /**

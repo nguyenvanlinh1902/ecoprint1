@@ -1,27 +1,17 @@
-/**
- * Application configuration settings
- */
-
-// Xác định môi trường
 const isProd = process.env.NODE_ENV === 'production';
 
 const appConfig = {
-  // Server settings
   server: {
     port: process.env.PORT || 5000,
     host: process.env.HOST || '0.0.0.0',
     env: process.env.NODE_ENV || 'development',
-    // Timeout cho production dài hơn
     timeout: isProd ? 60000 : 30000,
   },
-  
-  // CORS settings
+
   cors: {
     allowedOrigins: [
-      // Development origins
       'http://localhost:3001',
       'http://localhost:5001',
-      // Production origins
       'https://ecoprint1-3cd5c.web.app',
       'https://ecoprint1-3cd5c.firebaseapp.com',
     ],
@@ -32,14 +22,11 @@ const appConfig = {
     maxAge: 86400 // 24 hours
   },
   
-  // Authentication settings
   auth: {
-    tokenExpiration: isProd ? '4h' : '1d', // Thời gian ngắn hơn trong môi trường sản xuất
+    tokenExpiration: isProd ? '4h' : '1d',
     refreshTokenExpiration: '7d',
     saltRounds: 10,
-    // Thêm các cài đặt bảo mật cho production
     securityOptions: {
-      // Các tùy chọn chỉ áp dụng cho môi trường sản xuất
       requireEmailVerification: isProd,
       passwordMinLength: 8,
       tokenRenewalWindow: 3600, // 1 hour in seconds
@@ -48,17 +35,14 @@ const appConfig = {
     }
   },
   
-  // View settings
   views: {
     cache: isProd,
     debug: !isProd,
   },
   
-  // Logging settings
   logging: {
-    level: isProd ? 'error' : 'debug', // Chỉ log lỗi trong môi trường sản xuất
+    level: isProd ? 'error' : 'debug',
     format: isProd ? 'json' : 'pretty',
-    // Cài đặt bổ sung cho môi trường sản xuất
     production: {
       omitSensitiveData: true,
       logToFile: true,
@@ -67,13 +51,11 @@ const appConfig = {
     }
   },
   
-  // Cache settings
   cache: {
     enabled: isProd,
-    ttl: 3600, // 1 hour in seconds
+    ttl: 3600,
   },
   
-  // Performance settings
   performance: {
     compression: isProd,
     minify: isProd,

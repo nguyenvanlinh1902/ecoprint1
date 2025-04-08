@@ -5,7 +5,7 @@ import bodyParser from 'koa-bodyparser';
 import logger from 'koa-logger';
 import { koaBody } from 'koa-body';
 import apiRouter from './routes/apiRoutes.js';
-import corsMiddleware from './middleware/cors.js';
+import corsMiddleware from './middlewares/cors.js';
 import apiHandler from './handlers/api.js';
 
 // Create Koa app

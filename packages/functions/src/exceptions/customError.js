@@ -1,6 +1,3 @@
-/**
- * Lớp lỗi tùy chỉnh cho xử lý lỗi thống nhất
- */
 class CustomError extends Error {
   constructor(message, status = 500, code = null) {
     super(message);
@@ -11,9 +8,6 @@ class CustomError extends Error {
   }
 }
 
-/**
- * Middleware xử lý lỗi cho Koa
- */
 const errorHandler = async (ctx, next) => {
   try {
     await next();
@@ -28,7 +22,6 @@ const errorHandler = async (ctx, next) => {
         }
       };
     } else {
-      // Silent error handling - no logging
       ctx.status = 500;
       ctx.body = {
         success: false,

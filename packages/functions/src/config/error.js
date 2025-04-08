@@ -1,11 +1,6 @@
-/**
- * Cấu hình xử lý lỗi cho ứng dụng
- */
 
-// Xác định môi trường
 const isProd = process.env.NODE_ENV === 'production';
 
-// Mã lỗi HTTP
 export const HTTP_STATUS = {
   OK: 200,
   CREATED: 201,
@@ -18,7 +13,6 @@ export const HTTP_STATUS = {
   SERVICE_UNAVAILABLE: 503
 };
 
-// Mã lỗi ứng dụng
 export const ERROR_CODES = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   AUTHENTICATION_ERROR: 'AUTHENTICATION_ERROR',
@@ -32,36 +26,24 @@ export const ERROR_CODES = {
   FILE_UPLOAD_ERROR: 'FILE_UPLOAD_ERROR'
 };
 
-// Cấu hình hiển thị chi tiết lỗi
 export const errorConfig = {
-  // Hiển thị thông báo lỗi chi tiết
   showDetailedErrors: !isProd,
-  
-  // Hiển thị stack trace
   showStackTrace: !isProd,
-  
-  // Trả về thông báo lỗi mặc định cho client trong môi trường sản xuất
   defaultProductionMessage: 'Đã xảy ra lỗi khi xử lý yêu cầu. Vui lòng thử lại sau.',
   
-  // Các loại lỗi sẽ được log
   logTypes: isProd 
     ? ['error', 'fatal'] 
     : ['error', 'fatal', 'warn', 'info', 'debug'],
   
-  // Định dạng phản hồi lỗi
   responseFormat: {
     success: false,
     error: {
       code: '',
       message: '',
-      // stack sẽ chỉ được thêm trong môi trường phát triển
     }
   }
 };
 
-/**
- * Chuyển đổi mã lỗi từ Firebase sang mã lỗi ứng dụng
- */
 export const mapFirebaseErrorToAppError = (firebaseError) => {
   const errorMap = {
     'auth/email-already-exists': { code: ERROR_CODES.CONFLICT_ERROR, status: HTTP_STATUS.CONFLICT },
