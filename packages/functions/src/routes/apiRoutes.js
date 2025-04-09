@@ -7,9 +7,7 @@ import * as transactionController from '../controllers/transactionController.js'
 import * as adminController from '../controllers/adminController.js';
 import { getAllOptions, getOptionById, createOption, updateOption, deleteOption, addPosition, removePosition } from '../controllers/productOptionController.js';
 import { authMiddleware, adminMiddleware } from '../middlewares/authMiddleware.js';
-import * as simpleUploadMiddleware from '../middlewares/simpleUploadMiddleware.js';
-import { imageUploadMiddleware, receiptUploadMiddleware } from '../middlewares/simpleUploadMiddleware.js';
-import { uploadProductImage, uploadReceiptFile } from '../controllers/simpleUploadController.js';
+import * as uploadController from '../controllers/uploadController.js';
 
 /**
  *
@@ -20,195 +18,6 @@ export default function apiRouter(withPrefix = true) {
   const router = new Router();
   const apiRouter = withPrefix ? new Router({ prefix: '/api' }) : router;
   
-  // Test ping endpoint
-  router.get('/ping', (ctx) => {
-    ctx.body = {
-      success: true,
-      message: 'API is working!',
-      timestamp: new Date().toISOString()
-    };
-  });
-  
-  // Test upload form
-  router.get('/test-upload', (ctx) => {
-    ctx.type = 'html';
-    ctx.body = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Test Upload</title>
-        <style>
-          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-          h1 { color: #333; }
-          .upload-box { border: 2px dashed #ccc; padding: 20px; margin-bottom: 20px; }
-          .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; display: none; }
-          img.preview { max-width: 100%; max-height: 300px; margin-top: 10px; }
-          .tabs { display: flex; margin-bottom: 20px; }
-          .tab { padding: 10px 20px; cursor: pointer; border: 1px solid #ccc; margin-right: 5px; }
-          .tab.active { background: #f0f0f0; }
-          .tab-content { display: none; }
-          .tab-content.active { display: block; }
-        </style>
-      </head>
-      <body>
-        <h1>Test Upload Function</h1>
-        
-        <div class="tabs">
-          <div class="tab active" data-tab="form">Multipart Form</div>
-          <div class="tab" data-tab="base64">Base64</div>
-          <div class="tab" data-tab="raw">Raw Binary</div>
-        </div>
-        
-        <div class="tab-content active" id="form-tab">
-          <div class="upload-box">
-            <h3>Upload với Form Multipart</h3>
-            <form id="upload-form" enctype="multipart/form-data">
-              <input type="file" name="file" accept="image/*">
-              <button type="submit">Upload</button>
-            </form>
-          </div>
-        </div>
-        
-        <div class="tab-content" id="base64-tab">
-          <div class="upload-box">
-            <h3>Upload với Base64</h3>
-            <input type="file" id="base64-file" accept="image/*">
-            <button id="upload-base64">Upload as Base64</button>
-          </div>
-        </div>
-        
-        <div class="tab-content" id="raw-tab">
-          <div class="upload-box">
-            <h3>Upload Raw Binary</h3>
-            <input type="file" id="raw-file" accept="image/*">
-            <button id="upload-raw">Upload as Raw</button>
-          </div>
-        </div>
-        
-        <div class="result" id="result">
-          <h3>Kết quả:</h3>
-          <pre id="result-json"></pre>
-          <div id="image-preview"></div>
-        </div>
-        
-        <script>
-          // Tab switching
-          document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-              document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-              document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-              
-              tab.classList.add('active');
-              document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
-            });
-          });
-          
-          // Form upload
-          document.getElementById('upload-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            
-            try {
-              const response = await fetch('/api/upload/image', {
-                method: 'POST',
-                body: formData
-              });
-              
-              handleResponse(await response.json());
-            } catch (error) {
-              showError(error);
-            }
-          });
-          
-          // Base64 upload
-          document.getElementById('upload-base64').addEventListener('click', async () => {
-            const fileInput = document.getElementById('base64-file');
-            if (!fileInput.files.length) {
-              alert('Please select a file first');
-              return;
-            }
-            
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            
-            reader.onload = async () => {
-              try {
-                const base64 = reader.result;
-                const response = await fetch('/api/upload/image', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({ image: base64 })
-                });
-                
-                handleResponse(await response.json());
-              } catch (error) {
-                showError(error);
-              }
-            };
-            
-            reader.readAsDataURL(file);
-          });
-          
-          // Raw upload
-          document.getElementById('upload-raw').addEventListener('click', async () => {
-            const fileInput = document.getElementById('raw-file');
-            if (!fileInput.files.length) {
-              alert('Please select a file first');
-              return;
-            }
-            
-            const file = fileInput.files[0];
-            
-            try {
-              const response = await fetch('/api/upload/image', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': file.type
-                },
-                body: file
-              });
-              
-              handleResponse(await response.json());
-            } catch (error) {
-              showError(error);
-            }
-          });
-          
-          // Handle response
-          function handleResponse(data) {
-            const resultContainer = document.getElementById('result');
-            const resultJson = document.getElementById('result-json');
-            const imagePreview = document.getElementById('image-preview');
-            
-            resultContainer.style.display = 'block';
-            resultJson.textContent = JSON.stringify(data, null, 2);
-            
-            // Clear previous preview
-            imagePreview.innerHTML = '';
-            
-            // Show image if upload was successful
-            if (data.success && data.imageUrl) {
-              const img = document.createElement('img');
-              img.src = data.imageUrl;
-              img.className = 'preview';
-              imagePreview.appendChild(img);
-            }
-          }
-          
-          function showError(error) {
-            const resultContainer = document.getElementById('result');
-            const resultJson = document.getElementById('result-json');
-            
-            resultContainer.style.display = 'block';
-            resultJson.textContent = 'Error: ' + error.message;
-          }
-        </script>
-      </body>
-      </html>
-    `;
-  });
   
   // Authentication routes
   router.post('/auth/register', authController.register);
@@ -228,7 +37,8 @@ export default function apiRouter(withPrefix = true) {
   router.delete('/products/:productId', authMiddleware, productController.deleteProduct);
   router.post('/products/upload-image', 
     authMiddleware,
-    uploadProductImage
+    uploadController.uploadMiddleware(),
+    uploadController.uploadProductImage
   );
 
   // Category routes
@@ -272,11 +82,17 @@ export default function apiRouter(withPrefix = true) {
   router.post('/transactions/deposit', authMiddleware, transactionController.requestDeposit);
   router.post('/transactions/:transactionId/upload-receipt', 
     authMiddleware,
-    uploadReceiptFile
+    uploadController.uploadMiddleware(),
+    uploadController.uploadReceiptFile
   );
   router.get('/transactions', authMiddleware, transactionController.getUserTransactions);
   router.get('/transactions/:transactionId', authMiddleware, transactionController.getTransactionById);
   router.patch('/transactions/:transactionId/user-notes', authMiddleware, transactionController.updateUserNotes);
+  router.post('/transactions/:transactionId/receipt', 
+    authMiddleware,
+    uploadController.uploadMiddleware(),
+    uploadController.uploadReceiptFile
+  );
 
   // Admin routes
   router.get('/admin/dashboard', authMiddleware, adminMiddleware, adminController.getDashboard);
@@ -317,8 +133,9 @@ export default function apiRouter(withPrefix = true) {
   router.post('/admin/transactions/:transactionId/admin-notes', authMiddleware, adminMiddleware, transactionController.updateAdminNotes);
 
   // Upload routes
-  router.post('/upload/image', uploadProductImage);
-  router.post('/upload/receipt', uploadReceiptFile);
+  router.post('/upload/image', uploadController.uploadMiddleware(), uploadController.uploadProductImage);
+  router.post('/upload/receipt', uploadController.uploadMiddleware(), uploadController.uploadReceiptFile);
+  router.post('/upload/file', uploadController.uploadMiddleware(), uploadController.uploadGenericFile);
 
   // Product options routes
   router.get('/product-options', getAllOptions);
@@ -331,195 +148,11 @@ export default function apiRouter(withPrefix = true) {
 
   // Duplicate all routes to the API router if using prefix
   if (withPrefix && apiRouter !== router) {
-    // Test endpoints
-    apiRouter.get('/ping', (ctx) => {
-      ctx.body = {
-        success: true,
-        message: 'API is working!',
-        timestamp: new Date().toISOString()
-      };
-    });
-    
-    apiRouter.get('/test-upload', (ctx) => {
-      ctx.type = 'html';
-      ctx.body = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Test Upload</title>
-          <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-            h1 { color: #333; }
-            .upload-box { border: 2px dashed #ccc; padding: 20px; margin-bottom: 20px; }
-            .result { margin-top: 20px; padding: 10px; border: 1px solid #ddd; display: none; }
-            img.preview { max-width: 100%; max-height: 300px; margin-top: 10px; }
-            .tabs { display: flex; margin-bottom: 20px; }
-            .tab { padding: 10px 20px; cursor: pointer; border: 1px solid #ccc; margin-right: 5px; }
-            .tab.active { background: #f0f0f0; }
-            .tab-content { display: none; }
-            .tab-content.active { display: block; }
-          </style>
-        </head>
-        <body>
-          <h1>Test Upload Function</h1>
-          
-          <div class="tabs">
-            <div class="tab active" data-tab="form">Multipart Form</div>
-            <div class="tab" data-tab="base64">Base64</div>
-            <div class="tab" data-tab="raw">Raw Binary</div>
-          </div>
-          
-          <div class="tab-content active" id="form-tab">
-            <div class="upload-box">
-              <h3>Upload với Form Multipart</h3>
-              <form id="upload-form" enctype="multipart/form-data">
-                <input type="file" name="file" accept="image/*">
-                <button type="submit">Upload</button>
-              </form>
-            </div>
-          </div>
-          
-          <div class="tab-content" id="base64-tab">
-            <div class="upload-box">
-              <h3>Upload với Base64</h3>
-              <input type="file" id="base64-file" accept="image/*">
-              <button id="upload-base64">Upload as Base64</button>
-            </div>
-          </div>
-          
-          <div class="tab-content" id="raw-tab">
-            <div class="upload-box">
-              <h3>Upload Raw Binary</h3>
-              <input type="file" id="raw-file" accept="image/*">
-              <button id="upload-raw">Upload as Raw</button>
-            </div>
-          </div>
-          
-          <div class="result" id="result">
-            <h3>Kết quả:</h3>
-            <pre id="result-json"></pre>
-            <div id="image-preview"></div>
-          </div>
-          
-          <script>
-            // Tab switching
-            document.querySelectorAll('.tab').forEach(tab => {
-              tab.addEventListener('click', () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                
-                tab.classList.add('active');
-                document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
-              });
-            });
-            
-            // Form upload
-            document.getElementById('upload-form').addEventListener('submit', async (e) => {
-              e.preventDefault();
-              const formData = new FormData(e.target);
-              
-              try {
-                const response = await fetch('/api/upload/image', {
-                  method: 'POST',
-                  body: formData
-                });
-                
-                handleResponse(await response.json());
-              } catch (error) {
-                showError(error);
-              }
-            });
-            
-            // Base64 upload
-            document.getElementById('upload-base64').addEventListener('click', async () => {
-              const fileInput = document.getElementById('base64-file');
-              if (!fileInput.files.length) {
-                alert('Please select a file first');
-                return;
-              }
-              
-              const file = fileInput.files[0];
-              const reader = new FileReader();
-              
-              reader.onload = async () => {
-                try {
-                  const base64 = reader.result;
-                  const response = await fetch('/api/upload/image', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ image: base64 })
-                  });
-                  
-                  handleResponse(await response.json());
-                } catch (error) {
-                  showError(error);
-                }
-              };
-              
-              reader.readAsDataURL(file);
-            });
-            
-            // Raw upload
-            document.getElementById('upload-raw').addEventListener('click', async () => {
-              const fileInput = document.getElementById('raw-file');
-              if (!fileInput.files.length) {
-                alert('Please select a file first');
-                return;
-              }
-              
-              const file = fileInput.files[0];
-              
-              try {
-                const response = await fetch('/api/upload/image', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': file.type
-                  },
-                  body: file
-                });
-                
-                handleResponse(await response.json());
-              } catch (error) {
-                showError(error);
-              }
-            });
-            
-            // Handle response
-            function handleResponse(data) {
-              const resultContainer = document.getElementById('result');
-              const resultJson = document.getElementById('result-json');
-              const imagePreview = document.getElementById('image-preview');
-              
-              resultContainer.style.display = 'block';
-              resultJson.textContent = JSON.stringify(data, null, 2);
-              
-              // Clear previous preview
-              imagePreview.innerHTML = '';
-              
-              // Show image if upload was successful
-              if (data.success && data.imageUrl) {
-                const img = document.createElement('img');
-                img.src = data.imageUrl;
-                img.className = 'preview';
-                imagePreview.appendChild(img);
-              }
-            }
-            
-            function showError(error) {
-              const resultContainer = document.getElementById('result');
-              const resultJson = document.getElementById('result-json');
-              
-              resultContainer.style.display = 'block';
-              resultJson.textContent = 'Error: ' + error.message;
-            }
-          </script>
-        </body>
-        </html>
-      `;
-    });
-  
+    router.post('/transactions/:transactionId/upload-receipt', 
+      authMiddleware,
+      uploadController.uploadMiddleware(),
+      uploadController.uploadReceiptFile
+    );
     // Authentication routes
     apiRouter.post('/auth/register', authController.register);
     apiRouter.post('/auth/login', authController.login);
@@ -538,7 +171,8 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.delete('/products/:productId', authMiddleware, productController.deleteProduct);
     apiRouter.post('/products/upload-image', 
       authMiddleware,
-      uploadProductImage
+      uploadController.uploadMiddleware(),
+      uploadController.uploadProductImage
     );
 
     // Category routes
@@ -582,11 +216,17 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.post('/transactions/deposit', authMiddleware, transactionController.requestDeposit);
     apiRouter.post('/transactions/:transactionId/upload-receipt', 
       authMiddleware,
-      uploadReceiptFile
+      uploadController.uploadMiddleware(),
+      uploadController.uploadReceiptFile
     );
     apiRouter.get('/transactions', authMiddleware, transactionController.getUserTransactions);
     apiRouter.get('/transactions/:transactionId', authMiddleware, transactionController.getTransactionById);
     apiRouter.patch('/transactions/:transactionId/user-notes', authMiddleware, transactionController.updateUserNotes);
+    apiRouter.post('/transactions/:transactionId/receipt', 
+      authMiddleware,
+      uploadController.uploadMiddleware(),
+      uploadController.uploadReceiptFile
+    );
 
     // Admin routes
     apiRouter.get('/admin/dashboard', authMiddleware, adminMiddleware, adminController.getDashboard);
@@ -627,8 +267,9 @@ export default function apiRouter(withPrefix = true) {
     apiRouter.post('/admin/transactions/:transactionId/admin-notes', authMiddleware, adminMiddleware, transactionController.updateAdminNotes);
 
     // Upload routes
-    apiRouter.post('/upload/image', uploadProductImage);
-    apiRouter.post('/upload/receipt', uploadReceiptFile);
+    apiRouter.post('/upload/image', uploadController.uploadMiddleware(), uploadController.uploadProductImage);
+    apiRouter.post('/upload/receipt', uploadController.uploadMiddleware(), uploadController.uploadReceiptFile);
+    apiRouter.post('/upload/file', uploadController.uploadMiddleware(), uploadController.uploadGenericFile);
 
     // Product options routes
     apiRouter.get('/product-options', getAllOptions);
