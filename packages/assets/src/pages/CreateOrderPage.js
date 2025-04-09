@@ -4,7 +4,7 @@ import {
   Typography, Box, Paper, Grid, TextField, Button, Divider, FormControlLabel, Checkbox,
   RadioGroup, Radio, FormControl, FormLabel, InputAdornment, CircularProgress, Alert,
   Card, CardContent, CardMedia, Select, MenuItem, InputLabel, IconButton, List, ListItem,
-  ListItemText, ListItemSecondaryAction
+  ListItemText, ListItemSecondaryAction, FormGroup
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -56,12 +56,58 @@ const CreateOrderPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Parse productId from URL query parameters
+  // Parse params from URL query parameters
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const productId = params.get('productId');
+    const childSku = params.get('childSku');
+    const color = params.get('color');
+    const size = params.get('size');
+    const quantity = params.get('quantity');
+    const embroideryOption = params.get('embroideryOption');
+    const productionType = params.get('productionType');
+    const printPositionsJson = params.get('printPositions');
+    const designFilesJson = params.get('designFiles');
+    const price = params.get('price');
+    
+    // Nếu có productId thì đặt vào currentProductId
     if (productId) {
       setCurrentProductId(productId);
+      
+      // Đặt số lượng nếu có
+      if (quantity) {
+        setCurrentQuantity(parseInt(quantity, 10) || 1);
+      }
+      
+      // Nếu có dữ liệu embroidery hoặc printPositions, lưu để xử lý sau khi load sản phẩm
+      if (productionType === 'embroidery' && embroideryOption) {
+        // Sẽ xử lý trong useEffect dành riêng cho product details
+        localStorage.setItem('embroideryOption', embroideryOption);
+      }
+      
+      if (productionType === 'print' && printPositionsJson) {
+        try {
+          // Lưu print positions vào localStorage để xử lý sau khi load product
+          localStorage.setItem('printPositions', printPositionsJson);
+        } catch (e) {
+          console.error('Error parsing print positions:', e);
+        }
+      }
+      
+      // Lưu childSku, color, size để xử lý sau khi load product
+      if (childSku) localStorage.setItem('childSku', childSku);
+      if (color) localStorage.setItem('color', color);
+      if (size) localStorage.setItem('size', size);
+      
+      // Lưu designFiles nếu có
+      if (designFilesJson) {
+        localStorage.setItem('designFiles', designFilesJson);
+      }
+      
+      // Lưu giá nếu có
+      if (price) {
+        localStorage.setItem('calculatedPrice', price);
+      }
     }
   }, [location.search]);
 
@@ -105,17 +151,133 @@ const CreateOrderPage = () => {
           const productData = response.data.product;
           
           if (productData) {
-            setCurrentProduct(productData);
+            // Tạo bản sao của productData để có thể chỉnh sửa
+            const productCopy = { ...productData };
             
-            // Initialize print positions from product data
-            if (productData.printOptions) {
-              const basePosition = productData.printOptions.basePosition || 'chest_left';
-              
-              // Initialize with default selections
-              setCurrentPrintPositions({
-                basePosition,
-                additionalPositions: {}
+            // Xử lý childSku nếu có
+            const childSku = localStorage.getItem('childSku');
+            const color = localStorage.getItem('color');
+            const size = localStorage.getItem('size');
+            
+            // Nếu là sản phẩm configurable và có childSku
+            if (productData.productType === 'configurable' && childSku && productData.childProducts) {
+              // Tìm sản phẩm con phù hợp
+              const childProduct = productData.childProducts.find(child => {
+                if (typeof child === 'object' && child.sku === childSku) {
+                  return true;
+                }
+                return false;
               });
+              
+              // Nếu tìm thấy childProduct, cập nhật thông tin
+              if (childProduct) {
+                productCopy.selectedChild = childProduct;
+                productCopy.color = color || childProduct.color;
+                productCopy.size = size || childProduct.size;
+                
+                // Cập nhật giá nếu childProduct có giá
+                if (childProduct.price || childProduct.basePrice) {
+                  productCopy.price = childProduct.price || childProduct.basePrice;
+                }
+              }
+            }
+            
+            // Cập nhật giá từ localStorage nếu có
+            const calculatedPrice = localStorage.getItem('calculatedPrice');
+            if (calculatedPrice) {
+              productCopy.price = parseFloat(calculatedPrice);
+            }
+            
+            setCurrentProduct(productCopy);
+            
+            // Khởi tạo print positions hoặc embroidery options
+            
+            // Xử lý embroidery option
+            const embroideryOption = localStorage.getItem('embroideryOption');
+            if (productData.productionOptionType === 'embroidery' && embroideryOption) {
+              // Tạo customizations cho embroidery
+              const customizations = [{
+                type: 'EMBROIDERY',
+                option: embroideryOption,
+                price: productData.optionPrices?.[embroideryOption] || 0,
+                designUrl: ''
+              }];
+              
+              // Lưu vào state
+              setCurrentCustomizations(customizations);
+            }
+            
+            // Xử lý print positions
+            const printPositionsJson = localStorage.getItem('printPositions');
+            if (productData.productionOptionType === 'print-position' && printPositionsJson) {
+              try {
+                const printPositions = JSON.parse(printPositionsJson);
+                
+                // Tạo customizations cho print positions
+                const customizations = printPositions.map(posId => {
+                  // Tìm position trong product.printPositions
+                  const position = productData.printPositions?.find(p => 
+                    (typeof p === 'string' && p === posId) || 
+                    (typeof p === 'object' && p.id === posId)
+                  );
+                  
+                  return {
+                    type: 'PRINT',
+                    position: typeof position === 'string' ? position : position?.id,
+                    positionName: typeof position === 'object' ? position?.name : posId,
+                    price: typeof position === 'object' ? (position?.price || 0) : 0,
+                    designUrl: ''
+                  };
+                });
+                
+                // Lưu vào state
+                setCurrentCustomizations(customizations);
+                setCurrentPrintPositions({
+                  selectedPositions: printPositions
+                });
+              } catch (e) {
+                console.error('Error parsing print positions:', e);
+              }
+            } else {
+              // Khởi tạo mặc định nếu không có dữ liệu từ URL
+              if (productData.printOptions) {
+                const basePosition = productData.printOptions.basePosition || 'chest_left';
+                setCurrentPrintPositions({
+                  basePosition,
+                  additionalPositions: {}
+                });
+              }
+            }
+            
+            // Xử lý design files
+            const designFilesJson = localStorage.getItem('designFiles');
+            if (designFilesJson) {
+              try {
+                const designFiles = JSON.parse(designFilesJson);
+                setDesignFiles(designFiles);
+              } catch (e) {
+                console.error('Error parsing design files:', e);
+              }
+            }
+            
+            // Xóa dữ liệu đã xử lý trong localStorage
+            localStorage.removeItem('childSku');
+            localStorage.removeItem('color');
+            localStorage.removeItem('size');
+            localStorage.removeItem('embroideryOption');
+            localStorage.removeItem('printPositions');
+            localStorage.removeItem('designFiles');
+            localStorage.removeItem('calculatedPrice');
+            
+            // Tự động thêm vào đơn hàng nếu có đủ thông tin
+            if (
+              (productData.productType !== 'configurable' || childSku) &&
+              ((productData.productionOptionType !== 'print-position' || (printPositionsJson && JSON.parse(printPositionsJson).length > 0)))
+            ) {
+              // Đợi một chút để các state được cập nhật đầy đủ
+              setTimeout(() => {
+                handleAddToOrderFromUrl(productCopy);
+              }, 500);
             }
           } else {
             console.error('No product data found in response');
@@ -135,6 +297,76 @@ const CreateOrderPage = () => {
 
     fetchProductDetails();
   }, [currentProductId]);
+
+  // Thêm state mới để lưu customizations
+  const [currentCustomizations, setCurrentCustomizations] = useState([]);
+  // Thêm state để lưu design files
+  const [designFiles, setDesignFiles] = useState([]);
+
+  // Hàm để tự động thêm sản phẩm vào giỏ hàng từ URL params
+  const handleAddToOrderFromUrl = (productData) => {
+    if (!productData) return;
+    
+    // Đảm bảo giá cơ bản có giá trị
+    let basePrice = parseFloat(localStorage.getItem('calculatedPrice'));
+    
+    // Nếu không có giá trong localStorage, lấy từ sản phẩm
+    if (!basePrice || isNaN(basePrice)) {
+      basePrice = parseFloat(productData.price) || parseFloat(productData.basePrice) || 19.99;
+      
+      // Nếu có sản phẩm con, sử dụng giá của sản phẩm con
+      if (productData.selectedChild) {
+        if (typeof productData.selectedChild.price === 'number' && productData.selectedChild.price > 0) {
+          basePrice = productData.selectedChild.price;
+        } else if (typeof productData.selectedChild.basePrice === 'number' && productData.selectedChild.basePrice > 0) {
+          basePrice = productData.selectedChild.basePrice;
+        }
+      }
+    }
+    
+    console.log(`Creating order item for ${productData.name} with base price: ${basePrice}`);
+    
+    // Kiểm tra giá và đảm bảo là số hợp lệ
+    if (isNaN(basePrice) || basePrice <= 0) {
+      console.warn(`Invalid price for ${productData.name}, using default price`);
+      basePrice = 19.99;
+    }
+    
+    // Tạo order item mới
+    const newOrderItem = {
+      id: Date.now().toString(),
+      productId: productData.id,
+      product: {
+        ...productData,
+        price: basePrice
+      },
+      quantity: currentQuantity,
+      customizations: currentCustomizations,
+      printPositions: currentPrintPositions
+    };
+    
+    // Thêm design files nếu có
+    if (designFiles.length > 0) {
+      newOrderItem.designFiles = designFiles;
+    }
+    
+    // Log để debug
+    console.log("Adding order item with price:", newOrderItem.product.price, "Product data:", productData);
+    console.log("Customizations:", currentCustomizations);
+    
+    // Thêm vào order items
+    setOrderItems(prev => [...prev, newOrderItem]);
+    
+    // Reset states
+    setCurrentProductId('');
+    setCurrentProduct(null);
+    setCurrentQuantity(1);
+    setCurrentPrintPositions({
+      basePosition: '',
+      additionalPositions: {}
+    });
+    setCurrentCustomizations([]);
+  };
 
   const handleShippingChange = (e) => {
     const { name, value, checked, type } = e.target;
@@ -174,51 +406,137 @@ const CreateOrderPage = () => {
     }
   };
 
+  // Kiểm tra xem sản phẩm có hỗ trợ embroidery không
+  const canCustomizeEmbroidery = (product) => {
+    return product?.productionOptionType === 'embroidery' || 
+           product?.customizationOptions?.some(option => option.type === 'embroidery');
+  };
+
+  // Kiểm tra xem sản phẩm có hỗ trợ print position không
+  const canCustomizePrintPosition = (product) => {
+    return product?.productionOptionType === 'print-position' || 
+           product?.customizationOptions?.some(option => option.type === 'position');
+  };
+
   // Add current product to the order items
   const handleAddToOrder = () => {
     if (!currentProduct) return;
     
-    // Prepare customizations array based on selected print positions
+    // Chuẩn bị customizations dựa trên tùy chọn đã chọn
     const customizations = [];
     
-    // Add base position
-    if (currentPrintPositions.basePosition) {
-      customizations.push({
-        type: 'PRINT',
-        position: currentPrintPositions.basePosition,
-        price: 0, // Base position is included in product price
-        designUrl: '' // Assuming no design URL for now
-      });
-    }
-    
-    // Add additional positions
-    if (currentProduct.printOptions && currentProduct.printOptions.additionalPositions) {
-      Object.entries(currentPrintPositions.additionalPositions).forEach(([position, selected]) => {
-        if (selected && currentProduct.printOptions.additionalPositions[position]) {
+    // Kiểm tra loại sản phẩm và tùy chọn sản xuất
+    if (currentProduct.productionOptionType === 'print-position') {
+      // Thêm các vị trí in đã chọn
+      if (currentPrintPositions.selectedPositions && currentPrintPositions.selectedPositions.length > 0) {
+        currentPrintPositions.selectedPositions.forEach(posId => {
+          // Tìm vị trí in trong sản phẩm
+          const position = Array.isArray(currentProduct.printPositions) ? 
+            currentProduct.printPositions.find(p => 
+              (typeof p === 'string' && p === posId) || 
+              (typeof p === 'object' && p.id === posId)
+            ) : null;
+          
+          // Lấy giá và tên vị trí in
+          let positionPrice = 0;
+          let positionName = posId;
+          
+          if (position) {
+            if (typeof position === 'object') {
+              positionPrice = parseFloat(position.price) || 0;
+              positionName = position.name || posId;
+            }
+          }
+          
+          // Thêm vào customizations
           customizations.push({
             type: 'PRINT',
-            position,
-            price: currentProduct.printOptions.additionalPositions[position].price || 0,
+            position: posId,
+            positionName: positionName,
+            price: positionPrice,
             designUrl: ''
           });
+          
+          console.log(`Added print position: ${positionName} with price: ${positionPrice}`);
+        });
+      } else if (currentPrintPositions.basePosition) {
+        // Sử dụng basePosition nếu không có selectedPositions
+        customizations.push({
+          type: 'PRINT',
+          position: currentPrintPositions.basePosition,
+          positionName: currentPrintPositions.basePosition.replace('_', ' '),
+          price: 0, // Giá cơ bản đã bao gồm vị trí in đầu tiên
+          designUrl: ''
+        });
+        
+        console.log(`Added base position: ${currentPrintPositions.basePosition}`);
+        
+        // Thêm các vị trí bổ sung
+        if (currentPrintPositions.additionalPositions) {
+          Object.entries(currentPrintPositions.additionalPositions).forEach(([position, selected]) => {
+            if (selected && currentProduct.printOptions?.additionalPositions?.[position]) {
+              const positionPrice = parseFloat(currentProduct.printOptions.additionalPositions[position].price) || 0;
+              
+              customizations.push({
+                type: 'PRINT',
+                position,
+                positionName: position.replace('_', ' '),
+                price: positionPrice,
+                designUrl: ''
+              });
+              
+              console.log(`Added additional position: ${position} with price: ${positionPrice}`);
+            }
+          });
         }
+      }
+    } else if (currentProduct.productionOptionType === 'embroidery' && currentCustomizations.length > 0) {
+      // Sử dụng customizations hiện có cho embroidery
+      currentCustomizations.forEach(customization => {
+        const optionPrice = parseFloat(customization.price) || 0;
+        
+        customizations.push({
+          ...customization,
+          price: optionPrice
+        });
+        
+        console.log(`Added embroidery option: ${customization.option} with price: ${optionPrice}`);
       });
     }
     
-    // Create the new order item
+    // Tính toán giá chính xác
+    let basePrice = parseFloat(currentProduct.price) || parseFloat(currentProduct.basePrice) || 19.99;
+    console.log(`Base price for ${currentProduct.name}: ${basePrice}`);
+    
+    // Nếu có sản phẩm con được chọn, sử dụng giá của nó
+    if (currentProduct.selectedChild) {
+      if (typeof currentProduct.selectedChild.price === 'number' && currentProduct.selectedChild.price > 0) {
+        basePrice = currentProduct.selectedChild.price;
+      } else if (typeof currentProduct.selectedChild.basePrice === 'number' && currentProduct.selectedChild.basePrice > 0) {
+        basePrice = currentProduct.selectedChild.basePrice;
+      }
+      console.log(`Selected child product price: ${basePrice}`);
+    }
+    
+    // Tạo order item mới
     const newOrderItem = {
-      id: Date.now().toString(), // Unique ID for this item
+      id: Date.now().toString(),
       productId: currentProduct.id,
-      product: currentProduct,
+      product: {
+        ...currentProduct,
+        price: basePrice // Đảm bảo giá cơ bản được lưu chính xác
+      },
       quantity: currentQuantity,
-      printPositions: currentPrintPositions,
       customizations
     };
     
-    // Add to order items
+    // Log để debug
+    console.log(`Adding ${currentProduct.name} to order with base price ${basePrice} and ${customizations.length} customizations`);
+    
+    // Thêm vào đơn hàng
     setOrderItems(prev => [...prev, newOrderItem]);
     
-    // Reset current product selection
+    // Reset lựa chọn
     setCurrentProductId('');
     setCurrentProduct(null);
     setCurrentQuantity(1);
@@ -226,6 +544,7 @@ const CreateOrderPage = () => {
       basePosition: '',
       additionalPositions: {}
     });
+    setCurrentCustomizations([]);
   };
 
   // Remove an item from the order
@@ -317,39 +636,45 @@ const CreateOrderPage = () => {
   };
 
   // Calculate order summary
-  const calculateOrderSummary = useCallback(() => {
+  const calculateOrderSummary = () => {
     let subtotal = 0;
-    let customizationCost = 0;
-    let totalQuantity = 0;
+    let customizationTotal = 0;
     
-    // Calculate costs for all items
     orderItems.forEach(item => {
-      const basePrice = Number(item.product.price) || 0;
-      subtotal += basePrice * item.quantity;
-      totalQuantity += item.quantity;
+      // Lấy giá sản phẩm (đảm bảo dùng giá đúng)
+      const itemPrice = typeof item.product.price === 'number' ? item.product.price : 
+                       (typeof item.product.basePrice === 'number' ? item.product.basePrice : 0);
       
-      // Add costs for additional print positions
-      if (item.customizations) {
-        item.customizations.forEach(customization => {
-          if (customization.price) {
-            customizationCost += Number(customization.price) * item.quantity;
-          }
-        });
+      // Tính tổng phụ = giá sản phẩm * số lượng
+      subtotal += itemPrice * item.quantity;
+      
+      // Tính chi phí tùy chỉnh
+      if (item.customizations && item.customizations.length > 0) {
+        // Tổng hợp chi phí tùy chỉnh cho mỗi sản phẩm
+        const itemCustomizationCost = item.customizations.reduce((sum, c) => {
+          // Đảm bảo giá tùy chỉnh là số
+          const optionPrice = typeof c.price === 'number' ? c.price : 0;
+          return sum + optionPrice;
+        }, 0);
+        
+        // Thêm vào tổng chi phí tùy chỉnh = chi phí tùy chỉnh * số lượng
+        customizationTotal += itemCustomizationCost * item.quantity;
       }
     });
     
-    // Calculate shipping cost
+    // Phí vận chuyển (có thể thay đổi sau)
     const shippingCost = shippingInfo.shippingMethod === 'express' ? 15 : 5;
-    const total = subtotal + customizationCost + shippingCost;
-
-    return { 
-      subtotal, 
-      customizationCost, 
-      shippingCost, 
-      total,
-      totalQuantity
+    
+    // Tổng cộng = tổng phụ + chi phí tùy chỉnh + phí vận chuyển
+    const total = subtotal + customizationTotal + shippingCost;
+    
+    return {
+      subtotal,
+      customizationTotal,
+      shippingCost,
+      total
     };
-  }, [orderItems, shippingInfo.shippingMethod]);
+  };
 
   const orderSummary = calculateOrderSummary();
   const hasInsufficientCredit = user?.balance < orderSummary.total;
@@ -400,21 +725,36 @@ const CreateOrderPage = () => {
                           {item.product.name}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Quantity: {item.quantity} × {formatCurrency(item.product.price)}
+                          Quantity: {item.quantity} × {formatCurrency(item.product.price || item.product.basePrice || 0)}
                         </Typography>
                         
-                        {/* Print positions */}
-                        <Typography variant="body2" color="text.secondary">
-                          Print positions: {item.printPositions.basePosition.replace('_', ' ')}
-                          {Object.entries(item.printPositions.additionalPositions)
-                            .filter(([_, selected]) => selected)
-                            .map(([position]) => position.replace('_', ' '))
-                            .join(', ')}
-                        </Typography>
+                        {item.customizations && item.customizations.length > 0 ? (
+                          <Typography variant="body2" color="text.secondary">
+                            {item.customizations.map(c => 
+                              c.type === 'PRINT' 
+                                ? `Print: ${c.positionName || c.position}` 
+                                : `${c.type}: ${c.option}`
+                            ).join(', ')}
+                          </Typography>
+                        ) : item.printPositions?.basePosition && (
+                          <Typography variant="body2" color="text.secondary">
+                            Print positions: {item.printPositions.basePosition.replace('_', ' ')}
+                            {Object.entries(item.printPositions.additionalPositions || {})
+                              .filter(([_, selected]) => selected)
+                              .map(([position]) => position.replace('_', ' '))
+                              .join(', ')}
+                          </Typography>
+                        )}
+                        
+                        {item.product.selectedChild && (
+                          <Typography variant="body2" color="text.secondary">
+                            Variant: {item.product.color || ''} {item.product.size || ''}
+                          </Typography>
+                        )}
                         
                         <Typography variant="subtitle2" color="primary">
-                          Item Total: {formatCurrency(item.quantity * item.product.price + 
-                            (item.customizations.reduce((sum, c) => sum + (c.price || 0), 0) * item.quantity))}
+                          Item Total: {formatCurrency((item.product.price || item.product.basePrice || 0) * item.quantity + 
+                            ((item.customizations?.reduce((sum, c) => sum + (c.price || 0), 0) || 0) * item.quantity))}
                         </Typography>
                       </Box>
                       <Box>
@@ -455,11 +795,15 @@ const CreateOrderPage = () => {
                     <MenuItem value="">
                       <em>Select a product</em>
                     </MenuItem>
-                    {products.map((product) => (
-                      <MenuItem key={product.id} value={product.id}>
-                        {product.name} - {formatCurrency(product.price)}
-                      </MenuItem>
-                    ))}
+                    {products.map((product) => {
+                      // Tính toán giá hiển thị cho sản phẩm
+                      const displayPrice = parseFloat(product.price) || parseFloat(product.basePrice) || 19.99;
+                      return (
+                        <MenuItem key={product.id} value={product.id}>
+                          {product.name} - {formatCurrency(displayPrice)}
+                        </MenuItem>
+                      );
+                    })}
                   </Select>
                 </FormControl>
               </Grid>
@@ -486,8 +830,13 @@ const CreateOrderPage = () => {
                               {currentProduct.description}
                             </Typography>
                             <Typography variant="h6" color="primary">
-                              {formatCurrency(currentProduct.price)}
+                              {formatCurrency(parseFloat(currentProduct.price) || parseFloat(currentProduct.basePrice) || 19.99)}
                             </Typography>
+                            {currentProduct.selectedChild && (
+                              <Typography variant="body2" sx={{ mt: 1 }}>
+                                Selected variant: {currentProduct.color || ''} {currentProduct.size || ''}
+                              </Typography>
+                            )}
                             {currentProduct.stock !== undefined && (
                               <Typography variant="body2" color={currentProduct.stock > 0 ? 'success.main' : 'error.main'}>
                                 {currentProduct.stock > 0 ? `In stock: ${currentProduct.stock}` : 'Out of stock'}
@@ -513,48 +862,110 @@ const CreateOrderPage = () => {
                     />
                   </Grid>
                   
-                  {currentProduct.printOptions && (
+                  {/* Print Positions Options - chỉ hiển thị nếu sản phẩm hỗ trợ */}
+                  {canCustomizePrintPosition(currentProduct) && currentProduct.printPositions && (
                     <Grid item xs={12}>
                       <Typography variant="subtitle1" gutterBottom>
                         Print Positions
                       </Typography>
                       
-                      <FormControl component="fieldset" sx={{ mt: 1 }}>
-                        <FormLabel component="legend">Base Position (included)</FormLabel>
+                      <FormGroup>
+                        {Array.isArray(currentProduct.printPositions) && 
+                          currentProduct.printPositions
+                            .filter(position => {
+                              // Chỉ hiển thị vị trí hợp lệ
+                              if (typeof position === 'string') return true;
+                              if (typeof position === 'object' && (position.id || position.name)) return true;
+                              return false;
+                            })
+                            .map((position, index) => {
+                              const positionId = typeof position === 'string' ? position : position.id;
+                              const positionName = typeof position === 'object' ? 
+                                (position.name || positionId) : positionId;
+                              const positionPrice = typeof position === 'object' ? 
+                                (parseFloat(position.price) || 0) : 0;
+                              
+                              return (
+                                <FormControlLabel
+                                  key={positionId || `position-${index}`}
+                                  control={
+                                    <Checkbox 
+                                      checked={currentPrintPositions.selectedPositions?.includes(positionId) || false}
+                                      onChange={(e) => {
+                                        const isChecked = e.target.checked;
+                                        // Cập nhật selectedPositions
+                                        setCurrentPrintPositions(prev => {
+                                          const newPositions = isChecked 
+                                            ? [...(prev.selectedPositions || []), positionId]
+                                            : (prev.selectedPositions || []).filter(id => id !== positionId);
+                                          
+                                          return {
+                                            ...prev,
+                                            selectedPositions: newPositions
+                                          };
+                                        });
+                                      }}
+                                    />
+                                  }
+                                  label={`${positionName} ${positionPrice > 0 ? `(+${formatCurrency(positionPrice)})` : ''}`}
+                                />
+                              );
+                            })
+                        }
+                      </FormGroup>
+                    </Grid>
+                  )}
+                  
+                  {/* Embroidery Options - chỉ hiển thị nếu sản phẩm hỗ trợ */}
+                  {canCustomizeEmbroidery(currentProduct) && currentProduct.optionPrices && (
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle1" gutterBottom>
+                        Embroidery Options
+                      </Typography>
+                      
+                      <FormControl component="fieldset">
                         <RadioGroup
-                          name="basePosition"
-                          value={currentPrintPositions.basePosition}
-                          onChange={(e) => handlePrintPositionChange('base', e.target.value)}
+                          value={currentCustomizations.find(c => c.type === 'EMBROIDERY')?.option || ''}
+                          onChange={(e) => {
+                            const selectedOption = e.target.value;
+                            const optionPrice = currentProduct.optionPrices[selectedOption] || 0;
+                            
+                            // Cập nhật customizations
+                            setCurrentCustomizations(prev => {
+                              // Lọc bỏ các tùy chọn EMBROIDERY cũ
+                              const filtered = prev.filter(c => c.type !== 'EMBROIDERY');
+                              
+                              // Thêm tùy chọn mới
+                              return [
+                                ...filtered,
+                                {
+                                  type: 'EMBROIDERY',
+                                  option: selectedOption,
+                                  price: parseFloat(optionPrice) || 0,
+                                  designUrl: ''
+                                }
+                              ];
+                            });
+                          }}
                         >
-                          <FormControlLabel
-                            value={currentProduct.printOptions.basePosition || 'chest_left'}
-                            control={<Radio />}
-                            label={`${(currentProduct.printOptions.basePosition || 'chest_left').replace('_', ' ')} (included)`}
-                          />
+                          {Object.entries(currentProduct.optionPrices)
+                            .filter(([key]) => key.includes('embroidery'))
+                            .map(([optionId, price]) => {
+                              const optionName = optionId.replace('embroidery-', '').replace('-', ' ');
+                              const optionPrice = typeof price === 'number' ? price : 0;
+                              
+                              return (
+                                <FormControlLabel
+                                  key={optionId}
+                                  value={optionId}
+                                  control={<Radio />}
+                                  label={`${optionName} ${optionPrice > 0 ? `(+${formatCurrency(optionPrice)})` : ''}`}
+                                />
+                              );
+                            })
+                          }
                         </RadioGroup>
                       </FormControl>
-                      
-                      {currentProduct.printOptions.additionalPositions && 
-                       Object.keys(currentProduct.printOptions.additionalPositions).length > 0 && (
-                        <FormControl component="fieldset" sx={{ mt: 2 }}>
-                          <FormLabel component="legend">Additional Positions (extra cost)</FormLabel>
-                          {Object.entries(currentProduct.printOptions.additionalPositions).map(([position, details]) => (
-                            details.available && (
-                              <FormControlLabel
-                                key={position}
-                                control={
-                                  <Checkbox
-                                    checked={!!currentPrintPositions.additionalPositions[position]}
-                                    onChange={(e) => handlePrintPositionChange('additional', position, e.target.checked)}
-                                    disabled={loading}
-                                  />
-                                }
-                                label={`${position.replace('_', ' ')} (+${formatCurrency(details.price || 0)} per item)`}
-                              />
-                            )
-                          ))}
-                        </FormControl>
-                      )}
                     </Grid>
                   )}
                   
@@ -712,88 +1123,67 @@ const CreateOrderPage = () => {
         
         {/* Right column - Order summary */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, position: 'sticky', top: '20px' }}>
-            <Typography variant="h6" gutterBottom>
-              Order Summary
-            </Typography>
-            
-            <Grid container spacing={1}>
+          <Paper style={{ padding: '1rem', marginTop: '1rem' }}>
+            <Typography variant="h6" gutterBottom>Order Summary</Typography>
+            <Grid container spacing={2}>
               <Grid item xs={6}>
-                <Typography>Subtotal ({orderSummary.totalQuantity} items):</Typography>
+                <Typography>Subtotal:</Typography>
               </Grid>
               <Grid item xs={6}>
                 <Typography align="right">{formatCurrency(orderSummary.subtotal)}</Typography>
               </Grid>
               
-              {orderSummary.customizationCost > 0 && (
+              {orderSummary.customizationTotal > 0 && (
                 <>
                   <Grid item xs={6}>
                     <Typography>Print Customization:</Typography>
                   </Grid>
                   <Grid item xs={6}>
-                    <Typography align="right">{formatCurrency(orderSummary.customizationCost)}</Typography>
+                    <Typography align="right">{formatCurrency(orderSummary.customizationTotal)}</Typography>
                   </Grid>
                 </>
               )}
               
               <Grid item xs={6}>
-                <Typography>Shipping ({shippingInfo.shippingMethod}):</Typography>
+                <Typography>Shipping:</Typography>
               </Grid>
               <Grid item xs={6}>
                 <Typography align="right">{formatCurrency(orderSummary.shippingCost)}</Typography>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <Divider sx={{ my: 1 }} />
               </Grid>
               
               <Grid item xs={6}>
                 <Typography variant="h6">Total:</Typography>
               </Grid>
               <Grid item xs={6}>
-                <Typography variant="h6" align="right">
-                  {formatCurrency(orderSummary.total)}
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <Typography 
-                  color={hasInsufficientCredit ? "error" : "text.secondary"} 
-                  variant="body2"
-                  sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}
-                >
-                  <span>Current Balance:</span>
-                  <span>{formatCurrency(user?.balance || 0)}</span>
-                </Typography>
-              </Grid>
-              
-              <Grid item xs={12}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={handleSubmitOrder}
-                  disabled={loading || orderItems.length === 0 || hasInsufficientCredit}
-                  sx={{ mt: 2 }}
-                >
-                  {loading ? <CircularProgress size={24} color="inherit" /> : 'Place Order'}
-                </Button>
-                
-                {hasInsufficientCredit && (
-                  <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-                    Insufficient balance. Please deposit funds before placing this order.
-                  </Typography>
-                )}
-                
-                {orderItems.length === 0 && (
-                  <Typography color="warning.main" variant="body2" sx={{ mt: 1 }}>
-                    Please add at least one product to your order.
-                  </Typography>
-                )}
+                <Typography variant="h6" align="right">{formatCurrency(orderSummary.total)}</Typography>
               </Grid>
             </Grid>
+            
+            {user && (
+              <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #eee' }}>
+                <Typography variant="body2">
+                  Your current balance: {formatCurrency(user.balance || 0)}
+                </Typography>
+                {hasInsufficientCredit && (
+                  <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                    Insufficient balance to place this order. Please add funds to your account.
+                  </Typography>
+                )}
+              </Box>
+            )}
           </Paper>
+          
+          <Button
+            variant="contained"
+            color="primary"
+            size="large"
+            fullWidth
+            sx={{ mt: 2 }}
+            onClick={handleSubmitOrder}
+            disabled={loading || orderItems.length === 0 || hasInsufficientCredit}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Place Order'}
+          </Button>
         </Grid>
       </Grid>
     </Box>

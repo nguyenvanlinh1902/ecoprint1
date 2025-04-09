@@ -661,6 +661,54 @@ export const adminApi = {
   }
 };
 
+// Cart API
+const cart = {
+  getCart: async () => {
+    try {
+      const response = await apiClient.get('/api/cart');
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+  
+  addToCart: async (item) => {
+    try {
+      const response = await apiClient.post('/api/cart/add', item);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+  
+  updateCartItem: async (itemId, data) => {
+    try {
+      const response = await apiClient.put(`/api/cart/item/${itemId}`, data);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+  
+  removeFromCart: async (itemId) => {
+    try {
+      const response = await apiClient.delete(`/api/cart/item/${itemId}`);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+  
+  clearCart: async () => {
+    try {
+      const response = await apiClient.delete('/api/cart');
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+};
+
 // Export default with proper mappings for backward compatibility
 export default {
   apiClient,
@@ -688,5 +736,7 @@ export default {
   transactions,
   
   // Include productOptions
-  productOptions
+  productOptions,
+  
+  cart
 };

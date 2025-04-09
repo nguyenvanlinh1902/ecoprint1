@@ -12,10 +12,12 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
   ArrowBack as ArrowBackIcon,
-  CloudUpload as UploadIcon
+  CloudUpload as UploadIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import api from '@/api';
 import ImageUploader from '@/components/ImageUploader';
+import { TableContainer, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
 
 const ProductFormPage = () => {
   const { productId } = useParams();
@@ -28,7 +30,7 @@ const ProductFormPage = () => {
     description: '',
     price: '',
     sku: '',
-    category: '',
+    categoryId: '',
     status: 'active',
     features: [],
     specifications: {},
@@ -38,17 +40,15 @@ const ProductFormPage = () => {
     productType: 'simple',
     childProducts: [],
     isVisible: true,
-    stock: 0,
+    stock: 999,
     hasProductionOptions: false,
     productionOptionType: '',
-    printOptions: {
-      basePosition: 'chest_left',
-      additionalPositions: {
-        sleeve: { price: 2, available: true },
-        back: { price: 4, available: true },
-        special: { price: 4, available: true }
-      }
-    }
+    optionPrices: {
+      'embroidery-standard': 0,
+      'embroidery-fabric': 2,
+      'embroidery-sequin': 2
+    },
+    printPositions: []
   });
   
   // UI state
@@ -74,6 +74,9 @@ const ProductFormPage = () => {
   const [newDeliveryName, setNewDeliveryName] = useState('');
   const [newDeliveryPrice, setNewDeliveryPrice] = useState('');
   
+  // Child Products Dialog state
+  const [childProductsDialogOpen, setChildProductsDialogOpen] = useState(false);
+  
   // Load product data if in edit mode
   useEffect(() => {
     const fetchData = async () => {
@@ -93,9 +96,9 @@ const ProductFormPage = () => {
             setFormData({
               name: product.name || '',
               description: product.description || '',
-              price: product.price?.toString() || '',
+              price: product.basePrice?.toString() || product.price?.toString() || '',
               sku: product.sku || '',
-              category: product.categoryId || '',
+              categoryId: product.categoryId || '',
               status: product.status || 'active',
               features: product.features || [],
               specifications: formattedSpecs,
@@ -103,19 +106,18 @@ const ProductFormPage = () => {
               imageUrl: product.images && product.images.length > 0 ? product.images[0] : '',
               imageFile: null,
               productType: product.productType || 'simple',
+              parentSku: product.parentSku || '',
               childProducts: product.childProducts || [],
-              isVisible: product.isVisible !== undefined ? product.isVisible : true,
-              stock: product.stock || 0,
+              isVisible: product.isVisible !== undefined ? product.isVisible : (product.productType === 'configurable'),
+              stock: product.stock || 999,
               hasProductionOptions: product.hasProductionOptions || false,
               productionOptionType: product.productionOptionType || '',
-              printOptions: product.printOptions || {
-                basePosition: 'chest_left',
-                additionalPositions: {
-                  sleeve: { price: 2, available: true },
-                  back: { price: 4, available: true },
-                  special: { price: 4, available: true }
-                }
-              }
+              optionPrices: product.optionPrices || {
+                'embroidery-standard': 0,
+                'embroidery-fabric': 2,
+                'embroidery-sequin': 2
+              },
+              printPositions: product.printPositions || []
             });
           } else {
             console.error('Failed to load product data:', response);
@@ -174,17 +176,62 @@ const ProductFormPage = () => {
         
         // Fallback to default options if API fails
         setProductOptions([
-          { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
-            positions: [
-              { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
-              { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
-              { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
-              { id: 'back', name: 'Back', basePrice: 4 },
-              { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
-              { id: 'special', name: 'Special', basePrice: 4 }
+          { 
+            id: 'embroidery',
+            name: 'Thêu',
+            description: 'Các loại thêu khác nhau',
+            type: 'embroidery', 
+            variants: [
+              { 
+                id: 'embroidery-standard',
+                name: 'Thêu thường',
+                basePrice: 0
+              },
+              { 
+                id: 'embroidery-fabric',
+                name: 'Thêu đáp vải',
+                basePrice: 2
+              },
+              { 
+                id: 'embroidery-sequin',
+                name: 'Thêu kim tuyến',
+                basePrice: 2
+              }
             ]
           },
-          { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+          { 
+            id: 'print-position',
+            name: 'Vị trí in',
+            description: 'Các vị trí in ấn',
+            type: 'position',
+            variants: [
+              { 
+                id: 'position-front',
+                name: 'Mặt trước',
+                basePrice: 3
+              },
+              { 
+                id: 'position-back',
+                name: 'Mặt sau',
+                basePrice: 3
+              },
+              { 
+                id: 'position-slit',
+                name: 'Xẻ tà bên trái/phải',
+                basePrice: 1.5
+              },
+              { 
+                id: 'position-other',
+                name: 'Vị trí khác',
+                basePrice: 1
+              },
+              { 
+                id: 'position-hat',
+                name: 'Vị trí mũ',
+                basePrice: 1
+              }
+            ]
+          }
         ]);
       }
     } catch (error) {
@@ -192,27 +239,122 @@ const ProductFormPage = () => {
       
       // Fallback to default options if API fails
       setProductOptions([
-        { id: 'print', name: 'Print', description: 'Print designs on clothing', type: 'print', 
-          positions: [
-            { id: 'chest_left', name: 'Chest Left', basePrice: 0, default: true },
-            { id: 'chest_right', name: 'Chest Right', basePrice: 0 },
-            { id: 'chest_center', name: 'Chest Center', basePrice: 0 },
-            { id: 'back', name: 'Back', basePrice: 4 },
-            { id: 'sleeve', name: 'Sleeve', basePrice: 2 },
-            { id: 'special', name: 'Special', basePrice: 4 }
+        { 
+          id: 'embroidery',
+          name: 'Thêu',
+          description: 'Các loại thêu khác nhau',
+          type: 'embroidery', 
+          variants: [
+            { 
+              id: 'embroidery-standard',
+              name: 'Thêu thường',
+              basePrice: 0
+            },
+            { 
+              id: 'embroidery-fabric',
+              name: 'Thêu đáp vải',
+              basePrice: 2
+            },
+            { 
+              id: 'embroidery-sequin',
+              name: 'Thêu kim tuyến',
+              basePrice: 2
+            }
           ]
         },
-        { id: 'rental', name: 'Rental', description: 'Rent the product', type: 'rental', positions: [] }
+        { 
+          id: 'print-position',
+          name: 'Vị trí in',
+          description: 'Các vị trí in ấn',
+          type: 'position',
+          variants: [
+            { 
+              id: 'position-front',
+              name: 'Mặt trước',
+              basePrice: 3
+            },
+            { 
+              id: 'position-back',
+              name: 'Mặt sau',
+              basePrice: 3
+            },
+            { 
+              id: 'position-slit',
+              name: 'Xẻ tà bên trái/phải',
+              basePrice: 1.5
+            },
+            { 
+              id: 'position-other',
+              name: 'Vị trí khác',
+              basePrice: 1
+            },
+            { 
+              id: 'position-hat',
+              name: 'Vị trí mũ',
+              basePrice: 1
+            }
+          ]
+        }
       ]);
     }
   };
   
+  // Hàm xử lý dữ liệu phức tạp của optionPrices và printPositions
+  const normalizeProductData = (data) => {
+    // Chuyển đổi childProducts để đảm bảo chỉ lưu ID hoặc dữ liệu cần thiết
+    const normalizedChildProducts = Array.isArray(data.childProducts) 
+      ? data.childProducts.map(child => {
+          if (typeof child === 'string') return child;
+          return child.id || child.sku || child;
+        })
+      : [];
+    
+    // Chuyển đổi optionPrices thành object đơn giản
+    const normalizedOptionPrices = {};
+    if (data.optionPrices) {
+      Object.entries(data.optionPrices).forEach(([key, value]) => {
+        normalizedOptionPrices[key] = typeof value === 'object' ? value.price || 0 : Number(value);
+      });
+    }
+    
+    // Đảm bảo printPositions là mảng đơn giản
+    const normalizedPrintPositions = Array.isArray(data.printPositions)
+      ? data.printPositions.map(pos => {
+          if (typeof pos === 'string') return { id: pos, price: 0 };
+          if (typeof pos === 'object') return { 
+            id: pos.id || '', 
+            name: pos.name || '',
+            price: Number(pos.price || 0) 
+          };
+          return pos;
+        })
+      : [];
+    
+    return {
+      ...data,
+      childProducts: normalizedChildProducts,
+      optionPrices: normalizedOptionPrices,
+      printPositions: normalizedPrintPositions
+    };
+  };
+  
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value
-    }));
+    
+    if (name === 'productType') {
+      // Nếu thay đổi loại sản phẩm, tự động cập nhật isVisible
+      // Simple products mặc định ẩn (false), configurable mặc định hiển thị (true)
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+        isVisible: value === 'configurable'
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value
+      }));
+    }
   };
   
   const handleStatusChange = (e) => {
@@ -320,7 +462,54 @@ const ProductFormPage = () => {
       if (categoriesResponse.data && categoriesResponse.data.success) {
         setCategories(categoriesResponse.data.data || []);
       } else {
-        setCategories([]);
+        // Fallback to predefined categories
+        setCategories([
+          {
+            id: 'hoodies',
+            name: 'Hoodies',
+            description: 'Áo hoodie các loại'
+          },
+          {
+            id: 'tshirts',
+            name: 'T-shirts',
+            description: 'Áo thun ngắn tay'
+          },
+          {
+            id: 'polos',
+            name: 'Polos',
+            description: 'Áo polo có cổ'
+          },
+          {
+            id: 'hats',
+            name: 'Hats',
+            description: 'Mũ các loại'
+          },
+          {
+            id: 'tanktops',
+            name: 'Tank Tops',
+            description: 'Áo không tay'
+          },
+          {
+            id: 'pants',
+            name: 'Pants',
+            description: 'Quần các loại'
+          },
+          {
+            id: 'sweatshirts',
+            name: 'Sweatshirts',
+            description: 'Áo nỉ không mũ'
+          },
+          {
+            id: 'jackets',
+            name: 'Jackets',
+            description: 'Áo khoác các loại'
+          },
+          {
+            id: 'others',
+            name: 'Other Products',
+            description: 'Các sản phẩm khác'
+          }
+        ]);
       }
     } catch (error) {
       setError('Failed to load categories. Please try again.');
@@ -364,7 +553,7 @@ const ProductFormPage = () => {
         if (newCategory && newCategory.id) {
           setFormData(prev => ({
             ...prev,
-            category: newCategory.id
+            categoryId: newCategory.id
           }));
         }
         
@@ -391,7 +580,7 @@ const ProductFormPage = () => {
       return false;
     }
     
-    if (!formData.category) {
+    if (!formData.categoryId) {
       setError('Please select a category');
       return false;
     }
@@ -470,46 +659,38 @@ const ProductFormPage = () => {
         console.log('No image provided for product');
       }
       
+      // Normalize product data to ensure proper format
+      const normalizedFormData = normalizeProductData(formData);
+      
       // Prepare product data
       const productData = {
-        name: formData.name,
-        description: formData.description || '',
-        price: Number(formData.price),
-        sku: formData.sku || `SKU-${Date.now()}`,
-        categoryId: formData.category,
-        stock: Number(formData.stock) || 0,
-        status: formData.status || 'active',
-        features: formData.features || [],
-        specifications: formData.specifications || {},
-        deliveryOptions: formData.deliveryOptions || [],
-        productType: formData.productType || 'simple',
-        childProducts: formData.childProducts || [],
-        isVisible: formData.isVisible || true,
-        hasProductionOptions: formData.hasProductionOptions || false,
-        productionOptionType: formData.productionOptionType || '',
-        printOptions: formData.printOptions || {
-          basePosition: 'chest_left',
-          additionalPositions: {
-            sleeve: { price: 2, available: true },
-            back: { price: 4, available: true },
-            special: { price: 4, available: true }
-          }
-        }
+        name: normalizedFormData.name,
+        description: normalizedFormData.description || '',
+        basePrice: Number(normalizedFormData.price),
+        sku: normalizedFormData.sku || `SKU-${Date.now()}`,
+        categoryId: normalizedFormData.categoryId,
+        stock: Number(normalizedFormData.stock) || 999,
+        status: normalizedFormData.status || 'active',
+        features: normalizedFormData.features || [],
+        specifications: normalizedFormData.specifications || {},
+        deliveryOptions: normalizedFormData.deliveryOptions || [],
+        productType: normalizedFormData.productType || 'simple',
+        childProducts: normalizedFormData.childProducts || [],
+        isVisible: normalizedFormData.isVisible || true,
+        hasProductionOptions: normalizedFormData.hasProductionOptions || false,
+        productionOptionType: normalizedFormData.productionOptionType || '',
+        optionPrices: normalizedFormData.optionPrices || {
+          'embroidery-standard': 0,
+          'embroidery-fabric': 2,
+          'embroidery-sequin': 2
+        },
+        printPositions: normalizedFormData.printPositions || []
       };
       
       // Add the image URL (either existing or newly uploaded)
       if (uploadedImageUrl) {
-        // Lưu URL hình ảnh vào mảng images
         productData.images = [uploadedImageUrl];
-        // Thêm trường imageUrl để đảm bảo tương thích
-        productData.imageUrl = uploadedImageUrl;
       }
-      
-      console.log('Saving product with image data:', {
-        hasImage: !!uploadedImageUrl,
-        imageUrl: uploadedImageUrl,
-        images: productData.images
-      });
       
       console.log('Saving product with data:', productData);
       
@@ -742,9 +923,9 @@ const ProductFormPage = () => {
                   <FormControl fullWidth required>
                     <InputLabel>Category</InputLabel>
                     <Select
-                      name="category"
+                      name="categoryId" 
                       label="Category"
-                      value={formData.category}
+                      value={formData.categoryId}
                       onChange={handleInputChange}
                     >
                       {categories.map((category) => (
@@ -820,16 +1001,39 @@ const ProductFormPage = () => {
               <Divider sx={{ mb: 2 }} />
               {formData.productType === 'configurable' ? (
                 <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1">
+                      Child Products ({formData.childProducts.length})
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="primary"
+                      onClick={() => {
+                        // Mở dialog hiển thị child products
+                        setChildProductsDialogOpen(true);
+                      }}
+                      disabled={formData.childProducts.length === 0}
+                    >
+                      View Child Products
+                    </Button>
+                  </Box>
+                  
                   <List dense>
                     {formData.childProducts.map((childId, index) => {
                       // Find child product information from simpleProducts list
                       const childProduct = simpleProducts.find(p => p.id === childId);
+                      
+                      // Handle the case where childId might be an object
+                      const isChildObject = typeof childId === 'object' && childId !== null;
+                      const displayId = isChildObject ? (childId.sku || childId.id || 'Unknown') : childId;
+                      
                       return (
                         <ListItem
                           key={index}
                           secondaryAction={
                             <IconButton edge="end" onClick={() => {
-                              const updatedChildProducts = formData.childProducts.filter((id) => id !== childId);
+                              const updatedChildProducts = formData.childProducts.filter((_, i) => i !== index);
                               setFormData((prev) => ({
                                 ...prev,
                                 childProducts: updatedChildProducts
@@ -840,8 +1044,8 @@ const ProductFormPage = () => {
                           }
                         >
                           <ListItemText
-                            primary={childProduct ? childProduct.name : childId}
-                            secondary={childProduct ? `SKU: ${childProduct.sku}, Price: $${childProduct.price}` : 'Unknown product'}
+                            primary={childProduct ? childProduct.name : displayId}
+                            secondary={childProduct ? `SKU: ${childProduct.sku || 'N/A'}` : 'Product not found'}
                           />
                         </ListItem>
                       );
@@ -900,11 +1104,18 @@ const ProductFormPage = () => {
                     color="primary"
                   />
                 }
-                label="Visible"
+                label={formData.productType === 'configurable' 
+                  ? "Visible (Configurable products should be visible for customers to see)" 
+                  : "Visible (Simple products are typically hidden and only selectable as child products)"}
               />
+              {formData.productType === 'simple' && formData.isVisible && (
+                <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1 }}>
+                  Warning: Simple products are typically hidden. Only make this product visible if it needs to be purchased directly.
+                </Typography>
+              )}
             </Grid>
             
-            {/* Print Options */}
+            {/* Production Options */}
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
@@ -938,23 +1149,9 @@ const ProductFormPage = () => {
                         value={formData.productionOptionType || ''}
                         onChange={(e) => {
                           const selectedOptionType = e.target.value;
-                          const selectedOption = productOptions.find(opt => opt.id === selectedOptionType);
-                          
-                          // Find default position
-                          const defaultPosition = selectedOption?.positions?.find(pos => pos.default);
-                          
                           setFormData(prev => ({
                             ...prev,
-                            productionOptionType: selectedOptionType,
-                            printOptions: {
-                              basePosition: defaultPosition?.id || (selectedOption?.positions?.[0]?.id || ''),
-                              additionalPositions: selectedOption?.positions
-                                ?.filter(pos => !pos.default && pos.id !== defaultPosition?.id)
-                                ?.reduce((acc, pos) => ({
-                                  ...acc,
-                                  [pos.id]: { price: pos.basePrice, available: false }
-                                }), {}) || {}
-                            }
+                            productionOptionType: selectedOptionType
                           }));
                         }}
                       >
@@ -968,132 +1165,160 @@ const ProductFormPage = () => {
                     </FormControl>
                   </Box>
 
-                  {formData.productionOptionType ? (
-                    (() => {
-                      const selectedOption = productOptions.find(opt => opt.id === formData.productionOptionType);
-                      
-                      // If no positions or no option selected, show a message
-                      if (!selectedOption || !selectedOption?.positions || selectedOption.positions.length === 0) {
-                        return (
-                          <Typography variant="body2" color="text.secondary">
-                            This option type does not have any positions configured. Please select a different option or add positions to this option.
-                          </Typography>
-                        );
-                      }
-
-                      return (
-                        <>
-                          {/* Base Position Selection */}
-                          <Box sx={{ mb: 3 }}>
-                            <Typography variant="subtitle1" gutterBottom>
-                              Base Position (included in product price)
-                            </Typography>
-                            <FormControl fullWidth required>
-                              <InputLabel>Base Position</InputLabel>
-                              <Select
-                                name="printOptions.basePosition"
-                                label="Base Position"
-                                value={formData.printOptions?.basePosition || ''}
-                                onChange={(e) => setFormData((prev) => ({
-                                  ...prev,
-                                  printOptions: {
-                                    ...prev.printOptions,
-                                    basePosition: e.target.value
-                                  }
-                                }))}
-                              >
-                                {selectedOption.positions.map(position => (
-                                  <MenuItem key={position.id} value={position.id}>
-                                    {position.name}
-                                  </MenuItem>
-                                ))}
-                              </Select>
-                            </FormControl>
-                          </Box>
-
-                          {/* Additional Print Positions */}
-                          <Box>
-                            <Typography variant="subtitle1" gutterBottom>
-                              Additional Positions (extra charge)
-                            </Typography>
-                            <Grid container spacing={2}>
-                              {selectedOption.positions
-                                .filter(pos => pos.id !== formData.printOptions?.basePosition)
-                                .map((position) => (
-                                  <Grid item xs={12} md={4} key={position.id}>
-                                    <Paper 
-                                      elevation={2} 
-                                      sx={{ 
-                                        p: 2, 
-                                        border: formData.printOptions?.additionalPositions?.[position.id]?.available 
-                                          ? '2px solid #1976d2' 
-                                          : 'none',
-                                        height: '100%',
-                                        display: 'flex',
-                                        flexDirection: 'column'
-                                      }}
-                                    >
-                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                                        <Typography variant="subtitle2">{position.name}</Typography>
-                                        <Switch
-                                          checked={formData.printOptions?.additionalPositions?.[position.id]?.available || false}
-                                          onChange={(e) => setFormData((prev) => ({
-                                            ...prev,
-                                            printOptions: {
-                                              ...prev.printOptions,
-                                              additionalPositions: {
-                                                ...prev.printOptions?.additionalPositions,
-                                                [position.id]: {
-                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || { price: position.basePrice }),
-                                                  available: e.target.checked
-                                                }
-                                              }
-                                            }
-                                          }))}
-                                          color="primary"
-                                        />
-                                      </Box>
-                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                        Add this position
-                                      </Typography>
-                                      <Box sx={{ mt: 'auto' }}>
-                                        <TextField
-                                          label="Price"
-                                          type="number"
-                                          size="small"
-                                          fullWidth
-                                          InputProps={{
-                                            startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                                          }}
-                                          value={formData.printOptions?.additionalPositions?.[position.id]?.price || position.basePrice}
-                                          onChange={(e) => setFormData((prev) => ({
-                                            ...prev,
-                                            printOptions: {
-                                              ...prev.printOptions,
-                                              additionalPositions: {
-                                                ...prev.printOptions?.additionalPositions,
-                                                [position.id]: {
-                                                  ...(prev.printOptions?.additionalPositions?.[position.id] || {}),
-                                                  price: Number(e.target.value)
-                                                }
-                                              }
-                                            }
-                                          }))}
-                                          disabled={!formData.printOptions?.additionalPositions?.[position.id]?.available}
-                                        />
-                                      </Box>
-                                    </Paper>
-                                  </Grid>
-                                ))}
+                  {formData.productionOptionType === 'embroidery' && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle1" gutterBottom>
+                        Embroidery Options
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {productOptions.find(opt => opt.id === 'embroidery')?.variants.map(variant => {
+                          // Get current price value safely handling complex objects
+                          const currentOption = formData.optionPrices?.[variant.id];
+                          const currentPrice = typeof currentOption === 'object' 
+                            ? currentOption.price || variant.basePrice
+                            : (currentOption !== undefined ? currentOption : variant.basePrice);
+                            
+                          return (
+                            <Grid item xs={12} sm={4} key={variant.id}>
+                              <Paper elevation={2} sx={{ p: 2 }}>
+                                <Typography variant="subtitle2" gutterBottom>
+                                  {variant.name}
+                                </Typography>
+                                <TextField
+                                  fullWidth
+                                  label="Price"
+                                  type="number"
+                                  InputProps={{
+                                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                  }}
+                                  value={currentPrice}
+                                  onChange={(e) => setFormData(prev => ({
+                                    ...prev,
+                                    optionPrices: {
+                                      ...prev.optionPrices,
+                                      [variant.id]: Number(e.target.value)
+                                    }
+                                  }))}
+                                />
+                              </Paper>
                             </Grid>
-                          </Box>
-                        </>
-                      );
-                    })()
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      Please select a production option type to configure positions.
-                    </Typography>
+                          );
+                        })}
+                      </Grid>
+                    </Box>
+                  )}
+
+                  {formData.productionOptionType === 'print-position' && (
+                    <Box sx={{ mb: 3 }}>
+                      <Typography variant="subtitle1" gutterBottom>
+                        Print Positions
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {productOptions.find(opt => opt.id === 'print-position')?.variants.map(position => {
+                          // Find position in formData.printPositions by id
+                          let existingPosition = null;
+                          if (Array.isArray(formData.printPositions)) {
+                            existingPosition = formData.printPositions.find(p => 
+                              typeof p === 'object' ? p.id === position.id : p === position.id
+                            );
+                          }
+                          
+                          // Get current price safely
+                          const currentPrice = existingPosition 
+                            ? (typeof existingPosition === 'object' ? existingPosition.price : position.basePrice)
+                            : position.basePrice;
+                          
+                          return (
+                            <Grid item xs={12} sm={4} key={position.id}>
+                              <Paper 
+                                elevation={2} 
+                                sx={{ 
+                                  p: 2,
+                                  border: existingPosition ? '2px solid #1976d2' : 'none'
+                                }}
+                              >
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                  <Typography variant="subtitle2">{position.name}</Typography>
+                                  <Switch
+                                    checked={!!existingPosition}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        // Add position if not already in the array
+                                        if (!existingPosition) {
+                                          setFormData(prev => ({
+                                            ...prev,
+                                            printPositions: [
+                                              ...(Array.isArray(prev.printPositions) ? prev.printPositions : []),
+                                              {
+                                                id: position.id,
+                                                name: position.name,
+                                                price: position.basePrice
+                                              }
+                                            ]
+                                          }));
+                                        }
+                                      } else {
+                                        // Remove position if it exists
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          printPositions: Array.isArray(prev.printPositions)
+                                            ? prev.printPositions.filter(p => 
+                                                typeof p === 'object' ? p.id !== position.id : p !== position.id
+                                              )
+                                            : []
+                                        }));
+                                      }
+                                    }}
+                                    color="primary"
+                                  />
+                                </Box>
+                                <TextField
+                                  fullWidth
+                                  label="Price"
+                                  type="number"
+                                  InputProps={{
+                                    startAdornment: <InputAdornment position="start">$</InputAdornment>,
+                                  }}
+                                  value={currentPrice}
+                                  onChange={(e) => {
+                                    if (existingPosition) {
+                                      // Update price if position exists
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        printPositions: Array.isArray(prev.printPositions)
+                                          ? prev.printPositions.map(p => {
+                                              if (typeof p === 'object' && p.id === position.id) {
+                                                return {...p, price: Number(e.target.value)};
+                                              } else if (p === position.id) {
+                                                return {id: position.id, name: position.name, price: Number(e.target.value)};
+                                              }
+                                              return p;
+                                            })
+                                          : [{id: position.id, name: position.name, price: Number(e.target.value)}]
+                                      }));
+                                    } else {
+                                      // Add position with new price
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        printPositions: [
+                                          ...(Array.isArray(prev.printPositions) ? prev.printPositions : []),
+                                          {
+                                            id: position.id,
+                                            name: position.name,
+                                            price: Number(e.target.value)
+                                          }
+                                        ]
+                                      }));
+                                    }
+                                  }}
+                                  disabled={!existingPosition}
+                                />
+                              </Paper>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    </Box>
                   )}
                 </>
               ) : (
@@ -1125,6 +1350,105 @@ const ProductFormPage = () => {
           </Grid>
         </form>
       </Paper>
+      
+      {/* Child Products Dialog */}
+      <Dialog
+        open={childProductsDialogOpen}
+        onClose={() => setChildProductsDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Child Products
+          <IconButton
+            aria-label="close"
+            onClick={() => setChildProductsDialogOpen(false)}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {formData.childProducts.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>SKU</TableCell>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Color</TableCell>
+                    <TableCell>Size</TableCell>
+                    <TableCell>Price</TableCell>
+                    <TableCell>Stock</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {formData.childProducts.map((childId, index) => {
+                    // Find child product information
+                    const childProduct = simpleProducts.find(p => p.id === childId);
+                    const isChildObject = typeof childId === 'object' && childId !== null;
+                    
+                    if (!childProduct && !isChildObject) {
+                      return (
+                        <TableRow key={index}>
+                          <TableCell colSpan={7} align="center">
+                            <Typography color="error">
+                              Product data not found (ID: {childId})
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    
+                    // Get data either from childProduct object or from childId if it's an object
+                    const data = childProduct || childId;
+                    
+                    return (
+                      <TableRow key={index}>
+                        <TableCell>{data.sku || 'N/A'}</TableCell>
+                        <TableCell>{data.name || 'Unknown'}</TableCell>
+                        <TableCell>{data.color || (isChildObject ? childId.color : 'N/A')}</TableCell>
+                        <TableCell>{data.size || (isChildObject ? childId.size : 'N/A')}</TableCell>
+                        <TableCell>
+                          ${parseFloat(data.price || data.basePrice || (isChildObject ? childId.price : 0)).toFixed(2)}
+                        </TableCell>
+                        <TableCell>{data.stock || 'In stock'}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => {
+                              if (childProduct) {
+                                // Navigate to edit page for this child product
+                                navigate(`/admin/products/edit/${childProduct.id}`);
+                              }
+                            }}
+                            disabled={!childProduct}
+                          >
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography variant="body1" align="center" py={3}>
+              No child products available
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setChildProductsDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
