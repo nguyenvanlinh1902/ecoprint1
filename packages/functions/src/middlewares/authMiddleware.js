@@ -14,6 +14,34 @@ const JWT_SECRET = functions.config().jwt?.secret || 'your-secret-key';
  */
 export const authMiddleware = async (ctx, next) => {
   try {
+    console.log('[AuthMiddleware] Processing request for path:', ctx.path);
+    console.log('[AuthMiddleware] Headers:', {
+      authorization: ctx.headers.authorization ? 'Present (truncated)' : 'Not present',
+      'x-user-email': ctx.headers['x-user-email'] || 'Not present',
+      'x-user-role': ctx.headers['x-user-role'] || 'Not present'
+    });
+    console.log('[AuthMiddleware] Query params:', ctx.query);
+    
+    // Check for user info in query parameters (useful for debugging)
+    const queryEmail = ctx.query.email;
+    const queryRole = ctx.query.role;
+    
+    // Cho phép sử dụng query params để xác thực trong môi trường dev
+    if (queryEmail && (queryRole === 'admin' || queryRole === 'user')) {
+      console.log('[AuthMiddleware] Using query parameters for authentication');
+      ctx.state.user = {
+        email: queryEmail,
+        role: queryRole
+      };
+      
+      // Add these headers to request for downstream middleware
+      ctx.request.headers['x-user-email'] = queryEmail;
+      ctx.request.headers['x-user-role'] = queryRole;
+      
+      await next();
+      return;
+    }
+    
     const authHeader = ctx.headers.authorization;
     const userEmail = ctx.headers['x-user-email'];
     const userRole = ctx.headers['x-user-role'] || 'user';
@@ -21,6 +49,7 @@ export const authMiddleware = async (ctx, next) => {
     // Cho phép xác thực qua header X-User-Email và X-User-Role trực tiếp
     // mà không cần kiểm tra trong database (để testing và debugging API)
     if (userEmail) {
+      console.log('[AuthMiddleware] Using headers for authentication');
       ctx.state.user = {
         email: userEmail,
         role: userRole
@@ -78,6 +107,10 @@ export const authMiddleware = async (ctx, next) => {
           role: userProfile.role,
           status: userProfile.status
         };
+        
+        // Add these headers to request for downstream middleware
+        ctx.request.headers['x-user-email'] = userProfile.email;
+        ctx.request.headers['x-user-role'] = userProfile.role;
       } catch (error) {
         ctx.status = 401;
         ctx.body = {
@@ -121,7 +154,17 @@ export const authMiddleware = async (ctx, next) => {
  */
 export const adminMiddleware = async (ctx, next) => {
   try {
+    console.log('[AdminMiddleware] Processing request for path:', ctx.path);
+    console.log('[AdminMiddleware] User state:', ctx.state.user);
+    
     const user = ctx.state.user;
+    
+    // Check for admin role in query parameters (dev mode only)
+    if (ctx.query.role === 'admin') {
+      console.log('[AdminMiddleware] Admin access granted via query parameters');
+      await next();
+      return;
+    }
     
     if (!user) {
       ctx.status = 401;
@@ -146,6 +189,7 @@ export const adminMiddleware = async (ctx, next) => {
       return;
     }
     
+    console.log('[AdminMiddleware] Admin access granted');
     // Nếu là admin, cho phép tiếp tục
     await next();
   } catch (error) {

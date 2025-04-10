@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import logger from 'koa-logger';
 import uploadService from '../service/uploadService.js';
+import { debugMiddleware } from '../middlewares/debug.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -24,6 +25,7 @@ const app = new Koa();
 
 app.use(corsMiddleware());
 app.use(logger());
+app.use(debugMiddleware());
 
 // Serve uploaded files
 app.use(async (ctx, next) => {
@@ -103,7 +105,7 @@ app.use(async (ctx, next) => {
       json: true,
       multipart: false,
       urlencoded: true,
-      parsedMethods: ['POST', 'PUT', 'PATCH'],
+      parsedMethods: ['POST', 'PUT', 'PATCH', 'DELETE'],
       onError: (err, ctx) => {
         ctx.status = 400;
         ctx.body = {
@@ -112,7 +114,14 @@ app.use(async (ctx, next) => {
           timestamp: new Date().toISOString()
         };
       }
-    })(ctx, next);
+    })(ctx, async () => {
+      // Always ensure ctx.req.body exists and contains the parsed body
+      if (ctx.request.body && !ctx.req.body) {
+        ctx.req.body = ctx.request.body;
+      }
+      
+      await next();
+    });
   } catch (error) {
     console.error('[API] Body parser error:', error);
     ctx.status = 400;
@@ -124,15 +133,10 @@ app.use(async (ctx, next) => {
   }
 });
 
-app.use(helmet({ crossOriginResourcePolicy: false }));
-
-// Ensure ctx.req.body is available for controllers
-app.use(async (ctx, next) => {
-  if (ctx.request.body && !ctx.req.body) {
-    ctx.req.body = ctx.request.body;
-  }
-  await next();
-});
+app.use(helmet({ 
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false
+}));
 
 // Request timing and error handling
 app.use(async (ctx, next) => {

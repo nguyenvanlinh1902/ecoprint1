@@ -15,12 +15,15 @@ export default function corsMiddleware() {
     
     const requestOrigin = ctx.headers.origin;
     
-    // Check if the request origin is in our allowed list
+    // If it's a specific allowed origin, set it exactly
+    // Otherwise use * for public access
     if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
       ctx.set('Access-Control-Allow-Origin', requestOrigin);
+      // Only set Allow-Credentials: true when using specific origins
+      ctx.set('Access-Control-Allow-Credentials', 'true');
     } else {
-      // Fallback to the wildcard or first allowed origin
       ctx.set('Access-Control-Allow-Origin', '*');
+      // Don't set credentials with wildcard origin
     }
     
     // Allow common HTTP methods
@@ -29,14 +32,18 @@ export default function corsMiddleware() {
     // Allow common headers plus custom headers
     ctx.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Role, X-Requested-With');
     
-    // Allow credentials (cookies, authentication headers)
-    ctx.set('Access-Control-Allow-Credentials', 'true');
-    
     // Expose headers that clients are allowed to access
     ctx.set('Access-Control-Expose-Headers', 'Content-Length, Date, X-Request-Id');
     
     // Set max age for preflight requests
     ctx.set('Access-Control-Max-Age', '86400');
+    
+    // Log CORS configuration for debugging
+    console.log('[CORS] Request origin:', requestOrigin);
+    console.log('[CORS] Response headers:', {
+      'Access-Control-Allow-Origin': ctx.response.headers['access-control-allow-origin'],
+      'Access-Control-Allow-Credentials': ctx.response.headers['access-control-allow-credentials']
+    });
     
     // Handle preflight OPTIONS requests
     if (ctx.method === 'OPTIONS') {

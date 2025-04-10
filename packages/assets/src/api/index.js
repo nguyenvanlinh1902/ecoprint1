@@ -5,17 +5,32 @@ import axios from 'axios';
 import { createResourceMethods, storage } from './helpers';
 import productOptions from './productOptions';
 
-const API_URL = 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
+// Get API URL from environment or use a fallback
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/ecoprint1-3cd5c/us-central1/api';
+
+// For direct API mode
+const USE_DIRECT_API = import.meta.env.VITE_USE_DIRECT_API === 'true';
+const DIRECT_API_URL = import.meta.env.VITE_DIRECT_API_URL || 'http://localhost:3030/api';
+
+// Use the appropriate API URL based on configuration
+const EFFECTIVE_API_URL = USE_DIRECT_API ? DIRECT_API_URL : API_URL;
+
+console.log('API Client Configuration:', {
+  useDirectApi: USE_DIRECT_API,
+  effectiveApiUrl: EFFECTIVE_API_URL,
+  apiUrl: API_URL,
+  directApiUrl: DIRECT_API_URL
+});
 
 // Create axios instance with default config
 export const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: EFFECTIVE_API_URL,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   },
   timeout: 30000, // 30 seconds
-  withCredentials: true // Enable sending cookies with cross-origin requests
+  withCredentials: false // Disable credentials for CORS problems
 });
 
 // Add request/response logging functionality
@@ -233,69 +248,41 @@ export const productsApi = {
     console.log('[API] Starting image upload');
     
     // Đảm bảo productId được đính kèm trong formData
-    try {
-      // Kiểm tra xem formData có đủ dữ liệu không
-      if (formData instanceof FormData) {
-        let hasProductId = false;
-        let hasImageFile = false;
-        
-        // Log các key trong FormData để debug
-        formData.forEach((value, key) => {
-          console.log(`[API] FormData contains key: ${key}`);
-          if (key === 'productId') {
-            hasProductId = true;
-            console.log(`[API] FormData contains productId: ${value}`);
-          }
-          if (key === 'image' || key === 'file') {
-            hasImageFile = true;
-            console.log(`[API] FormData contains image file: ${value.name}, size: ${value.size} bytes`);
-          }
-        });
-        
-        // Thêm productId vào formData nếu không có
-        if (!hasProductId && productId) {
-          console.log(`[API] Adding productId to FormData: ${productId}`);
-          formData.append('productId', productId);
-        } else if (!hasProductId) {
-          console.warn('[API] No productId provided for image upload, using "new"');
-          formData.append('productId', 'new');
-        }
-        
-        // Kiểm tra nếu không có file và chuyển đổi key nếu cần
-        if (!hasImageFile) {
-          console.error('[API] No image file found in FormData');
-          throw new Error('No image file found in upload data');
-        }
-        
-        // Tạo một FormData mới với key 'file' cho controller mới
-        const newFormData = new FormData();
-        
-        let fileValue = null;
-        formData.forEach((value, key) => {
-          if (key === 'image') {
-            // Đổi key 'image' thành 'file' để phù hợp với controller mới
-            fileValue = value;
-            console.log('[API] Renaming FormData key from "image" to "file"');
-          } else {
-            // Giữ nguyên các key khác
-            newFormData.append(key, value);
-          }
-        });
-        
-        // Thêm file với key 'file' nếu đã tìm thấy từ key 'image'
-        if (fileValue) {
-          newFormData.append('file', fileValue);
-        }
-        
-        // Thay thế formData cũ bằng formData mới
-        formData = newFormData;
-      } else {
-        console.error('[API] Invalid FormData object provided');
-        throw new Error('Invalid upload data format');
-      }
-    } catch (error) {
-      console.error('[API] Error preparing upload data:', error);
+    if (productId) {
+      formData.append('productId', productId);
+    } else if (!hasProductId) {
+      console.warn('[API] No productId provided for image upload, using "new"');
+      formData.append('productId', 'new');
     }
+    
+    // Kiểm tra nếu không có file và chuyển đổi key nếu cần
+    if (!hasImageFile) {
+      console.error('[API] No image file found in FormData');
+      throw new Error('No image file found in upload data');
+    }
+    
+    // Tạo một FormData mới với key 'file' cho controller mới
+    const newFormData = new FormData();
+    
+    let fileValue = null;
+    formData.forEach((value, key) => {
+      if (key === 'image') {
+        // Đổi key 'image' thành 'file' để phù hợp với controller mới
+        fileValue = value;
+        console.log('[API] Renaming FormData key from "image" to "file"');
+      } else {
+        // Giữ nguyên các key khác
+        newFormData.append(key, value);
+      }
+    });
+    
+    // Thêm file với key 'file' nếu đã tìm thấy từ key 'image'
+    if (fileValue) {
+      newFormData.append('file', fileValue);
+    }
+    
+    // Thay thế formData cũ bằng formData mới
+    formData = newFormData;
     
     // Cấu hình đặc biệt cho request upload file
     const config = {

@@ -121,171 +121,113 @@ const getUserByEmail = async (email) => {
 
 /**
  * Get users with pagination and filters
- * @param {Object} options - Query options
- * @returns {Promise<Object>} Object with users array and pagination info
+ * @param {number} page - Page number
+ * @param {number} limit - Items per page
+ * @param {string} status - Filter by status
+ * @param {string} role - Filter by role
+ * @param {string} email - Filter by email
+ * @returns {Promise<{users: Array, total: number}>} Object with users array and total count
  */
-const getUsers = async (options = {}) => {
+const getUsers = async (page = 1, limit = 20, status = null, role = null, email = null) => {
   try {
-    const {
-      page = 1,
-      limit = 20,
-      status,
-      search,
-      role,
-      email
-    } = options;
-    
-    console.log('getUsers options:', JSON.stringify(options, null, 2));
+    console.log('getUsers params:', { page, limit, status, role, email });
     
     // Always use userProfilesCollection instead of usersCollection
     let query = userProfilesCollection;
     
-    console.log('Querying collection: userProfiles');
+    console.log('[UserRepository] Querying collection: userProfiles');
     
-    // Apply where clauses for status and role
+    // Apply where clauses for status and role if provided
+    let hasWhereClause = false;
+    
     if (status) {
-      console.log(`Adding status filter: ${status}`);
+      console.log(`[UserRepository] Adding status filter: ${status}`);
       query = query.where('status', '==', status);
+      hasWhereClause = true;
     }
     
     if (role) {
-      console.log(`Adding role filter: ${role}`);
+      console.log(`[UserRepository] Adding role filter: ${role}`);
       query = query.where('role', '==', role);
+      hasWhereClause = true;
     }
     
-    // If email is specified, add it as a filter
+    // For filtering by email, handle separately because where clauses are limited
+    let usersByEmail = null;
+    
     if (email) {
-      console.log(`Adding email filter: ${email}`);
-      query = query.where('email', '==', email);
-    }
-    
-    // For search queries, we need client-side filtering
-    if (search) {
-      console.log(`Adding search filter: ${search}`);
-      // We need to perform a client-side filtering for search terms
-      // since Firestore doesn't support full text search
-      const snapshot = await query.get();
-      
-      console.log(`Search query returned ${snapshot.size} results before filtering`);
-      
-      const filteredDocs = [];
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        // Case-insensitive search on email and displayName
-        const email = data.email?.toLowerCase() || '';
-        const name = data.displayName?.toLowerCase() || '';
-        const searchTerm = search.toLowerCase();
+      console.log(`[UserRepository] Filtering by email: ${email}`);
+      // Email is unique, so we can just get this user directly
+      const emailSnapshot = await userProfilesCollection
+        .where('email', '==', email)
+        .limit(1)
+        .get();
         
-        if (email.includes(searchTerm) || name.includes(searchTerm)) {
-          filteredDocs.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt ? data.createdAt.toDate() : null,
-            updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
-          });
-        }
-      });
-      
-      console.log(`Found ${filteredDocs.length} documents after filtering for search term: ${search}`);
-      
-      // Client-side pagination
-      const startIdx = (page - 1) * limit;
-      const endIdx = startIdx + limit;
-      
-      const paginatedUsers = filteredDocs
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) // Sort by createdAt desc, handle null values
-        .slice(startIdx, endIdx);
-      
-      console.log(`Returning ${paginatedUsers.length} users for page ${page} with limit ${limit}`);
-      
-      return {
-        users: paginatedUsers,
-        totalUsers: filteredDocs.length,
-        currentPage: page,
-        totalPages: Math.ceil(filteredDocs.length / limit)
-      };
-    } else {
-      // For non-search queries, use Firestore pagination
-      console.log('Executing standard query without search term');
-      
-      try {
-        // Get total count
-        const countSnapshot = await query.count().get();
-        const totalUsers = countSnapshot.data().count;
-        
-        console.log(`Total users count: ${totalUsers}`);
-        
-        // Apply pagination
-        const offset = (page - 1) * limit;
-        
-        // Handle potential ordering issues with nulls
-        query = query.orderBy('createdAt', 'desc')
-                    .limit(limit)
-                    .offset(offset);
-        
-        const snapshot = await query.get();
-        
-        console.log(`Query returned ${snapshot.size} documents`);
-        
-        const users = [];
-        snapshot.forEach(doc => {
+      if (!emailSnapshot.empty) {
+        console.log(`[UserRepository] Found user with email: ${email}`);
+        usersByEmail = [];
+        emailSnapshot.forEach(doc => {
           const data = doc.data();
-          users.push({
+          usersByEmail.push({
             id: doc.id,
             ...data,
             createdAt: data.createdAt ? data.createdAt.toDate() : null,
             updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
           });
         });
-        
-        console.log(`Processed ${users.length} users, returning results`);
-        
-        return {
-          users,
-          totalUsers,
-          currentPage: page,
-          totalPages: Math.ceil(totalUsers / limit)
-        };
-      } catch (error) {
-        // Log the error for debugging
-        console.error('Error in standard query:', error);
-        
-        // Fallback to get all documents and handle pagination in memory
-        console.log('Falling back to fetching all documents');
-        
-        const snapshot = await query.get();
-        
-        const allUsers = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          allUsers.push({
-            id: doc.id,
-            ...data,
-            createdAt: data.createdAt ? data.createdAt.toDate() : null,
-            updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
-          });
-        });
-        
-        // Sort and paginate in memory
-        const sortedUsers = allUsers.sort((a, b) => 
-          ((b.createdAt instanceof Date ? b.createdAt : new Date(0)) - 
-           (a.createdAt instanceof Date ? a.createdAt : new Date(0))));
-        
-        const startIdx = (page - 1) * limit;
-        const paginatedUsers = sortedUsers.slice(startIdx, startIdx + limit);
-        
-        console.log(`Fallback returned ${paginatedUsers.length} users out of ${allUsers.length} total`);
-        
-        return {
-          users: paginatedUsers,
-          totalUsers: allUsers.length,
-          currentPage: page,
-          totalPages: Math.ceil(allUsers.length / limit)
-        };
+      } else {
+        console.log(`[UserRepository] No user found with email: ${email}`);
+        return { users: [], total: 0 };
       }
     }
+    
+    // If we're filtering by email and have results, return them directly
+    if (usersByEmail) {
+      console.log(`[UserRepository] Returning user filtered by email: ${email}`);
+      return {
+        users: usersByEmail,
+        total: usersByEmail.length
+      };
+    }
+    
+    // First, get total count
+    const countSnapshot = await query.get();
+    const total = countSnapshot.size;
+    console.log(`[UserRepository] Total matching documents: ${total}`);
+    
+    // For pagination, get all documents and paginate on client side
+    // because Firestore doesn't support offset-based pagination directly with where clauses
+    const allDocs = [];
+    
+    countSnapshot.forEach(doc => {
+      const data = doc.data();
+      allDocs.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt ? data.createdAt.toDate() : null,
+        updatedAt: data.updatedAt ? data.updatedAt.toDate() : null
+      });
+    });
+    
+    // Sort by createdAt in descending order
+    const sortedDocs = allDocs.sort((a, b) => {
+      const dateA = a.createdAt ? a.createdAt.getTime() : 0;
+      const dateB = b.createdAt ? b.createdAt.getTime() : 0;
+      return dateB - dateA;
+    });
+    
+    // Apply pagination
+    const startIndex = (page - 1) * limit;
+    const paginatedUsers = sortedDocs.slice(startIndex, startIndex + limit);
+    
+    console.log(`[UserRepository] Returning ${paginatedUsers.length} users for page ${page} with limit ${limit}`);
+    
+    return {
+      users: paginatedUsers,
+      total
+    };
   } catch (error) {
-    console.error('Error in getUsers repository:', error);
+    console.error('[UserRepository] Error in getUsers:', error);
     throw error;
   }
 };

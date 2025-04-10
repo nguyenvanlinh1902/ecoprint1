@@ -145,26 +145,44 @@ export const getDashboard = async (ctx) => {
  */
 export const getUsers = async (ctx) => {
   try {
-    console.log('Admin getUsers - Getting all users with role "user"');
+    console.log('[AdminController] getUsers called with query params:', ctx.query);
     
-    // Use the repository to get all users with role "user"
-    const result = await userRepository.getUsers({
-      limit: 1000, // Lấy tối đa 1000 người dùng (thực tế là tất cả)
-      role: 'user'  // Chỉ lấy người dùng có role là "user"
+    // Extract parameters from query string
+    const { 
+      page = 1, 
+      limit = 10, 
+      status, 
+      role, 
+      email 
+    } = ctx.query;
+    
+    // Log request details
+    console.log('[AdminController] Processing getUsers request with params:', { 
+      page, limit, status, role, email 
     });
+    
+    // Use the repository to get users with the provided parameters
+    const result = await userRepository.getUsers(
+      parseInt(page), 
+      parseInt(limit), 
+      status,
+      role,
+      email
+    );
     
     // Return success response with users data
     ctx.body = {
       success: true,
       data: {
         users: result.users,
-        totalUsers: result.totalUsers,
-        totalPages: 1,
-        currentPage: 1
+        total: result.total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(result.total / parseInt(limit))
       }
     };
   } catch (error) {
-    console.error('Error in getUsers controller:', error);
+    console.error('[AdminController] Error in getUsers controller:', error);
     
     // Handle errors
     ctx.status = error instanceof CustomError ? error.statusCode : 500;

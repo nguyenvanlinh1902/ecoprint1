@@ -134,9 +134,25 @@ export const updateProfile = async (ctx) => {
  */
 export const getAllUsers = async (ctx) => {
   try {
-    const { page = 1, limit = 10, status } = ctx.query;
+    console.log('GetAllUsers called with query:', ctx.query);
+    const { page = 1, limit = 10, status, role, email } = ctx.query;
     
-    const result = await userRepository.getUsers(parseInt(page), parseInt(limit), status);
+    // Log detailed debugging information
+    console.log('Processing request for users with params:', {
+      page,
+      limit,
+      status,
+      role,
+      email
+    });
+    
+    const result = await userRepository.getUsers(
+      parseInt(page), 
+      parseInt(limit), 
+      status,
+      role,
+      email
+    );
     
     ctx.status = 200;
     ctx.body = {
