@@ -41,9 +41,7 @@ import {
   Clear as ClearIcon,
   CloudUpload as UploadIcon,
   Delete as DeleteIcon,
-  Download as DownloadIcon,
   Edit as EditIcon,
-  FileUpload as FileUploadIcon,
   Filter as FilterIcon,
   Search as SearchIcon,
   Visibility as VisibilityIcon
@@ -79,16 +77,6 @@ const ProductsPage = () => {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
   
-  // Category modal state
-  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
-  const [categoryFormData, setCategoryFormData] = useState({ name: '', description: '' });
-  const [categoryError, setCategoryError] = useState('');
-  const [editingCategory, setEditingCategory] = useState(null);
-  const [savingCategory, setSavingCategory] = useState(false);
-  const [deletingCategory, setDeletingCategory] = useState(false);
-  const [categoryDeleteDialogOpen, setCategoryDeleteDialogOpen] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState(null);
-  
   // Filter state
   const [filters, setFilters] = useState({
     search: '',
@@ -100,19 +88,6 @@ const ProductsPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Import Dialog state
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [importFile, setImportFile] = useState(null);
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [importSuccess, setImportSuccess] = useState(false);
-  const [importResult, setImportResult] = useState({
-    total: 0,
-    success: 0,
-    failed: 0,
-    errors: []
-  });
 
   // New Product Form state
   const [formData, setFormData] = useState({
@@ -636,222 +611,6 @@ const ProductsPage = () => {
     }
   }, [productId, isViewMode]);
 
-  // Import Products Dialog handling
-  const handleImportDialogOpen = () => {
-    setImportDialogOpen(true);
-    setImportFile(null);
-    setImportError('');
-    setImportSuccess(false);
-    setImportResult({
-      total: 0,
-      success: 0,
-      failed: 0,
-      errors: []
-    });
-  };
-
-  const handleImportDialogClose = () => {
-    setImportDialogOpen(false);
-    if (importSuccess) {
-      // Refresh product list after successful import
-      fetchProducts();
-    }
-  };
-
-  const handleImportFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Check file type
-      const fileExt = file.name.split('.').pop().toLowerCase();
-      if (fileExt !== 'xlsx' && fileExt !== 'xls' && fileExt !== 'csv') {
-        setImportError('Please upload a valid Excel or CSV file');
-        return;
-      }
-      setImportFile(file);
-      setImportError('');
-    }
-  };
-
-  const downloadTemplateFile = async () => {
-    try {
-      const response = await api.get('/products/template', {
-        responseType: 'blob'
-      });
-      
-      // Create a download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'product_import_template.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (error) {
-      /* error removed */
-      setImportError('Failed to download template. Please try again.');
-    }
-  };
-
-  const handleImportProducts = async () => {
-    if (!importFile) {
-      setImportError('Please select a file to import');
-      return;
-    }
-
-    setImporting(true);
-    setImportError('');
-    setImportSuccess(false);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', importFile);
-
-      // Use the importBatch method
-      const response = await api.orders.importBatch(formData);
-
-      setImportResult({
-        total: response.data.total || 0,
-        success: response.data.success || 0,
-        failed: response.data.failed || 0,
-        errors: response.data.errors || []
-      });
-
-      if (response.data.success > 0) {
-        setImportSuccess(true);
-      }
-    } catch (error) {
-      /* error removed */
-      setImportError(error.response?.data?.message || 'Failed to import products. Please try again.');
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // Category management functions
-  const handleOpenCategoryModal = (category = null) => {
-    if (category) {
-      setEditingCategory(category);
-      setCategoryFormData({
-        name: category.name || '',
-        description: category.description || ''
-      });
-    } else {
-      setEditingCategory(null);
-      setCategoryFormData({
-        name: '',
-        description: ''
-      });
-    }
-    setCategoryError('');
-    setCategoryModalOpen(true);
-  };
-
-  const handleCloseCategoryModal = () => {
-    setCategoryModalOpen(false);
-    setCategoryFormData({ name: '', description: '' });
-    setCategoryError('');
-    setEditingCategory(null);
-  };
-
-  const handleCategoryInputChange = (e) => {
-    const { name, value } = e.target;
-    setCategoryFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSaveCategory = async () => {
-    if (!categoryFormData.name.trim()) {
-      setCategoryError('Category name is required');
-      return;
-    }
-
-    try {
-      setSavingCategory(true);
-      setCategoryError('');
-
-      if (editingCategory) {
-        // Update existing category
-        const response = await api.admin.updateCategory(editingCategory.id, categoryFormData);
-        
-        if (response.data && response.data.success) {
-          // Update the category in the list
-          setCategories(prev => 
-            prev.map(cat => 
-              cat.id === editingCategory.id ? response.data.data : cat
-            )
-          );
-          
-          // Also update any products that use this category
-          if (products.some(p => p.category?.id === editingCategory.id)) {
-            fetchProducts();
-          }
-        } else {
-          throw new Error(response.data?.message || 'Failed to update category');
-        }
-      } else {
-        // Create new category
-        const response = await api.products.createCategory(categoryFormData);
-        
-        if (response.data && response.data.success) {
-          // Add the new category to the list
-          setCategories(prev => [...prev, response.data.data]);
-        } else {
-          throw new Error(response.data?.message || 'Failed to create category');
-        }
-      }
-      
-      handleCloseCategoryModal();
-    } catch (error) {
-      console.error('Error saving category:', error);
-      setCategoryError(error.response?.data?.message || error.message || 'Failed to save category');
-    } finally {
-      setSavingCategory(false);
-    }
-  };
-
-  const handleDeleteCategoryClick = (category) => {
-    setCategoryToDelete(category);
-    setCategoryDeleteDialogOpen(true);
-  };
-
-  const handleDeleteCategoryCancel = () => {
-    setCategoryDeleteDialogOpen(false);
-    setCategoryToDelete(null);
-  };
-
-  const handleDeleteCategory = async () => {
-    if (!categoryToDelete) return;
-    
-    try {
-      setDeletingCategory(true);
-      
-      const response = await api.admin.deleteCategory(categoryToDelete.id);
-      
-      if (response.data && response.data.success) {
-        // Remove the category from the list
-        setCategories(prev => prev.filter(cat => cat.id !== categoryToDelete.id));
-        
-        // If products were filtered by this category, reset the filter
-        if (filters.category === categoryToDelete.id) {
-          setFilters(prev => ({ ...prev, category: '' }));
-          fetchProducts();
-        }
-        
-        setCategoryDeleteDialogOpen(false);
-      } else {
-        throw new Error(response.data?.message || 'Failed to delete category');
-      }
-    } catch (error) {
-      console.error('Error deleting category:', error);
-      setError(error.response?.data?.message || error.message || 'Failed to delete category');
-      // Keep the dialog open to show the error
-    } finally {
-      setDeletingCategory(false);
-    }
-  };
-
   // Product Options Management functions
   const handleOpenProductOptionModal = (option = null) => {
     if (option) {
@@ -1092,34 +851,6 @@ const ProductsPage = () => {
         
         <Box>
           <Button
-            variant="outlined"
-            startIcon={<DownloadIcon />}
-            sx={{ mr: 1 }}
-            onClick={() => window.open('/api/admin/products/export-template', '_blank')}
-          >
-            Template
-          </Button>
-          
-          <Button
-            variant="outlined"
-            startIcon={<FileUploadIcon />}
-            sx={{ mr: 1 }}
-            onClick={() => setImportDialogOpen(true)}
-          >
-            Import
-          </Button>
-          
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenCategoryModal()}
-            sx={{ mr: 1 }}
-          >
-            Add Category
-          </Button>
-          
-          <Button
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
@@ -1140,7 +871,7 @@ const ProductsPage = () => {
       {!productId ? (
         // Products List View
         <>
-          <Paper sx={{ p: 3, mb: 3, width: '100%' }}>
+          <Paper sx={{ p: 3, mb: 3, width: '100%', borderRadius: 2 }}>
             <Grid container spacing={2} alignItems="flex-end">
               <Grid item xs={12} sm={6} md={4}>
                 <TextField
@@ -1155,11 +886,12 @@ const ProductsPage = () => {
                       </InputAdornment>
                     ),
                   }}
+                  size="small"
                 />
               </Grid>
               
               <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small">
                   <InputLabel>Category</InputLabel>
                   <Select
                     value={filters.category}
@@ -1177,7 +909,7 @@ const ProductsPage = () => {
               </Grid>
               
               <Grid item xs={12} sm={6} md={3}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
                   <Select
                     value={filters.status}
@@ -1198,6 +930,7 @@ const ProductsPage = () => {
                     startIcon={<FilterIcon />} 
                     onClick={handleApplyFilters}
                     sx={{ mr: 1 }}
+                    size="small"
                   >
                     Filter
                   </Button>
@@ -1205,6 +938,7 @@ const ProductsPage = () => {
                     variant="outlined" 
                     startIcon={<ClearIcon />} 
                     onClick={handleClearFilters}
+                    size="small"
                   >
                     Clear
                   </Button>
@@ -1212,15 +946,8 @@ const ProductsPage = () => {
               </Grid>
             </Grid>
           </Paper>
-
-          {/* Filters */}
-          <Paper sx={{ p: 2, mb: 3 }}>
-            <Grid container spacing={2} alignItems="center">
-              {/* Filter fields */}
-            </Grid>
-          </Paper>
           
-          <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto' }}>
+          <TableContainer component={Paper} sx={{ width: '100%', overflowX: 'auto', borderRadius: 2 }}>
             <Table sx={{ minWidth: 800 }}>
               <TableHead>
                 <TableRow>
@@ -1236,25 +963,25 @@ const ProductsPage = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                       <CircularProgress />
                     </TableCell>
                   </TableRow>
                 ) : error ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Alert severity="error">{error}</Alert>
                     </TableCell>
                   </TableRow>
                 ) : products.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={7} align="center">
                       No products found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   Array.isArray(products) && products.map((product) => (
-                    <TableRow key={product.id}>
+                    <TableRow key={product.id} hover>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           {product.images && product.images.length > 0 ? (
@@ -1262,7 +989,7 @@ const ProductsPage = () => {
                               component="img"
                               src={product.images[0]}
                               alt={product.name}
-                              sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain' }}
+                              sx={{ width: 40, height: 40, mr: 2, objectFit: 'contain', borderRadius: 1 }}
                             />
                           ) : (
                             <Box
@@ -1276,13 +1003,14 @@ const ProductsPage = () => {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 color: 'text.secondary',
-                                fontSize: '10px'
+                                fontSize: '10px',
+                                borderRadius: 1
                               }}
                             >
                               No Image
                             </Box>
                           )}
-                          {product.name}
+                          <Typography variant="body2" fontWeight="medium">{product.name}</Typography>
                         </Box>
                       </TableCell>
                       <TableCell>
@@ -1301,21 +1029,24 @@ const ProductsPage = () => {
                         <Chip 
                           label={product.status} 
                           color={product.status === 'active' ? 'success' : 'default'} 
-                          size="small" 
+                          size="small"
+                          variant="outlined"
                         />
                       </TableCell>
                       <TableCell align="center">
                         {product.images && product.images.length > 0 ? (
-                          <img 
+                          <Box
+                            component="img"
                             src={product.images[0]} 
                             alt={product.name}
-                            style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4 }}
+                            sx={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 1 }}
                           />
                         ) : product.imageUrl ? (
-                          <img 
+                          <Box
+                            component="img"
                             src={product.imageUrl} 
                             alt={product.name}
-                            style={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 4 }}
+                            sx={{ width: 50, height: 50, objectFit: 'cover', borderRadius: 1 }}
                           />
                         ) : (
                           <Box 
@@ -1332,14 +1063,14 @@ const ProductsPage = () => {
                         )}
                       </TableCell>
                       <TableCell align="right">
-                        <IconButton onClick={() => handleViewProduct(product.id)}>
-                          <VisibilityIcon />
+                        <IconButton size="small" onClick={() => handleViewProduct(product.id)} sx={{ mr: 0.5 }}>
+                          <VisibilityIcon fontSize="small" />
                         </IconButton>
-                        <IconButton onClick={() => handleEditProduct(product.id)}>
-                          <EditIcon />
+                        <IconButton size="small" onClick={() => handleEditProduct(product.id)} sx={{ mr: 0.5 }}>
+                          <EditIcon fontSize="small" />
                         </IconButton>
-                        <IconButton onClick={() => handleDeleteDialogOpen(product)}>
-                          <DeleteIcon />
+                        <IconButton size="small" onClick={() => handleDeleteDialogOpen(product)} color="error">
+                          <DeleteIcon fontSize="small" />
                         </IconButton>
                       </TableCell>
                     </TableRow>
@@ -1547,17 +1278,6 @@ const ProductsPage = () => {
                           </MenuItem>
                         ))}
                       </Select>
-                      {!isViewMode && (
-                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                          <Button 
-                            size="small" 
-                            onClick={() => handleOpenCategoryModal()}
-                            startIcon={<AddIcon />}
-                          >
-                            Manage Categories
-                          </Button>
-                        </Box>
-                      )}
                     </FormControl>
                   </Grid>
                   
@@ -1814,196 +1534,6 @@ const ProductsPage = () => {
           </form>
         </Paper>
       )}
-
-      {/* Import Products Dialog */}
-      <Dialog
-        open={importDialogOpen}
-        onClose={handleImportDialogClose}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Import Products</DialogTitle>
-        <DialogContent>
-          {importError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {importError}
-            </Alert>
-          )}
-          
-          {importSuccess && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Products imported successfully! {importResult.success} of {importResult.total} products imported.
-            </Alert>
-          )}
-          
-          <DialogContentText sx={{ mb: 2 }}>
-            Please download the template file, fill in your product details, and upload it back to import products in bulk.
-          </DialogContentText>
-          
-          <Box sx={{ mb: 3 }}>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={downloadTemplateFile}
-            >
-              Download Template
-            </Button>
-          </Box>
-          
-          <Box 
-            sx={{ 
-              border: '1px dashed #ccc',
-              borderRadius: 1,
-              p: 3,
-              mb: 3,
-              textAlign: 'center',
-              cursor: 'pointer'
-            }}
-            onClick={() => document.getElementById('import-file-input').click()}
-          >
-            <input
-              id="import-file-input"
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleImportFileChange}
-              style={{ display: 'none' }}
-            />
-            <FileUploadIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1 }} />
-            <Typography variant="body1" gutterBottom>
-              Click to browse or drag and drop your file
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Supported formats: Excel (.xlsx, .xls) or CSV (.csv)
-            </Typography>
-            {importFile && (
-              <Box sx={{ mt: 2 }}>
-                <Chip 
-                  label={importFile.name} 
-                  color="primary" 
-                  onDelete={() => setImportFile(null)} 
-                />
-              </Box>
-            )}
-          </Box>
-          
-          {importResult.failed > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" color="error" gutterBottom>
-                {importResult.failed} records failed to import:
-              </Typography>
-              <List dense>
-                {importResult.errors.slice(0, 5).map((error, index) => (
-                  <ListItem key={index}>
-                    <ListItemText 
-                      primary={`Row ${error.row}: ${error.message}`} 
-                      secondary={error.details} 
-                    />
-                  </ListItem>
-                ))}
-                {importResult.errors.length > 5 && (
-                  <ListItem>
-                    <ListItemText 
-                      primary={`... and ${importResult.errors.length - 5} more errors`} 
-                    />
-                  </ListItem>
-                )}
-              </List>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleImportDialogClose}>
-            {importSuccess ? 'Close' : 'Cancel'}
-          </Button>
-          <Button 
-            variant="contained" 
-            onClick={handleImportProducts} 
-            disabled={!importFile || importing}
-            startIcon={importing ? <CircularProgress size={20} /> : null}
-          >
-            {importing ? 'Importing...' : 'Import Products'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Category Management Modal */}
-      <Dialog 
-        open={categoryModalOpen} 
-        onClose={handleCloseCategoryModal}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {editingCategory ? 'Edit Category' : 'Add Category'}
-        </DialogTitle>
-        <DialogContent>
-          {categoryError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {categoryError}
-            </Alert>
-          )}
-          
-          <TextField
-            autoFocus
-            margin="dense"
-            name="name"
-            label="Category Name"
-            type="text"
-            fullWidth
-            value={categoryFormData.name}
-            onChange={handleCategoryInputChange}
-            required
-            sx={{ mb: 2 }}
-          />
-          
-          <TextField
-            margin="dense"
-            name="description"
-            label="Description"
-            type="text"
-            fullWidth
-            multiline
-            rows={4}
-            value={categoryFormData.description}
-            onChange={handleCategoryInputChange}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleCloseCategoryModal}>Cancel</Button>
-          <Button 
-            onClick={handleSaveCategory} 
-            variant="contained" 
-            color="primary"
-            disabled={savingCategory}
-          >
-            {savingCategory ? <CircularProgress size={24} /> : 'Save'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Category Delete Confirmation Dialog */}
-      <Dialog
-        open={categoryDeleteDialogOpen}
-        onClose={handleDeleteCategoryCancel}
-      >
-        <DialogTitle>Delete Category</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Are you sure you want to delete the category "{categoryToDelete?.name}"?
-            This cannot be undone, and any products assigned to this category will need to be reassigned.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleDeleteCategoryCancel}>Cancel</Button>
-          <Button 
-            onClick={handleDeleteCategory} 
-            color="error"
-            disabled={deletingCategory}
-          >
-            {deletingCategory ? <CircularProgress size={24} /> : 'Delete'}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
       {/* Product Options Management Modal */}
       <Dialog
