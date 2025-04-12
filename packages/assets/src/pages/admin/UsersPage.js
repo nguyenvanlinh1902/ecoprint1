@@ -173,16 +173,9 @@ const UsersPage = () => {
     setPage(value);
   };
   
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    setPage(1); // Reset to page 1 when searching
-    // No need to call fetchUsers() here as the useEffect will handle it when search/page changes
-  };
-  
   const handleStatusChange = (e) => {
     setStatus(e.target.value);
     setPage(1);
-    // No need to call fetchUsers() here as the useEffect will handle it when status/page changes
   };
   
   const handleDialogOpen = (action, user) => {
@@ -321,22 +314,23 @@ const UsersPage = () => {
       <Paper sx={{ p: 3, mb: 3 }}>
         <Grid container spacing={2} alignItems="flex-end">
           <Grid item xs={12} sm={6} md={4}>
-            <form onSubmit={handleSearchSubmit}>
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="Search users..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </form>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Search users..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            />
           </Grid>
           
           <Grid item xs={12} sm={6} md={4}>
@@ -358,22 +352,13 @@ const UsersPage = () => {
           
           <Grid item xs={12} sm={6} md={4}>
             <Button
-              variant="contained"
-              color="primary"
-              onClick={handleSearchSubmit}
-              sx={{ height: 40 }}
-            >
-              Search
-            </Button>
-            
-            <Button
               variant="outlined"
               onClick={() => {
                 setSearch('');
                 setStatus('');
                 setPage(1);
               }}
-              sx={{ ml: 1, height: 40 }}
+              sx={{ height: 40 }}
             >
               Reset
             </Button>
@@ -388,7 +373,8 @@ const UsersPage = () => {
             <TableHead>
               <TableRow>
                 <TableCell>ID</TableCell>
-                <TableCell>User Details</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Email</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Role</TableCell>
                 <TableCell>Registration Date</TableCell>
@@ -399,13 +385,13 @@ const UsersPage = () => {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                     <CircularProgress size={40} />
                   </TableCell>
                 </TableRow>
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                  <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                     <Typography variant="body1">No users found</Typography>
                   </TableCell>
                 </TableRow>
@@ -422,14 +408,12 @@ const UsersPage = () => {
                       <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
                         {user.companyName || user.displayName || 'N/A'}
                       </Typography>
+                    </TableCell>
+
+                    <TableCell>
                       <Typography variant="body2" color="text.secondary">
                         {user.email}
                       </Typography>
-                      {user.phone && (
-                        <Typography variant="body2" color="text.secondary">
-                          {user.phone}
-                        </Typography>
-                      )}
                     </TableCell>
                     
                     <TableCell>
