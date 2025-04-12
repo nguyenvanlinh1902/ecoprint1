@@ -1,6 +1,12 @@
 import {useEffect, useState, useCallback, useRef} from 'react';
 import {apiClient} from '../../api';
 
+// Cache configuration
+const CACHE_CONFIG = {
+  MAX_AGE: 5 * 60 * 1000, // 5 minutes
+  MAX_SIZE: 100 // Maximum number of cached items
+};
+
 /**
  * Custom hook for fetching resources from the API
  * @param {string} endpoint - API endpoint for the resource
@@ -13,9 +19,11 @@ const useFetchApi = (endpoint, options = {}) => {
     initialParams = {},
     initialData = null,
     transformResponse = null,
+    cacheKey = null,
+    cacheEnabled = true
   } = options;
 
-  // Sử dụng useRef để lưu trữ state mà không gây re-render khi cập nhật
+  // Refs for state that doesn't need to trigger re-renders
   const dataRef = useRef(initialData);
   const loadingRef = useRef(false);
   const errorRef = useRef(null);
@@ -27,11 +35,53 @@ const useFetchApi = (endpoint, options = {}) => {
     totalPages: 0
   });
 
-  // State để trigger re-render khi cần thiết
+  // State for triggering re-renders
   const [loadingState, setLoadingState] = useState(false);
   const [errorState, setErrorState] = useState(null);
   const [dataState, setDataState] = useState(initialData);
   
+  // Cache management
+  const cacheRef = useRef(new Map());
+  const cacheTimestampsRef = useRef(new Map());
+  
+  // Track last request to prevent duplicate calls
+  const lastRequestRef = useRef('');
+  const abortControllerRef = useRef(null);
+  
+  // Track if component is mounted
+  const isMountedRef = useRef(true);
+  
+  useEffect(() => {
+    // Set mounted true on mount
+    isMountedRef.current = true;
+    
+    // Set mounted false on unmount
+    return () => {
+      isMountedRef.current = false;
+      
+      // Cancel any pending requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Cache cleanup effect
+  useEffect(() => {
+    const cleanupCache = () => {
+      const now = Date.now();
+      for (const [key, timestamp] of cacheTimestampsRef.current.entries()) {
+        if (now - timestamp > CACHE_CONFIG.MAX_AGE) {
+          cacheRef.current.delete(key);
+          cacheTimestampsRef.current.delete(key);
+        }
+      }
+    };
+
+    const interval = setInterval(cleanupCache, CACHE_CONFIG.MAX_AGE);
+    return () => clearInterval(interval);
+  }, []);
+
   // Hàm để cập nhật state an toàn
   const updateState = useCallback((stateUpdates) => {
     let shouldRerender = false;
@@ -65,27 +115,38 @@ const useFetchApi = (endpoint, options = {}) => {
     return shouldRerender;
   }, []);
   
-  // Track last request to prevent duplicate calls
-  const lastRequestRef = useRef('');
-  const abortControllerRef = useRef(null);
-  
-  // Track if component is mounted
-  const isMountedRef = useRef(true);
-  
-  useEffect(() => {
-    // Set mounted true on mount
-    isMountedRef.current = true;
+  // Cache helper functions
+  const getCacheKey = useCallback((id, params) => {
+    if (cacheKey) return cacheKey;
+    return `${endpoint}${id || ''}${JSON.stringify(params)}`;
+  }, [endpoint, cacheKey]);
+
+  const getFromCache = useCallback((key) => {
+    if (!cacheEnabled) return null;
     
-    // Set mounted false on unmount
-    return () => {
-      isMountedRef.current = false;
-      
-      // Cancel any pending requests
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, []);
+    const cachedData = cacheRef.current.get(key);
+    const timestamp = cacheTimestampsRef.current.get(key);
+    
+    if (cachedData && timestamp && Date.now() - timestamp < CACHE_CONFIG.MAX_AGE) {
+      return cachedData;
+    }
+    
+    return null;
+  }, [cacheEnabled]);
+
+  const setCache = useCallback((key, data) => {
+    if (!cacheEnabled) return;
+    
+    // Remove oldest item if cache is full
+    if (cacheRef.current.size >= CACHE_CONFIG.MAX_SIZE) {
+      const oldestKey = cacheTimestampsRef.current.entries().next().value[0];
+      cacheRef.current.delete(oldestKey);
+      cacheTimestampsRef.current.delete(oldestKey);
+    }
+    
+    cacheRef.current.set(key, data);
+    cacheTimestampsRef.current.set(key, Date.now());
+  }, [cacheEnabled]);
 
   /**
    * Fetch resource data
@@ -94,9 +155,7 @@ const useFetchApi = (endpoint, options = {}) => {
    * @returns {Promise<Object>} Resource data
    */
   const fetchResource = useCallback(async (id = null, queryParams = {}) => {
-    // Create a cached key for this specific request
-    let url = id ? 
-      // Nếu id bắt đầu bằng "/", coi như đó là một đường dẫn tuyệt đối và không thêm endpoint
+    const url = id ? 
       (id.toString().startsWith('/') ? id : `${endpoint}/${id}`) : 
       endpoint;
     
@@ -119,10 +178,11 @@ const useFetchApi = (endpoint, options = {}) => {
     const requestKey = `${url}${JSON.stringify(enhancedParams)}`;
     console.log(`[useFetchApi] Request key: ${requestKey}`);
     
-    // Skip if this is a duplicate request
-    if (lastRequestRef.current === requestKey && loadingRef.current) {
-      console.log(`[useFetchApi] Skipping duplicate request to: ${url}`);
-      return dataRef.current ? Promise.resolve({ data: dataRef.current, isCachedResult: true }) : null;
+    // Check cache first
+    const cacheKey = getCacheKey(id, enhancedParams);
+    const cachedData = getFromCache(cacheKey);
+    if (cachedData) {
+      return { data: cachedData, isCachedResult: true };
     }
     
     // Cancel previous request if it exists
@@ -167,6 +227,7 @@ const useFetchApi = (endpoint, options = {}) => {
       // Add timeout to prevent hanging requests
       const response = await apiClient.get(url, { 
         params: enhancedParams,
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         signal: abortControllerRef.current.signal
       });
       
@@ -201,6 +262,7 @@ const useFetchApi = (endpoint, options = {}) => {
       // Only update state and trigger re-render if the component is still mounted
       if (isMountedRef.current) {
         updateState({ data: formattedData });
+        setCache(cacheKey, formattedData);
       }
       
       // Return the data regardless of whether we updated state
@@ -243,7 +305,7 @@ const useFetchApi = (endpoint, options = {}) => {
         updateState({ loading: false });
       }
     }
-  }, [endpoint, updateState, transformResponse]);
+  }, [endpoint, updateState, transformResponse, getCacheKey, getFromCache, setCache]);
 
   /**
    * Refetch data with current params
@@ -272,7 +334,7 @@ const useFetchApi = (endpoint, options = {}) => {
   // Fetch data on mount if requested
   useEffect(() => {
     if (fetchOnMount) {
-      fetchResource();
+      fetchResource().catch(() => {});
     }
   }, [fetchOnMount, fetchResource]);
 

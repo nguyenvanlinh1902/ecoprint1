@@ -5,8 +5,6 @@ import categoryRepository from '../repositories/categoryRepository.js';
 import productRepository from '../repositories/productRepository.js';
 import { fileUploadRepository } from '../repositories/fileUploadRepository.js';
 
-const firestore = admin.firestore();
-
 // Replaced mock service with repository
 const productService = productRepository;
 const categoryService = categoryRepository;
@@ -204,10 +202,8 @@ export const updateProduct = async (ctx) => {
  */
 export const getProduct = async (ctx) => {
   try {
-    // Lấy productId từ đúng nguồn, ưu tiên params.productId, sau đó mới đến params.id
     const productId = ctx.params.productId || ctx.params.id;
     console.log('[ProductController] Getting product by ID (admin):', productId);
-    console.log('[ProductController] Request params:', ctx.params);
     
     if (!productId) {
       ctx.status = 400;
@@ -219,10 +215,10 @@ export const getProduct = async (ctx) => {
       return;
     }
     
-    // Check if product exists
-    const productDoc = await firestore.collection('products').doc(productId).get();
-    if (!productDoc.exists) {
-      console.log('[ProductController] Product not found:', productId);
+    // Get product using repository
+    const product = await productService.findById(productId);
+    
+    if (!product) {
       ctx.status = 404;
       ctx.body = { 
         success: false,
@@ -231,29 +227,18 @@ export const getProduct = async (ctx) => {
       return;
     }
     
-    // Get product data
-    const productData = productDoc.data();
-    const product = {
-      id: productDoc.id,
-      ...productData,
-      createdAt: productData.createdAt ? productData.createdAt.toDate() : null,
-      updatedAt: productData.updatedAt ? productData.updatedAt.toDate() : null
-    };
-    
     // Get category name if categoryId exists
-    if (productData.categoryId) {
+    if (product.categoryId) {
       try {
-        const categoryDoc = await firestore.collection('categories').doc(productData.categoryId).get();
-        if (categoryDoc.exists) {
-          product.categoryName = categoryDoc.data().name || 'Unknown';
+        const category = await categoryService.findById(product.categoryId);
+        if (category) {
+          product.categoryName = category.name || 'Unknown';
         }
       } catch (categoryError) {
         console.error('[ProductController] Error fetching category:', categoryError);
         // Don't fail the whole request if category lookup fails
       }
     }
-    
-    console.log('[ProductController] Product found (admin route):', product.name);
     
     ctx.status = 200;
     ctx.body = {
@@ -273,48 +258,23 @@ export const getProduct = async (ctx) => {
 
 /**
  * Get all products
- * @param {Object} ctx - Koa context
  */
 export const getAllProducts = async (ctx) => {
   try {
-    // Chỉ giữ lại pagination, bỏ hết filter
     const {
       page = 1, 
-      limit = 100 // Tăng limit để lấy nhiều sản phẩm hơn
+      limit = 100
     } = ctx.query;
     
-    // Đơn giản hóa options để chỉ phân trang
     const options = {
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
-      // Mặc định sắp xếp theo ngày tạo giảm dần
       sort: 'createdAt',
       order: 'desc'
     };
     
-    console.log('[ProductController] Fetching all products for admin (pagination only)');
-    
-    // Get products using the product service (which is productRepository)
+    // Get products using repository
     const result = await productService.findAll(options);
-    
-    // Ensure result has expected structure
-    if (!result || !result.products) {
-      console.log('[ProductController] No products found or unexpected result format');
-      ctx.status = 200;
-      ctx.body = {
-        success: true,
-        products: [],
-        pagination: {
-          total: 0,
-          page: Number(page),
-          limit: Number(limit),
-          totalPages: 0
-        }
-      };
-      return;
-    }
-    
-    console.log(`[ProductController] Successfully fetched ${result.products.length} products`);
     
     ctx.status = 200;
     ctx.body = {
@@ -337,14 +297,10 @@ export const getAllProducts = async (ctx) => {
 
 /**
  * Delete a product
- * @param {Object} ctx - Koa context
  */
 export const deleteProduct = async (ctx) => {
   try {
-    // Lấy productId từ đúng nguồn (ctx.params hoặc ctx.req.params)
     const productId = ctx.params.productId || ctx.params.id;
-    console.log('[ProductController] Deleting product:', productId);
-    console.log('[ProductController] Request params:', ctx.params);
     
     if (!productId) {
       ctx.status = 400;
@@ -356,9 +312,8 @@ export const deleteProduct = async (ctx) => {
       return;
     }
     
-    // Delete product using the product service
+    // Delete product using repository
     await productService.delete(productId);
-    console.log('[ProductController] Product deleted successfully:', productId);
     
     ctx.status = 200;
     ctx.body = {
@@ -702,15 +657,8 @@ export const uploadProductImage = async (ctx) => {
  */
 export const getProductImportTemplate = async (ctx) => {
   try {
-    // Lấy danh sách danh mục để có thể tham chiếu trong template
-    const categoriesSnapshot = await firestore.collection('categories').get();
-    const categories = [];
-    categoriesSnapshot.forEach(doc => {
-      categories.push({
-        id: doc.id,
-        name: doc.data().name
-      });
-    });
+    // Lấy danh sách danh mục từ repository
+    const categories = await categoryService.findAll();
     
     // Chuẩn bị dữ liệu mẫu
     const sampleData = [
@@ -773,7 +721,6 @@ export const getProductImportTemplate = async (ctx) => {
     ctx.body = excelBuffer;
     
   } catch (error) {
-    
     ctx.status = 500;
     ctx.body = { error: 'Failed to generate import template' };
   }
@@ -825,14 +772,13 @@ export const importProducts = async (ctx) => {
       return;
     }
     
-    // Lấy danh sách danh mục để kiểm tra tính hợp lệ
-    const categoriesSnapshot = await firestore.collection('categories').get();
-    const categories = {};
-    categoriesSnapshot.forEach(doc => {
-      categories[doc.id] = doc.data().name;
+    // Lấy danh sách danh mục từ repository
+    const categories = await categoryService.findAll();
+    const categoryMap = {};
+    categories.forEach(cat => {
+      categoryMap[cat.id] = cat.name;
     });
     
-    const batch = firestore.batch();
     const results = {
       total: products.length,
       success: 0,
@@ -859,26 +805,12 @@ export const importProducts = async (ctx) => {
           throw new Error('Invalid price');
         }
         
-        if (product.category_id && !categories[product.category_id]) {
+        if (product.category_id && !categoryMap[product.category_id]) {
           throw new Error(`Invalid category ID: ${product.category_id}`);
         }
         
         // Kiểm tra SKU đã tồn tại chưa
-        const existingProducts = await firestore.collection('products')
-          .where('sku', '==', product.sku)
-          .get();
-          
-        let productRef;
-        let isUpdate = false;
-        
-        if (!existingProducts.empty) {
-          // Cập nhật sản phẩm hiện có
-          productRef = existingProducts.docs[0].ref;
-          isUpdate = true;
-        } else {
-          // Tạo mới sản phẩm
-          productRef = firestore.collection('products').doc();
-        }
+        const existingProduct = await productService.findBySku(product.sku);
         
         // Xử lý features (chuyển từ chuỗi sang mảng)
         let features = [];
@@ -912,12 +844,13 @@ export const importProducts = async (ctx) => {
           updatedAt: new Date()
         };
         
-        if (!isUpdate) {
+        if (!existingProduct) {
           productData.createdAt = new Date();
+          await productService.create(productData);
+        } else {
+          await productService.update(existingProduct.id, productData);
         }
         
-        // Thêm vào batch
-        batch.set(productRef, productData, { merge: isUpdate });
         results.success++;
         
       } catch (error) {
@@ -930,15 +863,9 @@ export const importProducts = async (ctx) => {
       }
     }
     
-    // Nếu có ít nhất một sản phẩm thành công, thực hiện batch write
-    if (results.success > 0) {
-      await batch.commit();
-    }
-    
     ctx.body = results;
     
   } catch (error) {
-    
     ctx.status = 500;
     ctx.body = { 
       error: 'Failed to import products',
@@ -1144,6 +1071,49 @@ export const getProductById = async (ctx) => {
       success: false,
       error: error.message,
       message: 'Failed to fetch product' 
+    };
+  }
+};
+
+/**
+ * Get products for admin with pagination and filtering
+ */
+export const getAdminProducts = async (ctx) => {
+  try {
+    const { page = 1, limit = 10 } = ctx.query;
+    
+    // Convert page and limit to numbers
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    
+    // Get products using repository
+    const result = await productService.findAll({
+      limit: limitNumber,
+      offset: (pageNumber - 1) * limitNumber,
+      sort: 'createdAt',
+      order: 'desc'
+    });
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: {
+        products: result.products,
+        pagination: {
+          total: result.pagination.total,
+          page: pageNumber,
+          limit: limitNumber,
+          totalPages: Math.ceil(result.pagination.total / limitNumber)
+        }
+      }
+    };
+  } catch (error) {
+    console.error('[ProductController] Error getting admin products:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      error: error.message,
+      message: 'Failed to get products'
     };
   }
 }; 

@@ -19,7 +19,6 @@ const TOKEN_EXPIRES_IN = '7d';
  */
 export const register = async (ctx) => {
   try {
-    // Make sure we properly extract the data
     const requestBody = ctx.req.body || {};
     const data = requestBody.data || requestBody;
     
@@ -49,7 +48,7 @@ export const register = async (ctx) => {
     }
     
     try {
-      // First create the user in Firebase Authentication
+      // Create user in Firebase Auth
       const userRecord = await auth.createUser({
         email,
         password,
@@ -57,17 +56,15 @@ export const register = async (ctx) => {
         disabled: false
       });
       
-      console.log('Created Firebase Auth user:', userRecord.uid);
-      
-      // Then create user profile in Firestore
+      // Create user profile
       const userData = {
-        uid: userRecord.uid, // Link the Auth UID with the profile
+        uid: userRecord.uid,
         email,
         displayName,
         phone,
         companyName,
         role,
-        status: 'pending', 
+        status: 'pending',
         balance: 0
       };
       
@@ -87,11 +84,9 @@ export const register = async (ctx) => {
     } catch (error) {
       console.error("Error in register process:", error);
       
-      // If there was an error after creating the Auth user, try to clean up
       if (error.auth_user_created && error.auth_user_uid) {
         try {
           await auth.deleteUser(error.auth_user_uid);
-          console.log(`Cleaned up Auth user ${error.auth_user_uid} after Firestore error`);
         } catch (cleanupError) {
           console.error('Error cleaning up Auth user:', cleanupError);
         }
@@ -144,11 +139,9 @@ export const register = async (ctx) => {
  */
 export const login = async (ctx) => {
   try {
-    // Đọc dữ liệu đăng nhập từ body
     let email, password;
     
     if (ctx.req && ctx.req.body) {
-      // Lấy từ raw req body
       const body = ctx.req.body;
       
       if (body.data) {
@@ -160,7 +153,6 @@ export const login = async (ctx) => {
       }
     }
     
-    // Kiểm tra dữ liệu đăng nhập
     if (!email || !password) {
       ctx.status = 400;
       ctx.body = {
@@ -173,16 +165,14 @@ export const login = async (ctx) => {
     }
     
     try {
-      // RULE 1: Kiểm tra user trong Firebase Authentication
+      // Verify user in Firebase Auth
       let firebaseUser;
       try {
-        // Tìm user bằng email
         const userRecord = await auth.getUserByEmail(email);
         if (userRecord) {
           firebaseUser = userRecord;
         }
       } catch (authError) {
-        // Nếu không tìm thấy user hoặc có lỗi xác thực
         ctx.status = 401;
         ctx.body = {
           success: false,
@@ -193,7 +183,6 @@ export const login = async (ctx) => {
         return;
       }
       
-      // RULE 2: Kiểm tra trạng thái user trong Firestore
       if (firebaseUser) {
         const userProfile = await userProfileRepository.getUserProfileByEmail(email);
         
@@ -208,7 +197,6 @@ export const login = async (ctx) => {
           return;
         }
         
-        // Kiểm tra trạng thái tài khoản
         if (userProfile.status === 'suspended') {
           ctx.status = 403;
           ctx.body = {
@@ -231,7 +219,6 @@ export const login = async (ctx) => {
           return;
         }
         
-        // Tài khoản hợp lệ, tạo JWT token
         const token = jwt.sign(
           { 
             uid: firebaseUser.uid,
@@ -242,47 +229,40 @@ export const login = async (ctx) => {
           { expiresIn: TOKEN_EXPIRES_IN }
         );
         
-        // RULE 3: Trả về thông tin người dùng để lưu vào context
         const userData = {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: userProfile.displayName || firebaseUser.displayName,
           role: userProfile.role || 'user',
           status: userProfile.status,
-          balance: userProfile.balance || 0,
-          companyName: userProfile.companyName,
-          phone: userProfile.phone
+          balance: userProfile.balance || 0
         };
         
         ctx.status = 200;
         ctx.body = {
           success: true,
-          message: 'Login successful',
           token,
           data: userData,
-          user: userData, // Giữ lại cả user field cho tương thích ngược
-          timestamp: new Date().toISOString()
+          message: 'Login successful'
         };
-        return;
       }
     } catch (error) {
-      throw new CustomError(error.message, 'login_error', 500);
+      console.error('Login error:', error);
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        message: error.message || 'Login failed',
+        code: 'login_error',
+        timestamp: new Date().toISOString()
+      };
     }
-    
-    // Mặc định trả về lỗi nếu không có xử lý nào thành công
-    ctx.status = 401;
-    ctx.body = {
-      success: false,
-      message: 'Invalid email or password',
-      code: 'auth_failed',
-      timestamp: new Date().toISOString()
-    };
   } catch (error) {
-    ctx.status = error.status || 500;
+    console.error('Login error:', error);
+    ctx.status = 500;
     ctx.body = {
       success: false,
-      message: error.message || 'Internal server error during login',
-      code: error.code || 'internal_error',
+      message: error.message || 'Login failed',
+      code: 'login_error',
       timestamp: new Date().toISOString()
     };
   }

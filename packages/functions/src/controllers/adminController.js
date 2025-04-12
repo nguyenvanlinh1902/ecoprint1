@@ -1,7 +1,10 @@
 import { CustomError } from '../exceptions/customError.js';
-import { admin } from '../config/firebase.js';
+import { admin, auth } from '../config/firebase.js';
 import transactionRepository from '../repositories/transactionRepository.js';
 import userRepository from '../repositories/userRepository.js';
+import userProfileRepository from '../repositories/userProfileRepository.js';
+import * as functions from 'firebase-functions';
+import { log } from 'firebase-functions/logger';
 
 const firestore = admin.firestore();
 
@@ -313,56 +316,49 @@ export const rejectUser = async (ctx) => {
  */
 export const updateUserStatus = async (ctx) => {
   try {
-    const { userId, action } = ctx.params;
-    const { status } = ctx.req.body || {};
+    const { userId } = ctx.params;
+    const { status } = ctx.req.body;
     
-    // Determine status from action or body
-    let finalStatus = status;
-    
-    if (action) {
-      switch (action) {
-        case 'activate':
-          finalStatus = 'active';
-          break;
-        case 'deactivate':
-          finalStatus = 'inactive';
-          break;
-        default:
-          // Keep the status from body if action not recognized
-          break;
-      }
+    if (!userId || !status) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'User ID and status are required'
+      };
+      return;
     }
     
-    if (!userId) {
-      throw new CustomError('User ID is required', 400);
+    const userProfile = await userProfileRepository.getUserProfileById(userId);
+    if (!userProfile) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'User not found'
+      };
+      return;
     }
     
-    if (!finalStatus || !['active', 'inactive', 'pending', 'rejected'].includes(finalStatus)) {
-      throw new CustomError('Valid status is required', 400);
+    // Update user status in Firebase Auth if needed
+    if (status === 'suspended') {
+      await auth.updateUser(userId, { disabled: true });
+    } else if (status === 'active') {
+      await auth.updateUser(userId, { disabled: false });
     }
     
-    console.log(`Admin updateUserStatus - Updating status for user ${userId} to ${finalStatus}`);
+    // Update user profile
+    await userProfileRepository.updateUserProfile(userId, { status });
     
-    // Use the repository function that accepts userId
-    const updatedUser = await userRepository.updateUserStatusById(userId, finalStatus);
-    
-    console.log(`Admin updateUserStatus - Updated status successfully for user: ${updatedUser.email}`);
-    
-    // Return success response
+    ctx.status = 200;
     ctx.body = {
       success: true,
-      message: `User status updated to ${finalStatus} successfully`,
-      data: updatedUser
+      message: 'User status updated successfully'
     };
   } catch (error) {
-    console.error('Error in updateUserStatus controller:', error);
-    
-    // Handle errors
-    ctx.status = error instanceof CustomError ? error.statusCode : 500;
+    console.error('Error updating user status:', error);
+    ctx.status = 500;
     ctx.body = {
       success: false,
-      message: error instanceof CustomError ? error.message : 'Failed to update user status',
-      error: error.message || 'Unknown error'
+      message: error.message || 'Failed to update user status'
     };
   }
 };
@@ -780,6 +776,130 @@ export const createTransaction = async (ctx) => {
       success: false,
       message: error instanceof CustomError ? error.message : 'Failed to create transaction',
       error: error.message
+    };
+  }
+};
+
+/**
+ * Get all users (admin only)
+ */
+export const getAllUsers = async (ctx) => {
+  try {
+    const { page = 1, limit = 10, status, role, search } = ctx.query;
+    
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+      role,
+      search
+    };
+    
+    const result = await userProfileRepository.findAll(options);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      data: result
+    };
+  } catch (error) {
+    console.error('Error getting users:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: error.message || 'Failed to get users'
+    };
+  }
+};
+
+/**
+ * Update user role (admin only)
+ */
+export const updateUserRole = async (ctx) => {
+  try {
+    const { userId } = ctx.params;
+    const { role } = ctx.req.body;
+    
+    if (!userId || !role) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'User ID and role are required'
+      };
+      return;
+    }
+    
+    const userProfile = await userProfileRepository.getUserProfileById(userId);
+    if (!userProfile) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'User not found'
+      };
+      return;
+    }
+    
+    // Update user role in profile
+    await userProfileRepository.updateUserProfile(userId, { role });
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'User role updated successfully'
+    };
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: error.message || 'Failed to update user role'
+    };
+  }
+};
+
+/**
+ * Delete user (admin only)
+ */
+export const deleteUser = async (ctx) => {
+  try {
+    const { userId } = ctx.params;
+    
+    if (!userId) {
+      ctx.status = 400;
+      ctx.body = {
+        success: false,
+        message: 'User ID is required'
+      };
+      return;
+    }
+    
+    const userProfile = await userProfileRepository.getUserProfileById(userId);
+    if (!userProfile) {
+      ctx.status = 404;
+      ctx.body = {
+        success: false,
+        message: 'User not found'
+      };
+      return;
+    }
+    
+    // Delete user from Firebase Auth
+    await auth.deleteUser(userId);
+    
+    // Delete user profile
+    await userProfileRepository.deleteUserProfile(userId);
+    
+    ctx.status = 200;
+    ctx.body = {
+      success: true,
+      message: 'User deleted successfully'
+    };
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    ctx.status = 500;
+    ctx.body = {
+      success: false,
+      message: error.message || 'Failed to delete user'
     };
   }
 }; 

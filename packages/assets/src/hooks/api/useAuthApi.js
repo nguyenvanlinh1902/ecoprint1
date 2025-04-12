@@ -8,6 +8,18 @@ import { useStore } from '../../reducers/storeReducer';
 import { setToast } from '../../actions/storeActions';
 import { handleError } from '../../services/errorService';
 
+// Auth storage keys
+const AUTH_KEYS = {
+  TOKEN: 'auth_token',
+  USER: 'user_data',
+  ROLE: 'user_role',
+  EMAIL: 'user_email',
+  TIMESTAMP: 'token_timestamp'
+};
+
+// Token expiration time (24 hours)
+const TOKEN_EXPIRATION = 24 * 60 * 60 * 1000;
+
 /**
  * Custom hook for authentication API operations
  * @returns {Object} Auth API methods and state
@@ -17,6 +29,34 @@ const useAuthApi = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // Helper function to store auth data
+  const storeAuthData = useCallback((data) => {
+    if (data.token) {
+      localStorage.setItem(AUTH_KEYS.TOKEN, data.token);
+      localStorage.setItem(AUTH_KEYS.TIMESTAMP, Date.now().toString());
+    }
+    
+    if (data.user) {
+      localStorage.setItem(AUTH_KEYS.USER, JSON.stringify(data.user));
+      localStorage.setItem(AUTH_KEYS.ROLE, data.user.role || 'user');
+      localStorage.setItem(AUTH_KEYS.EMAIL, data.user.email);
+    }
+  }, []);
+
+  // Helper function to clear auth data
+  const clearAuthData = useCallback(() => {
+    Object.values(AUTH_KEYS).forEach(key => localStorage.removeItem(key));
+  }, []);
+
+  // Helper function to check token expiration
+  const isTokenExpired = useCallback(() => {
+    const timestamp = localStorage.getItem(AUTH_KEYS.TIMESTAMP);
+    if (!timestamp) return true;
+    
+    const age = Date.now() - parseInt(timestamp, 10);
+    return age > TOKEN_EXPIRATION;
+  }, []);
+
   /**
    * Log in with email and password
    * @param {string} email - User email
@@ -31,21 +71,10 @@ const useAuthApi = () => {
       const response = await api('/auth/login', 'POST', { email, password });
       
       if (response.success) {
-        // Store token in localStorage
-        if (response.token) {
-          localStorage.setItem('auth_token', response.token);
-          localStorage.setItem('token', response.token);
-          localStorage.setItem('tokenTimestamp', Date.now().toString());
-        }
-        
-        // Store user data in localStorage for persistent login
-        if (response.data || response.user) {
-          const userData = response.data || response.user;
-          localStorage.setItem('user_data', JSON.stringify(userData));
-          localStorage.setItem('user', JSON.stringify(userData));
-          localStorage.setItem('user_role', userData.role || 'user');
-          localStorage.setItem('user_email', userData.email);
-        }
+        storeAuthData({
+          token: response.token,
+          user: response.data || response.user
+        });
         
         setToast(dispatch, response.message || 'Login successful');
         toast.success('Đăng nhập thành công');
@@ -60,12 +89,9 @@ const useAuthApi = () => {
           token: response.token,
           message: response.message
         };
-      } else if (response && response.message) {
-        setToast(dispatch, response.message, true);
-        throw new Error(response.message);
       }
       
-      return response.data;
+      throw new Error(response.message || 'Login failed');
     } catch (err) {
       const errorResponse = {
         success: false,
@@ -80,7 +106,7 @@ const useAuthApi = () => {
     } finally {
       setLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, storeAuthData]);
   
   /**
    * Register a new user
@@ -92,35 +118,25 @@ const useAuthApi = () => {
       setLoading(true);
       setError(null);
       
-      // Make the API call
       const response = await api('/auth/register', 'POST', userData);
       
-      // Return the response directly without throwing errors
-      if (response && response.success) {
+      if (response.success) {
         setToast(dispatch, response.message || 'Registration successful');
         toast.success('Registration successful');
-      } else if (response) {
-        // Just display the error message but don't throw
-        setToast(dispatch, response.message || 'Registration failed', true);
-        throw new Error(response.message || 'Registration failed');
+        return response.data;
       }
       
-      // Always return the response, even if it's an error
-      return response.data;
+      throw new Error(response.message || 'Registration failed');
     } catch (err) {
-      // Create a standardized error response, don't throw
       const errorResponse = {
         success: false,
         message: err.message || 'Registration failed. Please try again.',
-        code: err.code || 'api_error',
+        code: 'registration_error',
         timestamp: new Date().toISOString()
       };
       
-      // Show a toast with the error
       setToast(dispatch, errorResponse.message, true);
       setError(errorResponse.message);
-      
-      // Return the error response
       throw errorResponse;
     } finally {
       setLoading(false);
@@ -136,54 +152,28 @@ const useAuthApi = () => {
       setLoading(true);
       setError(null);
       
-      // Add retry counter within call to avoid infinite loops
-      if (!window._currentUserRetryCount) {
-        window._currentUserRetryCount = 0;
+      // Check token expiration
+      if (isTokenExpired()) {
+        clearAuthData();
+        throw new Error('Session expired. Please login again.');
       }
-      
-      // Limit retries during a session to prevent excessive API calls
-      if (window._currentUserRetryCount > 5) {
-        return {
-          success: false,
-          message: 'Too many profile fetch attempts. Please try again later.',
-          code: 'retry_limit_exceeded'
-        };
-      }
-      
-      window._currentUserRetryCount++;
       
       const response = await api('/auth/me', 'GET', null, true);
       
-      // Reset retry counter on success
-      window._currentUserRetryCount = 0;
-      
       if (response.success) {
+        storeAuthData({ user: response.data });
         return response.data;
-      } else {
-        throw new Error(response.message || 'Failed to get user profile');
       }
+      
+      throw new Error(response.message || 'Failed to get user profile');
     } catch (err) {
       handleError(err);
-      
-      // For connection errors, return a specific error type
-      if (err.isConnectionIssue || err.code === 'ECONNABORTED' || 
-          err.message?.includes('offline')) {
-        
-        return {
-          success: false,
-          message: 'Unable to connect to server. Please check your connection.',
-          code: 'connection_error',
-          isConnectionIssue: true,
-          timestamp: new Date().toISOString()
-        };
-      }
-      
       setError(err.message || 'Failed to get user profile');
       throw err;
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isTokenExpired, clearAuthData, storeAuthData]);
   
   /**
    * Update user profile
@@ -198,32 +188,21 @@ const useAuthApi = () => {
       const response = await api('/auth/profile', 'PUT', data, true);
       
       if (response.success) {
+        storeAuthData({ user: response.data });
         setToast(dispatch, response.message || 'Profile updated successfully');
         toast.success('Profile updated successfully');
-      } else if (response.error) {
-        setToast(dispatch, response.error, true);
-        throw new Error(response.error);
+        return response.data;
       }
       
-      return response.data;
+      throw new Error(response.error || 'Failed to update profile');
     } catch (err) {
       handleError(err);
-      console.error('Update profile error:', err);
-      
-      const errorResponse = {
-        success: false,
-        message: err.message || 'Failed to update profile',
-        code: 'update_profile_error',
-        timestamp: new Date().toISOString()
-      };
-      
-      setToast(dispatch, errorResponse.message, true);
-      setError(errorResponse.message);
-      throw errorResponse;
+      setError(err.message || 'Failed to update profile');
+      throw err;
     } finally {
       setLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, storeAuthData]);
   
   /**
    * Send password reset email
@@ -240,26 +219,14 @@ const useAuthApi = () => {
       if (response.success) {
         setToast(dispatch, response.message || 'Password reset instructions sent');
         toast.success('Password reset instructions sent');
-      } else if (response.error) {
-        setToast(dispatch, response.error, true);
-        throw new Error(response.error);
+        return response.data;
       }
       
-      return response.data;
+      throw new Error(response.error || 'Failed to send reset instructions');
     } catch (err) {
       handleError(err);
-      console.error('Forgot password error:', err);
-      
-      const errorResponse = {
-        success: false,
-        message: err.message || 'Failed to send password reset email',
-        code: 'forgot_password_error',
-        timestamp: new Date().toISOString()
-      };
-      
-      setToast(dispatch, errorResponse.message, true);
-      setError(errorResponse.message);
-      throw errorResponse;
+      setError(err.message || 'Failed to send reset instructions');
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -337,32 +304,10 @@ const useAuthApi = () => {
    * Log out user
    * @returns {Promise<Object>} Logout response
    */
-  const logout = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      // Clear local storage auth data
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('tokenTimestamp');
-      
-      toast.success('Đăng xuất thành công');
-      
-      return {
-        success: true,
-        message: 'Logged out successfully',
-        timestamp: new Date().toISOString()
-      };
-    } catch (err) {
-      handleError(err);
-      console.error('Logout error:', err);
-      
-      setError(err.message || 'Error during logout');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const logout = useCallback(() => {
+    clearAuthData();
+    window.location.href = '/login';
+  }, [clearAuthData]);
   
   /**
    * Verify JWT token
@@ -397,7 +342,8 @@ const useAuthApi = () => {
     checkUserStatus,
     verifyToken,
     loading,
-    error
+    error,
+    isTokenExpired
   };
 };
 
