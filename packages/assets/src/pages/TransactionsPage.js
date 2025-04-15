@@ -94,7 +94,7 @@ const TransactionsPage = () => {
     fetchOnMount: false,
     initialParams: queryParams
   });
-  
+
   // Decide if we should show transaction list or detail
   const shouldShowDetail = Boolean(transactionId);
   
@@ -117,9 +117,13 @@ const TransactionsPage = () => {
     
     try {
       const response = await api.transactions.getById(transactionId);
+      console.log('Transaction detail response:', response);
       
       let transactionData;
-      if (response.data && response.data.data) {
+      if (response.data?.success && response.data?.data) {
+        // API response is nested in success.data
+        transactionData = response.data.data;
+      } else if (response.data && response.data.data) {
         transactionData = response.data.data;
       } else if (response.data) {
         transactionData = response.data;
@@ -130,32 +134,24 @@ const TransactionsPage = () => {
       setTransaction(transactionData);
       setUserNotes(transactionData.userNotes || '');
     } catch (error) {
-      /* error removed */
+      console.error('Error fetching transaction detail:', error);
       setDetailError('Failed to load transaction details. Please try again.');
     } finally {
       setDetailLoading(false);
     }
   };
   
-  // Update transactions when data changes
+  // Fetch transactions when component mounts
   useEffect(() => {
-    if (transactionsData) {
-      // Update data and pagination
-      if (transactionsData.data) {
-        setTransactions(transactionsData.data);
-      } else {
-        setTransactions([]);
-      }
-      
-      if (transactionsData.pagination) {
-        setTotalPages(transactionsData.pagination.totalPages || 1);
-      }
+    if (!transactionId && !transactions.length) {
+      handleFetchTransactions();
     }
-  }, [transactionsData]);
+  }, []);
   
   // Handle fetching transactions with current filters
   const handleFetchTransactions = () => {
     setLoading(true);
+    setError('');
     
     const params = {
       page,
@@ -169,21 +165,98 @@ const TransactionsPage = () => {
     if (dateRange.endDate) params.endDate = dateRange.endDate;
     
     setQueryParams(params);
-    refetchTransactions(params);
-    setLoading(false);
+    
+    // Use direct API call instead of useFetchApi hook
+    api.transactions.getAll(params)
+      .then(response => {
+        console.log('API Response:', response);
+        
+        // Handle the API response which is nested in success.data
+        if (response.data?.success && response.data?.data) {
+          const responseData = response.data.data;
+          
+          if (responseData.transactions) {
+            setTransactions(responseData.transactions || []);
+          } else {
+            setTransactions([]);
+          }
+          
+          if (responseData.pagination) {
+            setTotalPages(responseData.pagination.totalPages || responseData.pagination.pages || 1);
+          } else {
+            setTotalPages(1);
+          }
+        } else if (response.data?.transactions) {
+          // Direct response structure
+          setTransactions(response.data.transactions || []);
+          if (response.data.pagination) {
+            setTotalPages(response.data.pagination.totalPages || response.data.pagination.pages || 1);
+          }
+        } else {
+          // Fallback if data structure is unexpected
+          console.warn('Unexpected API response structure:', response.data);
+          setTransactions([]);
+          setTotalPages(1);
+        }
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error("Error fetching transactions:", error);
+        setError("Failed to load transactions. Please try again.");
+        setTransactions([]);
+        setLoading(false);
+      });
   };
   
   // Handle page change
   const handlePageChange = (event, value) => {
     setPage(value);
-    setQueryParams(prev => ({
-      ...prev,
-      page: value
-    }));
-    refetchTransactions({
+    
+    const newParams = {
       ...queryParams,
       page: value
-    });
+    };
+    
+    setQueryParams(newParams);
+    setLoading(true);
+    
+    // Use direct API call instead of useFetchApi hook
+    api.transactions.getAll(newParams)
+      .then(response => {
+        // Handle the API response which is nested in success.data
+        if (response.data?.success && response.data?.data) {
+          const responseData = response.data.data;
+          
+          if (responseData.transactions) {
+            setTransactions(responseData.transactions || []);
+          } else {
+            setTransactions([]);
+          }
+          
+          if (responseData.pagination) {
+            setTotalPages(responseData.pagination.totalPages || responseData.pagination.pages || 1);
+          } else {
+            setTotalPages(1);
+          }
+        } else if (response.data?.transactions) {
+          // Direct response structure
+          setTransactions(response.data.transactions || []);
+          if (response.data.pagination) {
+            setTotalPages(response.data.pagination.totalPages || response.data.pagination.pages || 1);
+          }
+        } else {
+          // Fallback if data structure is unexpected
+          console.warn('Unexpected API response structure:', response.data);
+          setTransactions([]);
+          setTotalPages(1);
+        }
+        setLoading(false);
+      })
+      .catch(error => {
+        console.error("Error fetching transactions:", error);
+        setError("Failed to load transactions. Please try again.");
+        setLoading(false);
+      });
   };
   
   // Handle filter changes
@@ -347,7 +420,7 @@ const TransactionsPage = () => {
     setSavingNotes(true);
     
     try {
-      await api.transaction.addUserNote(transaction.id, userNotes);
+      await api.transactions.addUserNote(transaction.id, userNotes);
       
       // Update local state
       setTransaction(prev => ({
@@ -704,6 +777,12 @@ const TransactionsPage = () => {
           </Box>
         </Box>
         
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+            {error}
+          </Alert>
+        )}
+        
         {/* Filters */}
         <Paper sx={{ p: 3, mb: 3 }}>
           <Typography variant="h6" gutterBottom>Filters</Typography>
@@ -801,7 +880,7 @@ const TransactionsPage = () => {
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>Transaction History</Typography>
           
-          {loading || fetchLoading ? (
+          {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
               <CircularProgress />
             </Box>
@@ -821,11 +900,13 @@ const TransactionsPage = () => {
                   </TableHead>
                   <TableBody>
                     {transactions.map((transaction) => (
-                      <TableRow key={transaction.id} hover>
-                        <TableCell>{transaction.id.substring(0, 8)}...</TableCell>
-                        <TableCell>{formatDate(transaction.createdAt)}</TableCell>
+                      <TableRow key={transaction.id || `transaction-${Math.random()}`} hover>
+                        <TableCell>{transaction.id ? transaction.id.substring(0, 8) + '...' : 'N/A'}</TableCell>
+                        <TableCell>{transaction.createdAt ? formatDate(transaction.createdAt) : 'N/A'}</TableCell>
                         <TableCell>
-                          {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                          {transaction.type 
+                            ? transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)
+                            : 'N/A'}
                         </TableCell>
                         <TableCell 
                           sx={{ 
@@ -838,11 +919,11 @@ const TransactionsPage = () => {
                           }}
                         >
                           {transaction.type === 'deposit' || transaction.type === 'refund' ? '+' : '-'}
-                          {formatCurrency(transaction.amount)}
+                          {formatCurrency(transaction.amount || 0)}
                         </TableCell>
                         <TableCell>
                           <Chip 
-                            label={transaction.status} 
+                            label={transaction.status || 'unknown'} 
                             color={getStatusColor(transaction.status)}
                             size="small"
                             variant="outlined"
@@ -853,6 +934,7 @@ const TransactionsPage = () => {
                             size="small"
                             onClick={() => handleViewTransaction(transaction.id)}
                             aria-label="View transaction details"
+                            disabled={!transaction.id}
                           >
                             <VisibilityIcon fontSize="small" />
                           </IconButton>
