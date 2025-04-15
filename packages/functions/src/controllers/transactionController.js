@@ -5,6 +5,8 @@ import requestParserRepository from '../repositories/requestParserRepository.js'
 import userRepository from '../repositories/userRepository.js';
 import { CustomError } from '../exceptions/customError.js';
 import {fileUploadRepository} from "../repositories/fileUploadRepository.js";
+import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 
 const firestore = admin.firestore();
 
@@ -763,3 +765,134 @@ export const addTransactionUserNote = async (ctx) => {
 //   getUserTransactions,
 //   getAllTransactions
 // }; 
+
+export const uploadTransactionReceipt = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    
+    // Kiểm tra nếu không có file
+    if (!ctx.req.files || !ctx.req.files.receipt) {
+      ctx.status = 400;
+      ctx.body = { error: 'No receipt file provided' };
+      return;
+    }
+    
+    const receiptFile = ctx.req.files.receipt;
+    
+    const maxSize = 10 * 1024 * 1024;
+    if (receiptFile.size > maxSize) {
+      ctx.status = 400;
+      ctx.body = { error: 'File too large. Maximum size is 10MB' };
+      return;
+    }
+    
+    const storage = admin.storage();
+    const bucket = storage.bucket();
+    
+    const fileName = `receipts/${transactionId}_${Date.now()}_${receiptFile.name}`;
+    const fileUpload = bucket.file(fileName);
+
+    const filePath = receiptFile.path;
+    
+    const options = {
+      metadata: {
+        contentType: receiptFile.type,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4()
+        }
+      },
+      resumable: false // Sử dụng non-resumable để giảm overhead
+    };
+    
+    // Sử dụng timeout để không bị Firebase Functions timeout
+    const uploadPromise = new Promise((resolve, reject) => {
+      fs.createReadStream(filePath)
+        .pipe(fileUpload.createWriteStream(options))
+        .on('error', (err) => {
+          console.error('Upload error:', err);
+          reject(err);
+        })
+        .on('finish', () => {
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+          resolve(publicUrl);
+        });
+    });
+    
+    // Thêm timeout để không chờ quá lâu
+    const uploadWithTimeout = Promise.race([
+      uploadPromise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Upload timed out')), 50000) // 50s timeout
+      )
+    ]);
+    
+    // Thực hiện upload
+    const receiptUrl = await uploadWithTimeout;
+
+    // Cập nhật transaction
+    await transactionRepository.updateTransactionReceipt(transactionId, receiptUrl);
+
+    // Trả về thông tin
+    ctx.status = 200;
+    ctx.body = {
+      message: 'Receipt uploaded successfully',
+      receiptUrl
+    };
+  } catch (error) {
+    console.error('Error uploading receipt:', error);
+    ctx.status = error.statusCode || 500;
+    ctx.body = { 
+      error: error.message || 'Failed to upload receipt',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    };
+  }
+};
+
+export const updateReceiptUrl = async (ctx) => {
+  try {
+    const { transactionId } = ctx.params;
+    const { receiptUrl } = ctx.req.body;
+    
+    // Validate input
+    if (!receiptUrl) {
+      ctx.status = 400;
+      ctx.body = { error: 'Receipt URL is required' };
+      return;
+    }
+    
+    // Get user info from headers or state
+    const email = ctx.req.headers['x-user-email'] || ctx.req.body?.email || ctx.state.user?.email;
+    
+    // Verify the transaction exists
+    const transaction = await transactionRepository.getTransactionById(transactionId);
+    
+    if (!transaction) {
+      ctx.status = 404;
+      ctx.body = { error: 'Transaction not found' };
+      return;
+    }
+    
+    // Validate access (must be the owner of the transaction)
+    if (transaction.email !== email) {
+      ctx.status = 403;
+      ctx.body = { error: 'Not authorized to update this transaction' };
+      return;
+    }
+    
+    // Update the transaction with the new receipt URL
+    await transactionRepository.updateTransactionReceipt(transactionId, receiptUrl);
+    
+    ctx.status = 200;
+    ctx.body = {
+      message: 'Receipt URL updated successfully',
+      receiptUrl
+    };
+  } catch (error) {
+    console.error('Error updating receipt URL:', error);
+    ctx.status = error.statusCode || 500;
+    ctx.body = { 
+      error: error.message || 'Failed to update receipt URL',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    };
+  }
+}; 
