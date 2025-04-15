@@ -115,11 +115,7 @@ app.use(async (ctx, next) => {
         };
       }
     })(ctx, async () => {
-      // Always ensure ctx.req.body exists and contains the parsed body
-      if (ctx.request.body && !ctx.req.body) {
-        ctx.req.body = ctx.request.body;
-      }
-      
+      // Body is already parsed and available in ctx.req.body
       await next();
     });
   } catch (error) {

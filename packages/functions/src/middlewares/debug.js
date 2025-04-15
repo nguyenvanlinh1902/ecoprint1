@@ -11,7 +11,7 @@ export const debugMiddleware = () => {
     console.log(`[${requestId}] Headers:`, JSON.stringify(ctx.headers, null, 2));
     
     if (['POST', 'PUT', 'PATCH'].includes(ctx.method)) {
-      console.log(`[${requestId}] Body:`, ctx.req.body || ctx.request.body || 'No body');
+      console.log(`[${requestId}] Body:`, ctx.req.body || 'No body');
     }
     
     try {

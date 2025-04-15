@@ -32,6 +32,8 @@ import ReceiptUploader from '../components/ReceiptUploader';
 import { useParams, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import TransactionDetails from '../components/transactions/TransactionDetails';
+import TransactionCard from '../components/transactions/TransactionCard';
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
@@ -83,6 +85,10 @@ const TransactionsPage = () => {
   const [depositSuccess, setDepositSuccess] = useState(false);
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
+
+  // Receipt uploader state
+  const [receiptUploaderOpen, setReceiptUploaderOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   // Use useFetchApi for transactions
   const { 
@@ -461,294 +467,28 @@ const TransactionsPage = () => {
     }
   };
   
+  // Handle receipt uploader open
+  const handleOpenReceiptUploader = (transaction) => {
+    setSelectedTransaction(transaction);
+    setReceiptUploaderOpen(true);
+  };
+  
+  // Handle receipt upload success
+  const handleReceiptUploadSuccess = () => {
+    // Refresh transactions list
+    handleFetchTransactions();
+  };
+  
   // Render transaction details
   const renderTransactionDetail = () => {
-    if (detailLoading) {
-      return (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-          <CircularProgress />
-        </Box>
-      );
-    }
-    
-    if (detailError) {
-      return (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {detailError}
-        </Alert>
-      );
-    }
-    
-    if (!transaction) {
-      return (
-        <Alert severity="warning" sx={{ mt: 2 }}>
-          Transaction not found.
-        </Alert>
-      );
-    }
-    
-    // Sort notes by date (newest first)
-    const adminNotes = [...(transaction.adminNotes || [])].sort((a, b) => 
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
-    
-    const userNotes = [...(transaction.userNotes || [])].sort((a, b) => 
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
-    
-    // Combined notes for the timeline view
-    const allNotes = [...adminNotes.map(note => ({...note, type: 'admin'})), 
-                     ...userNotes.map(note => ({...note, type: 'user'}))]
-                    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
     return (
-      <>
-        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Button
-            startIcon={<ArrowBackIcon />}
-            onClick={handleBackToList}
-            sx={{ mb: 2 }}
-          >
-            Back to Transactions
-          </Button>
-          
-          <Chip 
-            label={(transaction.status || 'unknown').toUpperCase()}
-            color={getStatusColor(transaction.status)}
-            variant="outlined"
-            sx={{ textTransform: 'uppercase' }}
-          />
-        </Box>
-        
-        {notesSuccess && (
-          <Alert severity="success" sx={{ mb: 3 }}>
-            {notesSuccess}
-          </Alert>
-        )}
-        
-        {notesError && (
-          <Alert severity="error" sx={{ mb: 3 }}>
-            {notesError}
-          </Alert>
-        )}
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={8}>
-            <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-              <Typography variant="h5" component="h1" gutterBottom>
-                Transaction #{transaction.id.substring(0, 8)}
-              </Typography>
-              
-              <Grid container spacing={3} sx={{ mt: 1 }}>
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Type
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>
-                    {transaction.type || 'Deposit'}
-                  </Typography>
-                  
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Amount
-                  </Typography>
-                  <Typography variant="h6" sx={{ mb: 2, color: 'success.main' }}>
-                    {formatCurrency(transaction.amount)}
-                  </Typography>
-                  
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Date
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>
-                    {formatDate(transaction.createdAt)}
-                  </Typography>
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Status
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>
-                    {transaction.status}
-                  </Typography>
-                  
-                  <Typography variant="subtitle2" color="text.secondary">
-                    Method
-                  </Typography>
-                  <Typography variant="body1" sx={{ mb: 2 }}>
-                    {transaction.bankName || 'Bank Transfer'}
-                  </Typography>
-                  
-                  {transaction.description && (
-                    <>
-                      <Typography variant="subtitle2" color="text.secondary">
-                        Description
-                      </Typography>
-                      <Typography variant="body1" sx={{ mb: 2 }}>
-                        {transaction.description}
-                      </Typography>
-                    </>
-                  )}
-                </Grid>
-              </Grid>
-              
-              {transaction.status === 'rejected' && (
-                <Box sx={{ mt: 2, p: 2, bgcolor: '#fff4f4', borderRadius: 1 }}>
-                  <Typography variant="subtitle2" color="error">
-                    Rejection Reason:
-                  </Typography>
-                  <Typography variant="body2">
-                    {transaction.rejectionReason || 'No reason provided'}
-                  </Typography>
-                </Box>
-              )}
-              
-              {/* Receipt Image */}
-              {transaction.receiptUrl && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                    <ReceiptIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                    Receipt Image
-                  </Typography>
-                  <Box 
-                    component="img"
-                    src={transaction.receiptUrl}
-                    alt="Receipt"
-                    sx={{
-                      maxWidth: '100%',
-                      maxHeight: 400,
-                      objectFit: 'contain',
-                      border: '1px solid #eee',
-                      borderRadius: 1
-                    }}
-                  />
-                </Box>
-              )}
-              
-              {/* Transfer Details */}
-              {(transaction.transferDate || transaction.reference) && (
-                <Box sx={{ mt: 3 }}>
-                  <Typography variant="subtitle1" gutterBottom>
-                    Transfer Details
-                  </Typography>
-                  <Grid container spacing={2}>
-                    {transaction.transferDate && (
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                          Transfer Date
-                        </Typography>
-                        <Typography variant="body1">
-                          {formatDate(transaction.transferDate)}
-                        </Typography>
-                      </Grid>
-                    )}
-                    {transaction.reference && (
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="subtitle2" color="text.secondary">
-                          Reference
-                        </Typography>
-                        <Typography variant="body1">
-                          {transaction.reference}
-                        </Typography>
-                      </Grid>
-                    )}
-                  </Grid>
-                </Box>
-              )}
-            </Paper>
-          </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-              <Typography variant="h6" gutterBottom>
-                Notes & Comments
-              </Typography>
-              
-              {/* Add Note Form */}
-              <Box sx={{ mb: 3 }}>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={2}
-                  value={userNotes}
-                  onChange={(e) => setUserNotes(e.target.value)}
-                  placeholder="Add your note..."
-                  variant="outlined"
-                  disabled={savingNotes}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton 
-                          edge="end" 
-                          color="primary" 
-                          onClick={handleSaveUserNotes}
-                          disabled={!userNotes.trim() || savingNotes}
-                        >
-                          <SendIcon />
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-              
-              <Divider sx={{ mb: 2 }} />
-              
-              {/* Notes Timeline */}
-              {allNotes.length > 0 ? (
-                <List sx={{ width: '100%', bgcolor: 'background.paper', p: 0 }}>
-                  {allNotes.map((note, index) => (
-                    <React.Fragment key={note.id || index}>
-                      <ListItem alignItems="flex-start" sx={{ px: 0 }}>
-                        <ListItemAvatar>
-                          <Avatar sx={{ bgcolor: note.type === 'admin' ? 'primary.main' : 'secondary.main' }}>
-                            {note.type === 'admin' ? <AdminPanelSettingsIcon /> : <PersonIcon />}
-                          </Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={
-                            <Typography
-                              variant="subtitle2"
-                              color={note.type === 'admin' ? 'primary' : 'secondary'}
-                            >
-                              {note.type === 'admin' ? 'Admin' : (note.userName || 'You')}
-                            </Typography>
-                          }
-                          secondary={
-                            <>
-                              <Typography
-                                component="span"
-                                variant="body2"
-                                color="text.primary"
-                                sx={{ display: 'inline', whiteSpace: 'pre-wrap' }}
-                              >
-                                {note.text}
-                              </Typography>
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block', mt: 0.5 }}
-                              >
-                                {formatDateTime(note.createdAt)}
-                              </Typography>
-                            </>
-                          }
-                        />
-                      </ListItem>
-                      {index < allNotes.length - 1 && <Divider variant="inset" component="li" />}
-                    </React.Fragment>
-                  ))}
-                </List>
-              ) : (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', textAlign: 'center' }}>
-                  No notes yet
-                </Typography>
-              )}
-            </Paper>
-          </Grid>
-        </Grid>
-      </>
+      <TransactionDetails
+        transaction={transaction}
+        loading={detailLoading}
+        error={detailError}
+        onBack={handleBackToList}
+        onRefresh={fetchTransactionDetail}
+      />
     );
   };
   
@@ -876,7 +616,6 @@ const TransactionsPage = () => {
           </Grid>
         </Paper>
         
-        {/* Transactions Table */}
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>Transaction History</Typography>
           
@@ -886,76 +625,33 @@ const TransactionsPage = () => {
             </Box>
           ) : transactions.length > 0 ? (
             <>
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>ID</TableCell>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Amount</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell align="right">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {transactions.map((transaction) => (
-                      <TableRow key={transaction.id || `transaction-${Math.random()}`} hover>
-                        <TableCell>{transaction.id ? transaction.id.substring(0, 8) + '...' : 'N/A'}</TableCell>
-                        <TableCell>{transaction.createdAt ? formatDate(transaction.createdAt) : 'N/A'}</TableCell>
-                        <TableCell>
-                          {transaction.type 
-                            ? transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)
-                            : 'N/A'}
-                        </TableCell>
-                        <TableCell 
-                          sx={{ 
-                            color: transaction.type === 'deposit' || transaction.type === 'refund' 
-                              ? 'success.main' 
-                              : transaction.type === 'payment' || transaction.type === 'withdrawal'
-                                ? 'error.main' 
-                                : 'inherit',
-                            fontWeight: 'medium'
-                          }}
-                        >
-                          {transaction.type === 'deposit' || transaction.type === 'refund' ? '+' : '-'}
-                          {formatCurrency(transaction.amount || 0)}
-                        </TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={transaction.status || 'unknown'} 
-                            color={getStatusColor(transaction.status)}
-                            size="small"
-                            variant="outlined"
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewTransaction(transaction.id)}
-                            aria-label="View transaction details"
-                            disabled={!transaction.id}
-                          >
-                            <VisibilityIcon fontSize="small" />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              {/* Card view for transactions */}
+              <Box sx={{ mb: 3 }}>
+                {transactions.map(transaction => (
+                  <TransactionCard
+                    key={transaction.id || `transaction-${Math.random()}`}
+                    transaction={transaction}
+                    onViewDetails={handleViewTransaction}
+                    onUploadReceipt={handleOpenReceiptUploader}
+                  />
+                ))}
+              </Box>
               
-              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+              {/* Pagination */}
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
                 <Pagination 
-                  count={totalPages}
-                  page={page}
-                  onChange={handlePageChange}
+                  count={totalPages} 
+                  page={page} 
+                  onChange={handlePageChange} 
                   color="primary"
+                  disabled={loading}
                 />
               </Box>
             </>
           ) : (
-            <Alert severity="info">No transactions found.</Alert>
+            <Alert severity="info">
+              No transactions found. Apply filters or make a deposit to get started.
+            </Alert>
           )}
         </Paper>
         
@@ -1079,6 +775,14 @@ const TransactionsPage = () => {
             </Button>
           </DialogActions>
         </Dialog>
+        
+        {/* Receipt Uploader Dialog */}
+        <ReceiptUploader
+          open={receiptUploaderOpen}
+          transaction={selectedTransaction}
+          onClose={() => setReceiptUploaderOpen(false)}
+          onSuccess={handleReceiptUploadSuccess}
+        />
       </>
     );
   };

@@ -1,251 +1,198 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
-  Box,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Button,
+  Box,
   Typography,
   CircularProgress,
   Alert
 } from '@mui/material';
-import { CloudUpload as UploadIcon } from '@mui/icons-material';
-import { uploadToFirebase } from '../services/firebaseService';
-import { getImageUrlFromFile } from './ImageFallback';
+import { CloudUpload as CloudUploadIcon } from '@mui/icons-material';
+import api from '@/api';
 
 /**
- * Component for uploading receipts directly to Firebase Storage
- * @param {Object} props - Component props
- * @param {Function} props.onUploadSuccess - Callback when upload succeeds with the file URL
- * @param {Function} props.onUploadError - Callback when upload fails with the error
- * @param {string} props.transactionId - ID of the transaction
- * @param {boolean} props.disabled - Whether the uploader is disabled
+ * Receipt Uploader Component
+ * Used to upload receipts for existing transactions
  */
 const ReceiptUploader = ({ 
-  onUploadSuccess, 
-  onUploadError, 
-  transactionId, 
-  disabled = false 
+  open, 
+  transaction, 
+  onClose, 
+  onSuccess 
 }) => {
-  const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [filePreview, setFilePreview] = useState(null);
-  const [blobUrl, setBlobUrl] = useState(null);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
-  
-  // ID duy nhất cho input file
-  const inputId = `file-upload-${transactionId || 'default'}`;
-  
-  // Cleanup blob URL khi component unmount
-  useEffect(() => {
-    return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-    };
-  }, [blobUrl]);
-  
+  const [success, setSuccess] = useState(false);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+
+  // Handle file selection
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
+    if (e.target.files[0]) {
       const selectedFile = e.target.files[0];
-      console.log('File selected:', {
-        name: selectedFile.name,
-        type: selectedFile.type,
-        size: selectedFile.size
-      });
+      setFile(selectedFile);
       
-      // Reset states
-      setError('');
-      setUploadSuccess(false);
-      
-      // Validate file size (max 5MB)
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setError('File size exceeds 5MB limit');
-        return;
-      }
-      
-      // Validate file type
-      const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
-      if (!validTypes.includes(selectedFile.type)) {
-        setError('File type not supported. Please upload JPG, PNG or PDF');
-        return;
-      }
-      
-      // Create file preview if it's an image
+      // Create preview for image files
       if (selectedFile.type.startsWith('image/')) {
-        // Tạo blob URL (giải pháp thay thế nhanh)
-        const url = URL.createObjectURL(selectedFile);
-        setBlobUrl(url);
-        
-        // Tạo base64 data URL (giải pháp dự phòng)
         const reader = new FileReader();
-        reader.onload = (e) => {
-          setFilePreview(e.target.result);
+        reader.onload = () => {
+          setPreview(reader.result);
         };
         reader.readAsDataURL(selectedFile);
       } else {
-        setBlobUrl(null);
-        setFilePreview(null);
+        // Reset preview if not an image
+        setPreview(null);
       }
-      
-      setFile(selectedFile);
     }
   };
-  
-  const handleUpload = async () => {
+
+  // Handle dialog close
+  const handleClose = () => {
+    // Reset state
+    if (!loading) {
+      setFile(null);
+      setPreview(null);
+      setError('');
+      setSuccess(false);
+      onClose();
+    }
+  };
+
+  // Handle upload submit
+  const handleSubmit = async () => {
     if (!file) {
-      setError('Please select a file first');
+      setError('Please select a receipt file');
       return;
     }
-    
-    const pathPrefix = transactionId ? `receipts/${transactionId}` : 'receipts/temp';
-    
-    setUploading(true);
+
+    if (!transaction?.id) {
+      setError('Invalid transaction data');
+      return;
+    }
+
+    setLoading(true);
     setError('');
     
     try {
-      console.log('Starting upload process for file:', file.name);
+      const formData = new FormData();
+      formData.append('receipt', file);
       
-      // Chuẩn bị URL dự phòng trước
-      const fallback = await getImageUrlFromFile(file);
-      console.log('Created fallback URL:', fallback);
+      await api.transactions.uploadReceipt(transaction.id, formData);
       
-      // Giải pháp 1: Upload qua Firebase service
-      try {
-        const result = await uploadToFirebase(file, pathPrefix);
-        
-        if (result.success) {
-          console.log('Receipt uploaded successfully to Firebase:', result.url);
-          setUploadSuccess(true);
-          
-          if (onUploadSuccess) {
-            onUploadSuccess(result.url);
-          }
-          
-          // Thành công với Firebase - không dùng fallback
-          return;
-        }
-        
-        // Nếu Firebase thất bại, dùng fallback
-        console.error('Firebase upload failed, switching to fallback:', result.error);
-      } catch (firebaseError) {
-        console.error('Firebase upload threw exception:', firebaseError);
+      setSuccess(true);
+      
+      // Notify parent component of success
+      if (onSuccess) {
+        onSuccess();
       }
       
-      // Dùng fallback URL từ bước chuẩn bị
-      console.log('Using fallback URL:', fallback.url);
-      setUploadSuccess(true);
-      
-      if (onUploadSuccess) {
-        onUploadSuccess(fallback.url);
-      }
-    } catch (err) {
-      console.error('All upload methods failed:', err);
-      setError(err.message || 'An unexpected error occurred');
-      
-      if (onUploadError) {
-        onUploadError(err.message);
-      }
+      // Auto-close after success
+      setTimeout(() => {
+        handleClose();
+      }, 1500);
+    } catch (error) {
+      console.error('Receipt upload error:', error);
+      setError(error.message || 'Failed to upload receipt. Please try again.');
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
-  
-  // Reset the uploader
-  const handleReset = () => {
-    setFile(null);
-    setFilePreview(null);
-    if (blobUrl) {
-      URL.revokeObjectURL(blobUrl);
-      setBlobUrl(null);
-    }
-    setError('');
-    setUploadSuccess(false);
-  };
-  
+
   return (
-    <Box sx={{ width: '100%' }} role="region" aria-label="Receipt upload section">
-      <Typography variant="subtitle2" gutterBottom>
-        Payment Receipt
-      </Typography>
-      
-      <Box sx={{ 
-        display: 'flex', 
-        flexDirection: 'column',
-        gap: 2
-      }}>
-        {/* Show preview */}
-        {(blobUrl || filePreview) && (
-          <Box 
-            sx={{ 
-              width: '100%', 
-              height: 150, 
-              backgroundImage: `url(${blobUrl || filePreview})`,
-              backgroundSize: 'contain',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
-              border: '1px solid #eee',
-              borderRadius: 1
-            }}
-            role="img"
-            aria-label="Receipt preview image"
-          />
-        )}
-        
-        {/* Buttons for file selection or uploaded status */}
-        {!uploadSuccess ? (
-          <>
-            <Button
-              variant="outlined"
-              component="label"
-              htmlFor={inputId}
-              startIcon={<UploadIcon />}
-              disabled={disabled || uploading}
-              fullWidth
-              aria-describedby="file-upload-help"
-              aria-busy={uploading}
-            >
-              {file ? file.name : 'Select Receipt'}
-              <input
-                id={inputId}
-                type="file"
-                hidden
-                accept="image/*, application/pdf"
-                onChange={handleFileChange}
-                aria-label="Upload receipt file"
-              />
-            </Button>
-            
-            {file && (
-              <Button
-                variant="contained"
-                onClick={handleUpload}
-                disabled={disabled || uploading}
-                fullWidth
-                aria-busy={uploading}
-                aria-live="polite"
-              >
-                {uploading ? <CircularProgress size={24} aria-hidden="true" /> : 'Upload Receipt'}
-              </Button>
-            )}
-          </>
-        ) : (
-          <Alert severity="success" aria-live="polite">
-            Receipt uploaded successfully!{' '}
-            <Button size="small" onClick={handleReset}>Upload Another</Button>
-          </Alert>
-        )}
-        
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle>Upload Receipt</DialogTitle>
+      <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mt: 1 }} aria-live="assertive">
+          <Alert severity="error" sx={{ mb: 2 }}>
             {error}
           </Alert>
         )}
         
-        <Typography variant="caption" color="text.secondary" id="file-upload-help">
-          Upload a screenshot or PDF of your payment confirmation. Supported formats: JPG, PNG, PDF.
-          Maximum file size: 5MB.
-        </Typography>
-      </Box>
-    </Box>
+        {success && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Receipt uploaded successfully!
+          </Alert>
+        )}
+        
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Please upload a receipt for Transaction #{transaction?.id?.substring(0, 8) || 'N/A'}
+          </Typography>
+          
+          <Box sx={{ 
+            border: '1px dashed #ccc', 
+            borderRadius: 1, 
+            p: 2, 
+            textAlign: 'center',
+            backgroundColor: '#f9f9f9',
+            my: 2
+          }}>
+            <Button
+              variant="outlined"
+              component="label"
+              disabled={loading || success}
+              startIcon={<CloudUploadIcon />}
+              fullWidth
+            >
+              Select Receipt File
+              <input
+                type="file"
+                hidden
+                onChange={handleFileChange}
+                accept="image/png, image/jpeg, image/jpg, application/pdf"
+              />
+            </Button>
+            
+            {file && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="caption" color="primary">
+                  {file.name}
+                </Typography>
+              </Box>
+            )}
+            
+            {preview && (
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <img 
+                  src={preview} 
+                  alt="Receipt preview" 
+                  style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '200px', 
+                    border: '1px solid #ddd',
+                    borderRadius: '4px'
+                  }} 
+                />
+              </Box>
+            )}
+          </Box>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button 
+          onClick={handleClose} 
+          disabled={loading}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={handleSubmit} 
+          variant="contained"
+          color="primary"
+          disabled={!file || loading || success}
+        >
+          {loading ? <CircularProgress size={24} /> : 'Upload Receipt'}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 

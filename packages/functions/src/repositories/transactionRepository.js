@@ -388,7 +388,7 @@ const getAllTransactions = async (options = {}) => {
  */
 const approveTransaction = async (transactionId) => {
   try {
-    // Lấy thông tin giao dịch
+    // Get transaction data
     const transactionDoc = await collection.doc(transactionId).get();
     
     if (!transactionDoc.exists) {
@@ -401,71 +401,67 @@ const approveTransaction = async (transactionId) => {
       throw new Error('Transaction is not in pending status');
     }
     
-    // Sử dụng transaction Firestore để đảm bảo tính toàn vẹn dữ liệu
-    await firestore.runTransaction(async (t) => {
-      // Lấy thông tin user theo email
-      const userEmail = transaction.email;
+    // Get user info by email
+    const userEmail = transaction.email;
+    
+    if (!userEmail) {
+      throw new Error('Transaction has no associated email');
+    }
+    
+    // Query user by email - direct query without transaction
+    const usersRef = firestore.collection('users');
+    const userQuerySnapshot = await usersRef.where('email', '==', userEmail).limit(1).get();
+    
+    let userId;
+    let userData;
+    
+    // Handle user creation if not exists
+    if (userQuerySnapshot.empty) {
+      // Create new user
+      const newUserRef = usersRef.doc();
+      userId = newUserRef.id;
       
-      if (!userEmail) {
-        throw new Error('Transaction has no associated email');
-      }
-      
-      // Query user by email
-      const usersRef = firestore.collection('users');
-      const userQuery = await t.get(usersRef.where('email', '==', userEmail).limit(1));
-      
-      let userId;
-      let userData;
-      
-      // Nếu user không tồn tại, tạo một user mới
-      if (userQuery.empty) {
-        console.log(`User with email ${userEmail} not found, creating new user`);
-        
-        // Tạo user mới
-        const newUserRef = usersRef.doc();
-        userId = newUserRef.id;
-        
-        // Dữ liệu cơ bản cho user mới
-        userData = {
-          email: userEmail,
-          displayName: userEmail.split('@')[0],
-          role: 'user',
-          status: 'active',
-          balance: 0,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-        
-        // Set dữ liệu cho user mới
-        t.set(newUserRef, userData);
-        console.log(`Created new user with ID: ${userId}`);
-      } else {
-        // Lấy thông tin user đã tồn tại
-        const userDoc = userQuery.docs[0];
-        userId = userDoc.id;
-        userData = userDoc.data();
-      }
-      
-      // Cập nhật số dư của user
-      const newBalance = (userData.balance || 0) + transaction.amount;
-      t.update(usersRef.doc(userId), {
-        balance: newBalance,
-        updatedAt: new Date()
-      });
-      
-      // Cập nhật trạng thái giao dịch và userId nếu chưa có
-      const updateData = {
-        status: 'approved',
+      // Basic data for new user
+      userData = {
+        email: userEmail,
+        displayName: userEmail.split('@')[0],
+        role: 'user',
+        status: 'active',
+        balance: 0,
+        createdAt: new Date(),
         updatedAt: new Date()
       };
       
-      // Nếu chưa có userId thì thêm vào
-      if (!transaction.userId) {
-        updateData.userId = userId;
-      }
-      
-      t.update(collection.doc(transactionId), updateData);
+      // Set user data directly
+      await newUserRef.set(userData);
+    } else {
+      // Get existing user data
+      const userDoc = userQuerySnapshot.docs[0];
+      userId = userDoc.id;
+      userData = userDoc.data();
+    }
+    
+    // Update user balance directly
+    const userDocRef = usersRef.doc(userId);
+    const currentBalance = userData.balance || 0;
+    const newBalance = currentBalance + transaction.amount;
+    
+    await userDocRef.update({
+      balance: newBalance,
+      updatedAt: new Date()
     });
+    
+    // Update transaction status separately
+    const updateData = {
+      status: 'approved',
+      updatedAt: new Date()
+    };
+    
+    if (!transaction.userId) {
+      updateData.userId = userId;
+    }
+    
+    await collection.doc(transactionId).update(updateData);
     
     return true;
   } catch (error) {
