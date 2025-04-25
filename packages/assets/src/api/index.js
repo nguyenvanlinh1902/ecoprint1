@@ -591,8 +591,28 @@ export const adminApi = {
     return get('/admin/transactions', { params: enhancedParams });
   },
   getTransactionById: (id) => {
+    console.log(`[API] Getting transaction details for ID: ${id}`);
     const enhancedParams = addAuthData();
-    return get(`/admin/transactions/${id}`, { params: enhancedParams });
+    
+    const userEmail = localStorage.getItem('user_email');
+    const userRole = localStorage.getItem('user_role');
+    const token = localStorage.getItem('token');
+    
+    // Enhanced request with extra headers for debugging
+    return get(`/admin/transactions/${id}`, { 
+      params: enhancedParams,
+      headers: {
+        'X-User-Email': userEmail || '',
+        'X-User-Role': userRole || 'admin',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    }).then(response => {
+      console.log(`[API] Transaction details response:`, response?.data ? 'data present' : 'no data');
+      return response;
+    }).catch(error => {
+      console.error(`[API] Error fetching transaction details:`, error);
+      throw error;
+    });
   },
   addTransaction: (data) => {
     const enhancedData = addAuthData(data);

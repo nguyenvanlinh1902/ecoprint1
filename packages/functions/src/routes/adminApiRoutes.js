@@ -3,6 +3,7 @@ import * as adminController from '../controllers/adminController.js';
 import * as orderController from '../controllers/orderController.js';
 import * as productController from '../controllers/productController.js';
 import * as uploadController from '../controllers/uploadController.js';
+import * as transactionController from '../controllers/transactionController.js';
 import { getAllOptions, getOptionById, createOption, updateOption, deleteOption, addPosition, removePosition } from '../controllers/productOptionController.js';
 import { authMiddleware, adminMiddleware } from '../middlewares/authMiddleware.js';
 
@@ -24,11 +25,20 @@ const errorHandler = async (ctx, next) => {
 // Response formatter middleware
 const responseFormatter = async (ctx, next) => {
   await next();
-  if (ctx.body && !ctx.body.success) {
+  
+  console.log(`[ResponseFormatter] Processing response for path: ${ctx.path}`);
+  console.log(`[ResponseFormatter] Original response:`, JSON.stringify(ctx.body, null, 2).substring(0, 200) + '...');
+  
+  // Only apply if ctx.body exists and does not already have success property
+  if (ctx.body && typeof ctx.body === 'object' && !ctx.body.hasOwnProperty('success')) {
+    console.log(`[ResponseFormatter] Applying standard format to response for: ${ctx.path}`);
     ctx.body = {
       success: true,
       data: ctx.body
     };
+    console.log(`[ResponseFormatter] Formatted response:`, JSON.stringify(ctx.body, null, 2).substring(0, 200) + '...');
+  } else {
+    console.log(`[ResponseFormatter] Skipping formatting for response with existing 'success' property: ${ctx.path}`);
   }
 };
 
@@ -52,6 +62,8 @@ export default function adminApiRouter(withPrefix = true) {
   adminRoutes.patch('/orders/:orderId/tracking', authMiddleware, adminMiddleware, orderController.updateOrderTracking);
   adminRoutes.patch('/orders/:orderId/notes', authMiddleware, adminMiddleware, orderController.updateOrderNotes);
   adminRoutes.get('/products', authMiddleware, adminMiddleware, productController.getAdminProducts);
+  adminRoutes.get('/transactions', authMiddleware, adminMiddleware, transactionController.getAllTransactions);
+  adminRoutes.get('/transactions/:transactionId', authMiddleware, adminMiddleware, transactionController.getTransactionById);
   router.use('/admin', adminRoutes.routes());
 
   // Upload routes

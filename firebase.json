@@ -4,7 +4,7 @@
       "echo \"Skipping npm ci as it's already installed\""
     ],
     "source": "packages/functions",
-    "credentials": "packages/functions/serviceAccount.json"
+    "credentials": "serviceAccount.json"
   },
   "firestore": {
     "rules": "firestore.rules",
@@ -42,7 +42,7 @@
       "port": 4003
     },
     "hub": {
-      "port": 4405
+      "port": 4406
     }
   }
 }

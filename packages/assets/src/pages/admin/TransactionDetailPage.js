@@ -33,15 +33,7 @@ import {
   Avatar,
   InputAdornment
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
-import ReceiptIcon from '@mui/icons-material/Receipt';
-import EditIcon from '@mui/icons-material/Edit';
-import SaveIcon from '@mui/icons-material/Save';
-import PersonIcon from '@mui/icons-material/Person';
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
-import SendIcon from '@mui/icons-material/Send';
+import * as MuiIcons from '@mui/icons-material';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
 import { useFetchApi } from '../../hooks';
 import api from '@/api';
@@ -71,23 +63,42 @@ const TransactionDetailPage = () => {
   // Use safe admin hook to access users data
   const { getUserByEmail, getAllUsers, isContextAvailable } = useSafeAdmin();
   
+  // Define fallback icons in case they fail to load
+  const FallbackIcon = () => <span>⚠️</span>;
+  
+  // Create references to the icons
+  const ArrowBackIcon = MuiIcons.ArrowBack || FallbackIcon;
+  const CheckCircleIcon = MuiIcons.CheckCircle || FallbackIcon;
+  const CancelIcon = MuiIcons.Cancel || FallbackIcon;
+  const ReceiptIcon = MuiIcons.Receipt || FallbackIcon;
+  const EditIcon = MuiIcons.Edit || FallbackIcon;
+  const SaveIcon = MuiIcons.Save || FallbackIcon;
+  const PersonIcon = MuiIcons.Person || FallbackIcon;
+  const AdminPanelSettingsIcon = MuiIcons.AdminPanelSettings || FallbackIcon;
+  const SendIcon = MuiIcons.Send || FallbackIcon;
+  
   // Fetch transaction details
   useEffect(() => {
     const fetchTransactionDetails = async () => {
       try {
+        console.log(`[TransactionDetailPage] Fetching transaction details for ID: ${transactionId}`);
         const response = await api.admin.getTransactionById(transactionId);
+        console.log('[TransactionDetailPage] Transaction response:', response);
         
         let transactionData;
         
         // Make sure we access the data correctly and have default values
-        if (response.data && response.data.data) {
+        if (response.data && response.data.success && response.data.data) {
+          console.log('[TransactionDetailPage] Using nested data format');
           transactionData = response.data.data;
         } else if (response.data) {
+          console.log('[TransactionDetailPage] Using direct data format');
           transactionData = response.data;
         } else {
           throw new Error('Invalid response format');
         }
         
+        console.log('[TransactionDetailPage] Parsed transaction data:', transactionData);
         setTransaction(transactionData);
         
         // If AdminContext is not available, log a warning
@@ -95,7 +106,7 @@ const TransactionDetailPage = () => {
           console.warn('AdminContext is not available. User data will not be displayed.');
         }
       } catch (error) {
-        /* error removed */
+        console.error('[TransactionDetailPage] Error fetching transaction details:', error);
         setError('Failed to load transaction details. Please try again.');
       } finally {
         setLoading(false);
@@ -122,13 +133,13 @@ const TransactionDetailPage = () => {
       // Update the transaction
       const response = await api.admin.getTransactionById(transactionId);
       
-      if (response.data && response.data.data) {
+      if (response.data && response.data.success && response.data.data) {
         setTransaction(response.data.data);
       } else if (response.data) {
         setTransaction(response.data);
       }
     } catch (error) {
-      /* error removed */
+      console.error('[TransactionDetailPage] Error approving transaction:', error);
       setError('Failed to approve transaction. Please try again.');
     } finally {
       setActionLoading(false);
@@ -150,13 +161,13 @@ const TransactionDetailPage = () => {
       // Update the transaction
       const response = await api.admin.getTransactionById(transactionId);
       
-      if (response.data && response.data.data) {
+      if (response.data && response.data.success && response.data.data) {
         setTransaction(response.data.data);
       } else if (response.data) {
         setTransaction(response.data);
       }
     } catch (error) {
-      /* error removed */
+      console.error('[TransactionDetailPage] Error rejecting transaction:', error);
       setError('Failed to reject transaction. Please try again.');
     } finally {
       setActionLoading(false);
@@ -184,7 +195,7 @@ const TransactionDetailPage = () => {
       const transactionResponse = await api.admin.getTransactionById(transactionId);
       console.log('Refreshed transaction data:', transactionResponse);
       
-      if (transactionResponse.data && transactionResponse.data.data) {
+      if (transactionResponse.data && transactionResponse.data.success && transactionResponse.data.data) {
         setTransaction(transactionResponse.data.data);
       } else if (transactionResponse.data) {
         setTransaction(transactionResponse.data);
@@ -205,6 +216,7 @@ const TransactionDetailPage = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'completed':
+      case 'approved':
         return 'success';
       case 'pending':
         return 'warning';

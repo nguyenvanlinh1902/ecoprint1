@@ -471,7 +471,9 @@ export const getUserTransactions = async (ctx) => {
  */
 export const getAllTransactions = async (ctx) => {
   try {
-    const { userId, type, status, startDate, endDate, limit = 20, page = 1 } = ctx.req.query;
+    console.log('[Admin getAllTransactions] Fetching transactions with params:', ctx.req.query);
+    
+    const { userId, type, status, startDate, endDate, limit = 20, page = 1, role, email } = ctx.req.body || ctx.req.query;
     
     // Create a filter object to pass to the repository
     const filters = {
@@ -484,18 +486,28 @@ export const getAllTransactions = async (ctx) => {
       page: parseInt(page)
     };
     
-    // Create a function in repository to handle getAllTransactions with these filters
+    // Use repository to get all transactions
     const result = await transactionRepository.getAllTransactions(filters);
+    
+    console.log(`[Admin getAllTransactions] Found ${result.transactions.length} transactions`);
     
     ctx.status = 200;
     ctx.body = { 
-      transactions: result.transactions,
-      pagination: result.pagination
+      success: true,
+      data: {
+        transactions: result.transactions,
+        pagination: result.pagination
+      }
     };
   } catch (error) {
     console.error("Error in getAllTransactions:", error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      message: error.message,
+      code: 'internal_error',
+      timestamp: new Date().toISOString()
+    };
   }
 };
 
@@ -507,27 +519,50 @@ export const getTransactionById = async (ctx) => {
     const { transactionId } = ctx.params;
     const { uid, role } = ctx.state.user;
     
+    console.log(`[Admin getTransactionById] Fetching transaction: ${transactionId}`);
+    
     // Use repository to get transaction
     const transaction = await transactionRepository.getTransactionById(transactionId);
     
     if (!transaction) {
       ctx.status = 404;
-      ctx.body = { error: 'Transaction not found' };
+      ctx.body = { 
+        success: false,
+        message: 'Transaction not found',
+        code: 'not_found',
+        timestamp: new Date().toISOString()
+      };
       return;
     }
     
     // Check if user has access to this transaction (must be admin or transaction owner)
     if (role !== 'admin' && transaction.userId !== uid) {
       ctx.status = 403;
-      ctx.body = { error: 'Not authorized to view this transaction' };
+      ctx.body = { 
+        success: false,
+        message: 'Not authorized to view this transaction',
+        code: 'forbidden',
+        timestamp: new Date().toISOString()
+      };
       return;
     }
     
+    console.log(`[Admin getTransactionById] Transaction ${transactionId} found`);
+    
     ctx.status = 200;
-    ctx.body = transaction;
+    ctx.body = {
+      success: true,
+      data: transaction
+    };
   } catch (error) {
+    console.error(`Error in getTransactionById: ${error.message}`, error);
     ctx.status = 500;
-    ctx.body = { error: error.message };
+    ctx.body = { 
+      success: false,
+      message: error.message,
+      code: 'internal_error',
+      timestamp: new Date().toISOString()
+    };
   }
 };
 

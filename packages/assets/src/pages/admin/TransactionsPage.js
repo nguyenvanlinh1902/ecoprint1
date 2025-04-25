@@ -98,27 +98,38 @@ const TransactionsPage = () => {
       setLoadingDetails(true);
       setError('');
       
+      console.log(`[TransactionsPage] Fetching details for transaction ID: ${id}`);
+      
       // Sử dụng endpoint admin đã được cấu hình
       const response = await api.admin.getTransactionById(id);
       
+      console.log(`[TransactionsPage] Transaction details response:`, response);
+      
+      // Handle both new and legacy response formats
       if (response && response.data) {
-        // Kiểm tra cấu trúc response
-        const transactionData = response.data.data || response.data;
+        console.log(`[TransactionsPage] Response data structure:`, JSON.stringify(response.data).substring(0, 100) + '...');
         
-        // Nếu có dữ liệu, hiển thị
-        if (transactionData) {
-          setSelectedTransaction(transactionData);
+        if (response.data.success && response.data.data) {
+          // New format with nested data
+          console.log(`[TransactionsPage] Using new response format with nested data`);
+          setSelectedTransaction(response.data.data);
+          setSuccess('');
+        } else if (response.data.id) {
+          // Legacy format where data is directly in response.data
+          console.log(`[TransactionsPage] Using legacy response format with direct data`);
+          setSelectedTransaction(response.data);
           setSuccess('');
         } else {
+          console.error(`[TransactionsPage] Invalid response format:`, response.data);
           setError('Không tìm thấy thông tin giao dịch');
           setSelectedTransaction(null);
         }
       } else {
-        console.error('Unexpected API response structure:', response);
+        console.error('[TransactionsPage] Unexpected API response structure:', response);
         setError('Định dạng dữ liệu không đúng. Vui lòng liên hệ quản trị viên.');
       }
     } catch (error) {
-      console.error('Error fetching transaction details:', error);
+      console.error('[TransactionsPage] Error fetching transaction details:', error);
       const errorMessage = error.response?.data?.message || 
                           error.response?.data?.error || 
                           error.friendlyMessage || 
@@ -168,14 +179,21 @@ const TransactionsPage = () => {
       // Sử dụng endpoint admin đã được cấu hình
       const response = await api.admin.getAllTransactions(params);
       
-      // API trả về cấu trúc đơn giản { transactions, pagination }
-      if (response.data) {
-        setTransactions(response.data.transactions || []);
+      // Properly handle API response structure
+      if (response.data && response.data.success && response.data.data) {
+        // Get data from the nested structure
+        const { transactions, pagination } = response.data.data;
         
-        const pagination = response.data.pagination || {};
-        setTotalPages(pagination.totalPages || 1);
+        setTransactions(transactions || []);
+        setTotalPages(pagination?.totalPages || 1);
         
         // Clear error và success message nếu thành công
+        setError('');
+      } else if (response.data) {
+        // Legacy format support
+        setTransactions(response.data.transactions || []);
+        const pagination = response.data.pagination || {};
+        setTotalPages(pagination.totalPages || 1);
         setError('');
       } else {
         setTransactions([]);
@@ -309,6 +327,16 @@ const TransactionsPage = () => {
   };
   
   const handleViewDetails = (transaction) => {
+    console.log('[TransactionsPage] Viewing transaction details for:', transaction.id);
+    
+    // Store transaction in localStorage for fallback
+    try {
+      localStorage.setItem('current_transaction', JSON.stringify(transaction));
+      console.log('[TransactionsPage] Stored transaction in localStorage for fallback');
+    } catch (error) {
+      console.error('[TransactionsPage] Error storing transaction in localStorage:', error);
+    }
+    
     navigate(`/admin/transactions/${transaction.id}`);
   };
   
@@ -323,23 +351,43 @@ const TransactionsPage = () => {
       
       const response = await api.admin.approveTransaction(selectedTransaction.id);
       
-      // Check response
-      if (response && response.data && response.data.success) {
-        setSuccess(response.data.message || 'Transaction approved successfully');
-        
-        // Cập nhật transaction đã được approved
-        if (selectedTransaction) {
-          setSelectedTransaction({
-            ...selectedTransaction,
-            status: 'approved'
-          });
+      // Handle both response formats
+      if (response && response.data) {
+        // New success format with nested data
+        if (response.data.success) {
+          setSuccess(response.data.message || response.data.data?.message || 'Transaction approved successfully');
+          
+          // Update the approved transaction
+          if (selectedTransaction) {
+            setSelectedTransaction({
+              ...selectedTransaction,
+              status: 'approved'
+            });
+          }
+          
+          // Refresh transaction list
+          fetchTransactions();
+        } 
+        // Legacy format
+        else if (response.data.message) {
+          setSuccess(response.data.message || 'Transaction approved successfully');
+          
+          if (selectedTransaction) {
+            setSelectedTransaction({
+              ...selectedTransaction,
+              status: 'approved'
+            });
+          }
+          
+          fetchTransactions();
         }
-        
-        // Refresh danh sách giao dịch
-        fetchTransactions();
+        else {
+          console.error('Error approving transaction:', response);
+          setError(response.data.message || response.data.error || 'Failed to approve transaction');
+        }
       } else {
-        console.error('Error approving transaction:', response);
-        setError(response?.data?.message || 'Failed to approve transaction');
+        console.error('Unexpected API response:', response);
+        setError('Unexpected API response. Please try again.');
       }
     } catch (error) {
       console.error('Error approving transaction:', error);
@@ -370,28 +418,51 @@ const TransactionsPage = () => {
       // Call reject API
       const response = await api.admin.rejectTransaction(selectedTransaction.id, { reason: rejectReason });
       
-      // Check response
-      if (response && response.data && response.data.success) {
-        setSuccess(response.data.message || 'Transaction rejected successfully');
-        
-        // Update local transaction status
-        if (selectedTransaction) {
-          setSelectedTransaction({
-            ...selectedTransaction,
-            status: 'rejected',
-            rejectionReason: rejectReason
-          });
+      // Handle both response formats
+      if (response && response.data) {
+        // New format with success flag
+        if (response.data.success) {
+          setSuccess(response.data.message || response.data.data?.message || 'Transaction rejected successfully');
+          
+          // Update transaction status
+          if (selectedTransaction) {
+            setSelectedTransaction({
+              ...selectedTransaction,
+              status: 'rejected',
+              rejectionReason: rejectReason
+            });
+          }
+          
+          // Refresh transaction list
+          fetchTransactions();
+          
+          // Reset rejection reason and close dialog
+          setRejectReason('');
+          setRejectDialogOpen(false);
         }
-        
-        // Refresh transactions list
-        fetchTransactions();
-        
-        // Reset rejection reason
-        setRejectReason('');
-        setRejectDialogOpen(false);
+        // Legacy format
+        else if (response.data.message) {
+          setSuccess(response.data.message || 'Transaction rejected successfully');
+          
+          if (selectedTransaction) {
+            setSelectedTransaction({
+              ...selectedTransaction,
+              status: 'rejected',
+              rejectionReason: rejectReason
+            });
+          }
+          
+          fetchTransactions();
+          setRejectReason('');
+          setRejectDialogOpen(false);
+        }
+        else {
+          console.error('Error rejecting transaction:', response);
+          setError(response.data.message || response.data.error || 'Failed to reject transaction');
+        }
       } else {
-        console.error('Error rejecting transaction:', response);
-        setError(response?.data?.message || 'Failed to reject transaction');
+        console.error('Unexpected API response:', response);
+        setError('Unexpected API response. Please try again.');
       }
     } catch (error) {
       console.error('Error rejecting transaction:', error);
@@ -407,6 +478,27 @@ const TransactionsPage = () => {
   
   // Render transaction details view
   const renderTransactionDetails = () => {
+    // Add fallback support from localStorage if API call fails
+    useEffect(() => {
+      if (!selectedTransaction && !loadingDetails && transactionId) {
+        console.log('[TransactionsPage] No transaction data from API, attempting to use localStorage fallback');
+        try {
+          const savedTransaction = localStorage.getItem('current_transaction');
+          if (savedTransaction) {
+            const parsedTransaction = JSON.parse(savedTransaction);
+            if (parsedTransaction.id === transactionId) {
+              console.log('[TransactionsPage] Using localStorage fallback data for transaction');
+              setSelectedTransaction(parsedTransaction);
+            } else {
+              console.log('[TransactionsPage] Saved transaction ID does not match current ID');
+            }
+          }
+        } catch (error) {
+          console.error('[TransactionsPage] Error reading from localStorage:', error);
+        }
+      }
+    }, [selectedTransaction, loadingDetails, transactionId]);
+
     if (loadingDetails) {
       return (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
@@ -502,7 +594,7 @@ const TransactionsPage = () => {
             <Typography variant="body1">
               {selectedTransaction.user ? 
                 `${selectedTransaction.user.name} (${selectedTransaction.user.email})` : 
-                selectedTransaction.userId}
+                selectedTransaction.email || selectedTransaction.userId}
             </Typography>
           </Grid>
           
