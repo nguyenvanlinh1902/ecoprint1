@@ -11,7 +11,7 @@ import {
   Visibility as VisibilityIcon,
   FilterList as FilterIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../../helpers';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate } from '../../helpers/formatters';
 

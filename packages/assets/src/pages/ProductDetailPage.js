@@ -14,7 +14,7 @@ import {
   Delete as DeleteIcon,
   AttachFile as AttachFileIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import { formatCurrency } from '../helpers/formatters';
 
 const TabPanel = (props) => {

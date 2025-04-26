@@ -10,7 +10,6 @@
  */
 export const navigate = (path, state = {}) => {
   window.history.pushState(state, '', path);
-  // Create and dispatch a popstate event to trigger any router listeners
   window.dispatchEvent(new PopStateEvent('popstate', { state }));
 };
 

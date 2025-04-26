@@ -10,7 +10,7 @@ import {
   Search as SearchIcon,
   ShoppingCart as ShoppingCartIcon 
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import { formatCurrency } from '../helpers/formatters';
 
 const ProductsPage = () => {

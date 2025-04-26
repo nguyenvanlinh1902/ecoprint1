@@ -26,7 +26,7 @@ import {
   AdminPanelSettings as AdminPanelSettingsIcon
 } from '@mui/icons-material';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
-import api from '@/api';
+import { api } from '../helpers';
 
 /**
  * Transaction Details Component

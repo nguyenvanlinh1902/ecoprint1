@@ -204,7 +204,109 @@ export const adminMiddleware = async (ctx, next) => {
   }
 };
 
+/**
+ * Verify request middleware for admin routes
+ * Compatible with Avada core implementation
+ */
+export const verifyRequest = () => {
+  return async (ctx, next) => {
+    try {
+      console.log('[VerifyRequest] Processing request for path:', ctx.path);
+      
+      // Check authentication from query parameters (for development)
+      if (ctx.query.dev === 'true') {
+        console.log('[VerifyRequest] Dev mode authentication granted');
+        ctx.state.user = {
+          email: ctx.query.email || 'dev@example.com',
+          role: 'admin'
+        };
+        
+        await next();
+        return;
+      }
+      
+      // Get session token from cookie, header or query parameter
+      const token = ctx.cookies.get('token') || 
+                    (ctx.headers.authorization ? ctx.headers.authorization.replace('Bearer ', '') : null) ||
+                    ctx.query.token;
+      
+      if (!token) {
+        // Check for header-based authentication
+        const headerEmail = ctx.headers['x-user-email'];
+        
+        if (headerEmail) {
+          console.log('[VerifyRequest] Using headers for authentication');
+          const userRole = ctx.headers['x-user-role'] || 'user';
+          
+          ctx.state.user = {
+            email: headerEmail,
+            role: userRole
+          };
+          
+          await next();
+          return;
+        }
+        
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Unauthorized: No valid authentication token provided'
+        };
+        return;
+      }
+      
+      // Verify the token
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // For simple verification, we'll just set basic user info
+        ctx.state.session = decoded;
+        ctx.state.user = {
+          email: decoded.email,
+          role: decoded.role || 'user'
+        };
+        
+        // If you need to validate against a database
+        if (decoded.email) {
+          try {
+            const userProfile = await userProfileRepository.getUserProfileByEmail(decoded.email);
+            
+            if (userProfile && userProfile.status === 'active') {
+              ctx.state.user = {
+                id: userProfile.id,
+                email: userProfile.email,
+                role: userProfile.role,
+                status: userProfile.status
+              };
+            }
+          } catch (dbError) {
+            console.error('[VerifyRequest] Database lookup error:', dbError);
+            // Continue even without DB verification in case of errors
+          }
+        }
+        
+        await next();
+      } catch (jwtError) {
+        console.error('[VerifyRequest] JWT verification failed:', jwtError);
+        ctx.status = 401;
+        ctx.body = {
+          success: false,
+          message: 'Unauthorized: Invalid or expired token'
+        };
+      }
+    } catch (error) {
+      console.error('[VerifyRequest] Error:', error);
+      ctx.status = 500;
+      ctx.body = {
+        success: false,
+        message: 'Internal server error during authentication'
+      };
+    }
+  };
+};
+
 export default {
   authMiddleware,
-  adminMiddleware
+  adminMiddleware,
+  verifyRequest
 }; 

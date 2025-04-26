@@ -23,11 +23,11 @@ import {
   ArrowBack as ArrowBackIcon,
   MoreVert as MoreVertIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDateTime, formatDate } from '../helpers/formatters';
 import { useApp } from '../context/AppContext';
-import useFetchApi from '../hooks/api/useFetchApi';
+import { useFetchApi } from '../hooks';
 import ReceiptUploader from '../components/ReceiptUploader';
 import { useParams, useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -92,13 +92,12 @@ const TransactionsPage = () => {
 
   // Use useFetchApi for transactions
   const { 
-    data: transactionsData,
+    fetchData,
     loading: fetchLoading,
-    error: fetchError,
-    refetch: refetchTransactions
-  } = useFetchApi('transactions', {
-    fetchOnMount: false,
-    initialParams: queryParams
+    error: fetchError
+  } = useFetchApi({
+    url: '/transactions',
+    fetchOnMount: false
   });
 
   // Decide if we should show transaction list or detail
@@ -155,7 +154,7 @@ const TransactionsPage = () => {
   }, []);
   
   // Handle fetching transactions with current filters
-  const handleFetchTransactions = () => {
+  const handleFetchTransactions = async () => {
     setLoading(true);
     setError('');
     
@@ -172,50 +171,39 @@ const TransactionsPage = () => {
     
     setQueryParams(params);
     
-    // Use direct API call instead of useFetchApi hook
-    api.transactions.getAll(params)
-      .then(response => {
-        console.log('API Response:', response);
-        
-        // Handle the API response which is nested in success.data
-        if (response.data?.success && response.data?.data) {
-          const responseData = response.data.data;
-          
-          if (responseData.transactions) {
-            setTransactions(responseData.transactions || []);
-          } else {
-            setTransactions([]);
-          }
-          
-          if (responseData.pagination) {
-            setTotalPages(responseData.pagination.totalPages || responseData.pagination.pages || 1);
-          } else {
-            setTotalPages(1);
-          }
-        } else if (response.data?.transactions) {
-          // Direct response structure
-          setTransactions(response.data.transactions || []);
-          if (response.data.pagination) {
-            setTotalPages(response.data.pagination.totalPages || response.data.pagination.pages || 1);
-          }
-        } else {
-          // Fallback if data structure is unexpected
-          console.warn('Unexpected API response structure:', response.data);
-          setTransactions([]);
-          setTotalPages(1);
-        }
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error("Error fetching transactions:", error);
-        setError("Failed to load transactions. Please try again.");
+    try {
+      const { data, error } = await fetchData(params);
+      
+      if (error) {
+        throw new Error(error);
+      }
+      
+      // Process the response data
+      if (data?.transactions) {
+        setTransactions(data.transactions);
+      } else if (Array.isArray(data)) {
+        setTransactions(data);
+      } else {
         setTransactions([]);
-        setLoading(false);
-      });
+      }
+      
+      // Handle pagination
+      if (data?.pagination) {
+        setTotalPages(data.pagination.totalPages || data.pagination.pages || 1);
+      } else {
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+      setError("Failed to load transactions. Please try again.");
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Handle page change
-  const handlePageChange = (event, value) => {
+  const handlePageChange = async (event, value) => {
     setPage(value);
     
     const newParams = {
@@ -226,43 +214,34 @@ const TransactionsPage = () => {
     setQueryParams(newParams);
     setLoading(true);
     
-    // Use direct API call instead of useFetchApi hook
-    api.transactions.getAll(newParams)
-      .then(response => {
-        // Handle the API response which is nested in success.data
-        if (response.data?.success && response.data?.data) {
-          const responseData = response.data.data;
-          
-          if (responseData.transactions) {
-            setTransactions(responseData.transactions || []);
-          } else {
-            setTransactions([]);
-          }
-          
-          if (responseData.pagination) {
-            setTotalPages(responseData.pagination.totalPages || responseData.pagination.pages || 1);
-          } else {
-            setTotalPages(1);
-          }
-        } else if (response.data?.transactions) {
-          // Direct response structure
-          setTransactions(response.data.transactions || []);
-          if (response.data.pagination) {
-            setTotalPages(response.data.pagination.totalPages || response.data.pagination.pages || 1);
-          }
-        } else {
-          // Fallback if data structure is unexpected
-          console.warn('Unexpected API response structure:', response.data);
-          setTransactions([]);
-          setTotalPages(1);
-        }
-        setLoading(false);
-      })
-      .catch(error => {
-        console.error("Error fetching transactions:", error);
-        setError("Failed to load transactions. Please try again.");
-        setLoading(false);
-      });
+    try {
+      const { data, error } = await fetchData(newParams);
+      
+      if (error) {
+        throw new Error(error);
+      }
+      
+      // Process the response data
+      if (data?.transactions) {
+        setTransactions(data.transactions);
+      } else if (Array.isArray(data)) {
+        setTransactions(data);
+      } else {
+        setTransactions([]);
+      }
+      
+      // Handle pagination
+      if (data?.pagination) {
+        setTotalPages(data.pagination.totalPages || data.pagination.pages || 1);
+      } else {
+        setTotalPages(1);
+      }
+    } catch (err) {
+      console.error("Error fetching transactions:", err);
+      setError("Failed to load transactions. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Handle filter changes

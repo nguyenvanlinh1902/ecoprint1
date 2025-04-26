@@ -15,7 +15,7 @@ import {
   CheckCircle as ApproveIcon,
   Clear as RejectIcon
 } from '@mui/icons-material';
-import { get, put } from '../../api';
+import { api } from '../../helpers';
 import StatusBadge from '../../components/StatusBadge';
 import { formatDate } from '../../helpers/formatters';
 import { useSafeAdmin } from '../../hooks/useSafeAdmin';
@@ -143,7 +143,7 @@ const UsersPage = () => {
       devLog('Fetching users with params:', params);
       
       // Use the api object directly instead of axios
-      const response = await get('admin/users', { params });
+      const response = await api('admin/users', 'GET', params, true);
       
       devLog('Users API response:', response.data);
       
@@ -197,13 +197,13 @@ const UsersPage = () => {
       
       // Xác định API endpoint dựa vào action
       if (action === 'approve') {
-        response = await put(`admin/users/${userId}/approve`);
+        response = await api(`admin/users/${userId}/approve`, 'PUT', null, true);
       } else if (action === 'reject') {
-        response = await put(`admin/users/${userId}/reject`);
+        response = await api(`admin/users/${userId}/reject`, 'PUT', null, true);
       } else if (action === 'activate') {
-        response = await put(`admin/users/${userId}/activate`);
+        response = await api(`admin/users/${userId}/activate`, 'PUT', null, true);
       } else if (action === 'deactivate') {
-        response = await put(`admin/users/${userId}/deactivate`);
+        response = await api(`admin/users/${userId}/deactivate`, 'PUT', null, true);
       }
       
       // Cập nhật context nếu có

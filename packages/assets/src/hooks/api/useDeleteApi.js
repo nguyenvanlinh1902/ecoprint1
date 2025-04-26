@@ -1,41 +1,31 @@
-import {useState, useCallback} from 'react';
-import {api} from '../../helpers';
-import {useStore} from '../../reducers/storeReducer';
-import {setToast} from '../../actions/storeActions';
-import {handleError} from '../../services/errorService';
+import { useCallback } from 'react';
+import useCrudApi from './useCrudApi';
 
 /**
- * @param url
- * @returns {{deleting: boolean, handleDelete}}
+ * Hook for deleting resources via API
+ * @param {Object} options Options for the API call
+ * @param {string} options.url API endpoint
+ * @param {string} options.successMsg Success message
+ * @param {string} options.errorMsg Error message
+ * @returns {Object} Hook state and methods
  */
-export default function useDeleteApi({url}) {
-  const {dispatch} = useStore();
-  const [deleting, setDeleting] = useState(false);
+export default function useDeleteApi({
+  url,
+  successMsg = 'Deleted successfully',
+  errorMsg = 'Failed to delete'
+}) {
+  // Use the new useCrudApi hook
+  const { deleting, deleteData } = useCrudApi({
+    baseUrl: url,
+    deleteSuccessMsg: successMsg,
+    deleteErrorMsg: errorMsg,
+    initLoad: false // Don't load data on mount
+  });
 
-  /**
-   * @param data
-   * @returns {Promise<boolean>}
-   */
-  const handleDelete = useCallback(async data => {
-    try {
-      setDeleting(true);
-      const resp = await api(url, {body: {data}, method: 'DELETE'});
-      if (resp.success) {
-        setToast(dispatch, resp.message || 'Deleted successfully');
-        return true;
-      }
-      if (resp.error) {
-        setToast(dispatch, resp.error, true);
-      }
-      return false;
-    } catch (e) {
-      handleError(e);
-      setToast(dispatch, 'Failed to delete', true);
-      return false;
-    } finally {
-      setDeleting(false);
-    }
-  }, [url, dispatch]);
+  // Maintain the original API
+  const handleDelete = useCallback(async (id = null) => {
+    return deleteData(id);
+  }, [deleteData]);
 
-  return {deleting, handleDelete};
+  return { deleting, handleDelete };
 }

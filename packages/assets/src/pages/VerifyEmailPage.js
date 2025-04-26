@@ -13,7 +13,7 @@ import {
 } from '@mui/material';
 import Logo from '../components/Logo';
 import { useAuth } from '../hooks/useAuth';
-import { useApi } from '../hooks/useApi';
+import { useCreateApi } from '../hooks';
 
 /**
  * Email verification page that handles email verification process
@@ -29,7 +29,11 @@ const VerifyEmailPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { resendVerification } = useAuth();
-  const api = useApi();
+  const { handleCreate: verifyEmail } = useCreateApi({
+    url: '/auth/verify-email',
+    successMsg: 'Email verification successful',
+    errorMsg: 'Verification failed'
+  });
 
   // Extract verification code and email from URL
   useEffect(() => {
@@ -59,9 +63,9 @@ const VerifyEmailPage = () => {
     
     try {
       // Call API to verify email
-      const result = await api.auth.confirmEmailVerification(code || verificationCode);
+      const result = await verifyEmail({ code: code || verificationCode });
       
-      if (result && result.success) {
+      if (result) {
         setSuccess(true);
         setError('');
         // Auto-redirect to login after 3 seconds
@@ -72,7 +76,7 @@ const VerifyEmailPage = () => {
           });
         }, 3000);
       } else {
-        setError(result?.message || 'Verification failed. Please try again.');
+        setError('Verification failed. Please try again.');
       }
     } catch (err) {
       setError(err.message || 'Verification failed. Please try again.');

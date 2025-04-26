@@ -36,7 +36,7 @@ import {
 import * as MuiIcons from '@mui/icons-material';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
 import { useFetchApi } from '../../hooks';
-import api from '@/api';
+import { api } from '../../helpers';
 import { useSafeAdmin } from '../../hooks/useSafeAdmin';
 
 /**

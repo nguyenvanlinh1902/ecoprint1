@@ -10,7 +10,7 @@ import {
   InsertDriveFile as FileIcon,
   Download as DownloadIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 
 const steps = ['Upload CSV File', 'Validate Data', 'Review & Confirm'];
 
@@ -55,15 +55,11 @@ const ImportOrdersPage = () => {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await api.post('/api/orders/import', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
+      const response = await api('/api/orders/import', 'POST', formData, true);
       
       // Store validation results and batch ID
-      setValidationResults(response.data.data.validationResults);
-      setBatchId(response.data.data.batchId);
+      setValidationResults(response.data.validationResults);
+      setBatchId(response.data.batchId);
       
       // Move to the next step
       setActiveStep(1);
@@ -80,7 +76,7 @@ const ImportOrdersPage = () => {
       setLoading(true);
       setError('');
       
-      await api.post(`/api/batch-imports/${batchId}/confirm`);
+      await api(`/api/batch-imports/${batchId}/confirm`, 'POST', null, true);
       
       // Move to the final step
       setActiveStep(2);

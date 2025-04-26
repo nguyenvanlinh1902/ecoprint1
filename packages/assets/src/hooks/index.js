@@ -1,9 +1,10 @@
 export { useCollection, createFilter, createSort, createPagination } from './useCollection';
 
-import * as ApiHooks from './api';
-export { ApiHooks };
-
-export { useFetchApi } from './api';
+// Export CRUD API hooks directly
+export { default as useFetchApi } from './api/useFetchApi';
+export { default as useCreateApi } from './api/useCreateApi';
+export { default as useEditApi } from './api/useEditApi';
+export { default as useDeleteApi } from './api/useDeleteApi';
 
 // Auth hooks
 import { useAuth, AuthProvider } from './useAuth';

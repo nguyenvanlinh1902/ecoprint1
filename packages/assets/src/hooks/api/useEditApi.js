@@ -1,17 +1,16 @@
-import {useState, useCallback} from 'react';
-import {api} from '../../helpers';
-import {useStore} from '../../reducers/storeReducer';
-import {setToast} from '../../actions/storeActions';
-import {handleError} from '../../services/errorService';
+import {useCallback} from 'react';
+import useCrudApi from './useCrudApi';
 
 /**
- * @param url
- * @param defaultState
- * @param fullResp
- * @param useToast
- * @param successMsg
- * @param errorMsg
- * @returns {{editing: boolean, handleEdit}}
+ * Hook for editing resources via API
+ * @param {Object} options Options for the API call
+ * @param {string} options.url API endpoint
+ * @param {boolean} options.defaultState Initial editing state
+ * @param {boolean} options.fullResp Whether to return full response
+ * @param {boolean} options.useToast Whether to show toast notifications
+ * @param {string} options.successMsg Success message
+ * @param {string} options.errorMsg Error message
+ * @returns {Object} Hook state and methods
  */
 export default function useEditApi({
   url,
@@ -21,37 +20,19 @@ export default function useEditApi({
   successMsg = 'Saved successfully',
   errorMsg = 'Failed to save'
 }) {
-  const {dispatch} = useStore();
-  const [editing, setEditing] = useState(defaultState);
+  // Use the new useCrudApi hook
+  const { updating, updateData } = useCrudApi({
+    baseUrl: url,
+    fullResp,
+    updateSuccessMsg: successMsg,
+    updateErrorMsg: errorMsg,
+    initLoad: false // Don't load data on mount
+  });
 
-  /**
-   * @param data
-   * @param newEditing
-   * @returns {Promise<boolean>}
-   */
-  const handleEdit = useCallback(async (data, newEditing = true) => {
-    try {
-      setEditing(prev =>
-        typeof newEditing === 'boolean' ? newEditing : {...prev, [newEditing]: true}
-      );
-      const resp = await api(url, {body: {data}, method: 'PUT'});
-      if (resp.success && useToast) {
-        setToast(dispatch, resp.message || successMsg);
-      }
-      if (resp.error) {
-        setToast(dispatch, resp.error, true);
-      }
-      return fullResp ? resp : resp.success;
-    } catch (e) {
-      handleError(e);
-      setToast(dispatch, errorMsg, true);
-      return fullResp ? {success: false, error: e.message} : false;
-    } finally {
-      setEditing(prev =>
-        typeof newEditing === 'boolean' ? false : {...prev, [newEditing]: false}
-      );
-    }
-  }, [url, dispatch, fullResp, useToast, successMsg, errorMsg]);
+  // Maintain the original API
+  const handleEdit = useCallback(async (data, id) => {
+    return updateData(data, id);
+  }, [updateData]);
 
-  return {editing, handleEdit};
+  return { editing: updating, handleEdit };
 }

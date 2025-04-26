@@ -11,7 +11,7 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import { formatCurrency } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
 

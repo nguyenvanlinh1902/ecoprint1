@@ -6,7 +6,6 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import useAppRouteTracker from "../hooks/useAppRouteTracker";
 import { useApp } from "../context/AppContext";
 
-// Import loadable components from @loadable folder
 import {
   UserRouter,
   AdminRouter,
@@ -29,13 +28,11 @@ export const AuthGuard = ({ children }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Store the current path for redirection after login
     if (!loading && !token) {
       localStorage.setItem('returnUrl', location.pathname);
     }
   }, [loading, token, location]);
 
-  // Show loading indicator while auth state is being determined
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -54,7 +51,6 @@ export const AuthGuard = ({ children }) => {
     return <Navigate to="/auth/verify-email" replace />;
   }
 
-  // If all checks pass, render the children components
   return <>{children}</>;
 };
 

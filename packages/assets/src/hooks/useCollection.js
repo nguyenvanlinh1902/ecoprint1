@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import ApiHooks from './api';
+import { createResourceMethods } from '../helpers';
 
 /**
  * Hook to fetch and optionally poll for data updates from a collection
@@ -11,7 +11,6 @@ export const useCollection = (resourceName, options = {}) => {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const api = ApiHooks;
 
   // Extract options
   const { 
@@ -24,8 +23,8 @@ export const useCollection = (resourceName, options = {}) => {
   
   // Get resource methods
   const resource = useCallback(() => {
-    return api.createResourceMethods(resourceName);
-  }, [api, resourceName]);
+    return createResourceMethods(resourceName);
+  }, [resourceName]);
 
   useEffect(() => {
     let isMounted = true;

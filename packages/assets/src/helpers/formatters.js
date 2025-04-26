@@ -32,15 +32,12 @@ export const formatDate = (date, options = {}, locale = 'en-US') => {
   };
   
   try {
-    // Kiểm tra nếu là timestamp từ Firestore
     if (date && typeof date === 'object' && date.toDate) {
       return new Intl.DateTimeFormat(locale, defaultOptions).format(date.toDate());
     }
     
-    // Chuyển đổi thành Date object nếu là chuỗi hoặc số
     const dateObj = new Date(date);
     
-    // Kiểm tra xem ngày có hợp lệ không
     if (isNaN(dateObj.getTime())) {
       console.warn('Invalid date value:', date);
       return 'N/A';

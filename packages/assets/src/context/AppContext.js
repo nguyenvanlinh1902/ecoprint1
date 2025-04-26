@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { useAuthApi } from '../hooks/api';
+import { useFetchApi, useCreateApi, useEditApi } from '../hooks';
+import { api } from '@/helpers';
 
-// Create app context
 const AppContext = createContext();
 
 // Custom hook to use app context
@@ -10,7 +10,41 @@ export const useApp = () => useContext(AppContext);
 
 // App provider component
 export const AppProvider = ({ children }) => {
-  const auth = useAuthApi();
+  // Authentication API hooks
+  const { handleCreate: loginApi } = useCreateApi({
+    url: '/auth/login',
+    successMsg: 'Login successful',
+    errorMsg: 'Login failed',
+    fullResp: true
+  });
+  
+  const { handleCreate: registerApi } = useCreateApi({
+    url: '/auth/register',
+    successMsg: 'Registration successful',
+    errorMsg: 'Registration failed',
+    fullResp: true
+  });
+  
+  const { handleCreate: resetPasswordRequestApi } = useCreateApi({
+    url: '/auth/forgot-password',
+    successMsg: 'Password reset instructions sent',
+    errorMsg: 'Failed to send reset instructions',
+    fullResp: true
+  });
+  
+  const { handleEdit: updateProfileApi } = useEditApi({
+    url: '/auth/profile',
+    successMsg: 'Profile updated successfully',
+    errorMsg: 'Failed to update profile',
+    fullResp: true
+  });
+  
+  const { handleCreate: resendVerificationApi } = useCreateApi({
+    url: '/auth/resend-verification',
+    successMsg: 'Verification email sent',
+    errorMsg: 'Failed to send verification email',
+    fullResp: true
+  });
   
   // Get token from localStorage
   const [token, setToken] = useState(() => {
@@ -104,15 +138,15 @@ export const AppProvider = ({ children }) => {
     }
   }, [appState.preferences]);
 
-  // Login function with user data using AuthApi
+  // Login function with user data
   const login = useCallback(async (email, password) => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await auth.login(email, password);
+      const response = await loginApi({ email, password });
       
-      if (response.success && response.token && response.user) {
+      if (response.success && response.token && response.data) {
         // Save token 
         localStorage.setItem('token', response.token);
         setToken(response.token);
@@ -121,10 +155,10 @@ export const AppProvider = ({ children }) => {
         axios.defaults.headers.common['Authorization'] = `Bearer ${response.token}`;
         
         // Save user data
-        localStorage.setItem('user', JSON.stringify(response.user));
+        localStorage.setItem('user', JSON.stringify(response.data));
         
         // Update state
-        setUser(response.user);
+        setUser(response.data);
       }
       
       return response;
@@ -138,7 +172,7 @@ export const AppProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [auth]);
+  }, [loginApi]);
 
   // Logout function with proper cleanup
   const logout = useCallback(async () => {
@@ -146,7 +180,7 @@ export const AppProvider = ({ children }) => {
     
     try {
       // Call logout API if available
-      await auth.logout();
+      await api('/auth/logout', 'POST');
     } catch (error) {
       console.error('Error during API logout:', error);
     } finally {
@@ -175,15 +209,15 @@ export const AppProvider = ({ children }) => {
       
       setLoading(false);
     }
-  }, [auth]);
+  }, []);
 
-  // Register function using AuthApi
+  // Register function
   const register = useCallback(async (userData) => {
     setLoading(true);
     setError(null);
     
     try {
-      const response = await auth.register(userData);
+      const response = await registerApi(userData);
       return response;
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -195,14 +229,14 @@ export const AppProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [auth]);
+  }, [registerApi]);
 
   // Resend verification email
   const resendVerification = useCallback(async (email) => {
     setLoading(true);
     
     try {
-      const response = await auth.resendVerification(email);
+      const response = await resendVerificationApi({ email });
       return response;
     } catch (err) {
       return {
@@ -212,21 +246,21 @@ export const AppProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [auth]);
+  }, [resendVerificationApi]);
 
   // Request password reset
   const resetPasswordViaApi = useCallback(async (email) => {
     setLoading(true);
     
     try {
-      const response = await auth.forgotPassword(email);
+      const response = await resetPasswordRequestApi({ email });
       return response;
     } catch (err) {
       throw new Error(err.message || 'Failed to send reset email');
     } finally {
       setLoading(false);
     }
-  }, [auth]);
+  }, [resetPasswordRequestApi]);
 
   // Legacy reset password method (fallback)
   const resetPassword = useCallback(async (email) => {
@@ -236,14 +270,14 @@ export const AppProvider = ({ children }) => {
       // This is a placeholder for the legacy method
       // Use the same API endpoint for now
       console.warn('Using legacy password reset method');
-      const response = await auth.forgotPassword(email);
+      const response = await resetPasswordRequestApi({ email });
       return response;
     } catch (err) {
       throw new Error('Failed to send reset email');
     } finally {
       setLoading(false);
     }
-  }, [auth]);
+  }, [resetPasswordRequestApi]);
 
   // Combined state with both auth and app state
   const contextValue = {

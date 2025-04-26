@@ -15,7 +15,7 @@ import {
   CloudUpload as UploadIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../../helpers';
 import ImageUploader from '@/components/ImageUploader';
 import { TableContainer, Table, TableHead, TableBody, TableRow, TableCell } from '@mui/material';
 

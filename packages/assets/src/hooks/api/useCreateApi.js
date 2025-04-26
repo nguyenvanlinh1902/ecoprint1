@@ -1,16 +1,15 @@
-import {useState, useCallback} from 'react';
-import {api} from '../../helpers';
-import {useStore} from '../../reducers/storeReducer';
-import {setToast} from '../../actions/storeActions';
-import {handleError} from '../../services/errorService';
+import {useCallback} from 'react';
+import useCrudApi from './useCrudApi';
 
 /**
- * @param url
- * @param method
- * @param fullResp
- * @param successMsg
- * @param errorMsg
- * @returns {{creating: boolean, handleCreate}}
+ * Hook for creating resources via API
+ * @param {Object} options Options for the API call
+ * @param {string} options.url API endpoint
+ * @param {string} options.method HTTP method (default: POST)
+ * @param {boolean} options.fullResp Whether to return full response
+ * @param {string} options.successMsg Success message
+ * @param {string} options.errorMsg Error message
+ * @returns {Object} Hook state and methods
  */
 export default function useCreateApi({
   url,
@@ -19,32 +18,19 @@ export default function useCreateApi({
   successMsg = 'Saved successfully',
   errorMsg = 'Failed to save'
 }) {
-  const {dispatch} = useStore();
-  const [creating, setCreating] = useState(false);
+  // Use the new useCrudApi hook
+  const { creating, createData } = useCrudApi({
+    baseUrl: url,
+    fullResp,
+    createSuccessMsg: successMsg,
+    createErrorMsg: errorMsg,
+    initLoad: false // Don't load data on mount
+  });
 
-  /**
-   * @param data
-   * @returns {Promise<{success: boolean, error}>}
-   */
-  const handleCreate = useCallback(async data => {
-    try {
-      setCreating(true);
-      const resp = await api(url, {body: data, method});
-      if (resp.success) {
-        setToast(dispatch, resp.message || successMsg);
-      }
-      if (resp.error) {
-        setToast(dispatch, resp.error, true);
-      }
-      return fullResp ? resp : resp.success;
-    } catch (e) {
-      handleError(e);
-      setToast(dispatch, errorMsg, true);
-      return fullResp ? {success: false, error: e.message} : false;
-    } finally {
-      setCreating(false);
-    }
-  }, [url, method, dispatch, fullResp, successMsg, errorMsg]);
+  // Maintain the original API
+  const handleCreate = useCallback(async (data) => {
+    return createData(data);
+  }, [createData]);
 
-  return {creating, handleCreate};
+  return { creating, handleCreate };
 }

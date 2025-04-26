@@ -11,7 +11,7 @@ import {
   Alert
 } from '@mui/material';
 import { CloudUpload as CloudUploadIcon } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { firebaseStorage } from '@/config/firebase';
 

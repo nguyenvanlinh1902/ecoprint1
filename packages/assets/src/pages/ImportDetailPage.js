@@ -9,7 +9,7 @@ import {
   ArrowBack as ArrowBackIcon,
   Payment as PaymentIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';
 import { useAuth } from '../hooks/useAuth';
@@ -34,10 +34,10 @@ const ImportDetailPage = () => {
         setLoading(true);
         
         // Fetch all orders for this batch
-        const response = await api.get(`/api/batch-imports/${batchId}/orders`);
+        const response = await api(`/api/batch-imports/${batchId}/orders`, 'GET', null, true);
         
-        setOrders(response.data.data.orders || []);
-        setBatchDetails(response.data.data.batchDetails || {});
+        setOrders(response.data.orders || []);
+        setBatchDetails(response.data.batchDetails || {});
       } catch (error) {
         /* error removed */
         setError('Failed to load batch details. Please try again later.');
@@ -54,14 +54,14 @@ const ImportDetailPage = () => {
       setPaymentLoading(true);
       setPaymentError('');
       
-      await api.post(`/api/batch-imports/${batchId}/pay`);
+      await api(`/api/batch-imports/${batchId}/pay`, 'POST', null, true);
       
       setPaymentSuccess(true);
       
       // Refresh batch details
-      const response = await api.get(`/api/batch-imports/${batchId}/orders`);
-      setOrders(response.data.data.orders || []);
-      setBatchDetails(response.data.data.batchDetails || {});
+      const response = await api(`/api/batch-imports/${batchId}/orders`, 'GET', null, true);
+      setOrders(response.data.orders || []);
+      setBatchDetails(response.data.batchDetails || {});
       
     } catch (error) {
       /* error removed */

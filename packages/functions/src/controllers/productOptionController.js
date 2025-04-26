@@ -49,13 +49,8 @@ export const createOption = async (ctx) => {
       console.log('Using ctx.req.body');
       data = ctx.req.body;
     } else {
-      console.log('No body found, trying to parse raw body');
-      try {
-        data = JSON.parse(ctx.request.rawBody || '{}');
-      } catch (e) {
-        console.error('Error parsing raw body:', e);
-        data = {};
-      }
+      console.log('No body found, using empty object');
+      data = {};
     }
     
     // Log request data for debugging
@@ -108,13 +103,8 @@ export const updateOption = async (ctx) => {
       console.log('Update - Using ctx.req.body');
       data = ctx.req.body;
     } else {
-      console.log('Update - No body found, trying to parse raw body');
-      try {
-        data = JSON.parse(ctx.request.rawBody || '{}');
-      } catch (e) {
-        console.error('Error parsing raw body:', e);
-        data = {};
-      }
+      console.log('Update - No body found, using empty object');
+      data = {};
     }
     
     // Log request data for debugging
@@ -192,13 +182,8 @@ export const addPosition = async (ctx) => {
       console.log('AddPosition - Using ctx.req.body');
       positionData = ctx.req.body;
     } else {
-      console.log('AddPosition - No body found, trying to parse raw body');
-      try {
-        positionData = JSON.parse(ctx.request.rawBody || '{}');
-      } catch (e) {
-        console.error('Error parsing raw body:', e);
-        positionData = {};
-      }
+      console.log('AddPosition - No body found, using empty object');
+      positionData = {};
     }
     
     // Log request data for debugging

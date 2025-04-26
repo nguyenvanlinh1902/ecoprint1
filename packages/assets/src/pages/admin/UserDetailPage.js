@@ -17,7 +17,7 @@ import {
   CheckCircle as CheckCircleIcon,
   Key as KeyIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../../helpers';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
 import { useSafeAdmin } from '../../hooks/useSafeAdmin';

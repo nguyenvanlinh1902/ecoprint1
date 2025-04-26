@@ -1,10 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import api from '../api';
+import {api} from '../helpers';
 
-// Create context
 const AdminContext = createContext();
 
-// Custom hook to use admin context
 export const useAdmin = () => useContext(AdminContext);
 
 /**

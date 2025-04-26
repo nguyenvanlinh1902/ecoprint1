@@ -17,8 +17,7 @@ import {
   MoreVert as MoreVertIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
-import { useProductOptionsApi } from '@/hooks/api';
-import api from '@/api';
+import { useFetchApi, useCreateApi, useEditApi, useDeleteApi } from '../../hooks';
 
 // Dữ liệu mẫu cho các Print Options
 const PRINT_OPTION_TEMPLATES = [
@@ -63,8 +62,26 @@ const PRINT_OPTION_TEMPLATES = [
 ];
 
 const ProductOptionsPage = () => {
-  // Use the hook for API operations
-  const productOptionsApi = useProductOptionsApi();
+  // Use the hooks for API operations
+  const { fetchData: fetchOptions } = useFetchApi({
+    url: '/product-options',
+    fetchOnMount: false
+  });
+  
+  const { handleCreate } = useCreateApi({
+    url: '/product-options',
+    successMsg: 'Option created successfully'
+  });
+  
+  const { handleEdit } = useEditApi({
+    url: '/product-options',
+    successMsg: 'Option updated successfully'
+  });
+  
+  const { handleDelete } = useDeleteApi({
+    url: '/product-options',
+    successMsg: 'Option deleted successfully'
+  });
   
   // State
   const [options, setOptions] = useState([]);
@@ -102,37 +119,22 @@ const ProductOptionsPage = () => {
   
   // Load options on component mount
   useEffect(() => {
-    fetchOptions();
+    fetchOptionsData();
   }, []);
   
-  // Fetch options list using direct API call for testing
-  const fetchOptions = async () => {
+  // Fetch options list
+  const fetchOptionsData = async () => {
     setLoading(true);
     setError('');
     
     try {
-      // First try with hook
-      let result = null;
-      try {
-        result = await productOptionsApi.fetchOptions();
-      } catch (hookError) {
-        console.warn('Hook API error:', hookError);
+      const { data, error } = await fetchOptions();
+      
+      if (error) {
+        throw new Error(error || 'Failed to load product options');
       }
       
-      // If hook fails, try direct API call
-      if (!result || result.error) {
-        console.log('Trying direct API call');
-        const response = await api.productOptions.getAllProductOptions();
-        
-        if (response.data && response.data.success) {
-          setOptions(response.data.data || []);
-        } else {
-          throw new Error('Failed to load product options');
-        }
-      } else {
-        // Hook succeeded
-        setOptions(result.data || []);
-      }
+      setOptions(data || []);
     } catch (err) {
       console.error('Error fetching product options:', err);
       setError(err.message || 'An error occurred while loading product options');
@@ -211,39 +213,47 @@ const ProductOptionsPage = () => {
   
   // Save option
   const handleSaveOption = async () => {
-    // Validate
+    // Validate form
     if (!formData.name.trim()) {
       setFormError('Name is required');
       return;
     }
     
-    setSaving(true);
-    setFormError('');
+    if (formData.positions.length === 0) {
+      setFormError('At least one position is required');
+      return;
+    }
     
     try {
+      setSaving(true);
+      setFormError('');
+      
       if (currentOption) {
-        // Update
-        const { data, error } = await productOptionsApi.updateOption(currentOption.id, formData);
+        // Update using the instance of handleEdit
+        const result = await handleEdit({
+          ...formData,
+          id: currentOption.id
+        });
         
-        if (error) {
-          throw new Error(error.message || 'Failed to update product option');
+        if (!result) {
+          throw new Error('Failed to update option');
         }
-        
-        setSuccess('Product option updated successfully');
       } else {
-        // Create
-        const { data, error } = await productOptionsApi.createOption(formData);
+        // Create using the instance of handleCreate
+        const result = await handleCreate(formData);
         
-        if (error) {
-          throw new Error(error.message || 'Failed to create product option');
+        if (!result) {
+          throw new Error('Failed to create option');
         }
-        
-        setSuccess('Product option created successfully');
       }
       
-      // Refresh list
-      await fetchOptions();
-      handleCloseModal();
+      // Close modal and refresh options
+      setModalOpen(false);
+      await fetchOptionsData();
+      
+      // Show success message
+      setSuccess(currentOption ? 'Option updated successfully' : 'Option created successfully');
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       console.error('Error saving product option:', err);
       setFormError(err.message || 'An error occurred while saving');
@@ -269,19 +279,23 @@ const ProductOptionsPage = () => {
     if (!optionToDelete) return;
     
     setDeleting(true);
+    setError('');
     
     try {
-      const { error } = await productOptionsApi.deleteOption(optionToDelete.id);
+      // Use the instance of handleDelete
+      const result = await handleDelete(optionToDelete.id);
       
-      if (error) {
-        throw new Error(error.message || 'Failed to delete product option');
+      if (!result) {
+        throw new Error('Failed to delete option');
       }
       
-      setSuccess('Product option deleted successfully');
+      // Close dialog and refresh options
+      setDeleteDialogOpen(false);
+      await fetchOptionsData();
       
-      // Refresh list
-      await fetchOptions();
-      handleCloseDeleteDialog();
+      // Show success message
+      setSuccess('Option deleted successfully');
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       console.error('Error deleting product option:', err);
       setError(err.message || 'An error occurred while deleting');

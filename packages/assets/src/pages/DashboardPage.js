@@ -10,7 +10,7 @@ import {
   AccountBalance as BalanceIcon,
   AddShoppingCart as CreateOrderIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../helpers';
 import { useApp } from '../context/AppContext';
 import StatusBadge from '../components/StatusBadge';
 import { formatCurrency, formatDate } from '../helpers/formatters';

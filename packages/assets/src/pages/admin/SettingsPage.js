@@ -13,7 +13,7 @@ import {
   Refresh as RefreshIcon,
   ExpandMore as ExpandMoreIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../../helpers';
 
 const TabPanel = (props) => {
   const { children, value, index, ...other } = props;

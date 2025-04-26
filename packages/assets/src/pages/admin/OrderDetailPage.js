@@ -18,7 +18,7 @@ import {
   Assignment as TrackingIcon,
   Send as SendIcon
 } from '@mui/icons-material';
-import api from '@/api';
+import { api } from '../../helpers';
 import StatusBadge from '../../components/StatusBadge';
 import { formatCurrency, formatDate, formatDateTime } from '../../helpers/formatters';
 import { useAuth } from '../../hooks/useAuth';
