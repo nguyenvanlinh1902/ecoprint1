@@ -11,7 +11,7 @@
     "dev:assets:staging": "npm run dev:staging --workspace=packages/assets",
     "dev:assets:prod": "npm run dev:production --workspace=packages/assets",
     "dev:functions": "GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev --workspace=packages/functions",
-    "dev:functions:win": "set GOOGLE_APPLICATION_CREDENTIALS=.\\packages\\functions\\serviceAccount.json && npm run dev --workspace=packages/functions",
+    "dev:functions:win": "set GOOGLE_APPLICATION_CREDENTIALS=.\\packages\\functions\\serviceAccount.json && npm run dev:win --workspace=packages/functions",
     "dev": "concurrently \"npm run dev:assets\" \"GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev:functions\"",
     "dev:win": "concurrently \"npm run dev:assets\" \"npm run dev:functions:win\"",
     "dev:staging": "concurrently \"npm run dev:assets:staging\" \"GOOGLE_APPLICATION_CREDENTIALS=./packages/functions/serviceAccount.json npm run dev:functions\"",

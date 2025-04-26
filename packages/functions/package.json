@@ -10,6 +10,7 @@
     "start": "npm run shell",
     "dev": "GOOGLE_APPLICATION_CREDENTIALS=\"/Users/linhnv/Project/ecoprint1/serviceAccount.json\" firebase emulators:start --only functions --project=ecoprint1-3cd5c",
     "dev:minimal": "GOOGLE_APPLICATION_CREDENTIALS=\"/Users/linhnv/Project/ecoprint1/serviceAccount.json\" FIRESTORE_EMULATOR_LOG_LEVEL=error FIREBASE_DEBUG=false firebase emulators:start --only functions --project=ecoprint1-3cd5c",
+    "dev:win": "set GOOGLE_APPLICATION_CREDENTIALS=\"./serviceAccount.json\" && firebase emulators:start --only functions --project=ecoprint1-3cd5c",
     "start:minimal": "NODE_ENV=production FIREBASE_DEBUG=false FIRESTORE_EMULATOR_LOG_LEVEL=error firebase emulators:start --only functions,firestore,storage",
     "serve:production-db": "firebase emulators:start --only functions,storage",
     "direct-api": "GOOGLE_APPLICATION_CREDENTIALS=\"/Users/linhnv/Project/ecoprint1/serviceAccount.json\" node --experimental-specifier-resolution=node src/direct-api.js",
